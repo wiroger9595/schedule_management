@@ -68,6 +68,10 @@ class Schedule(SQLModel, table=True):
     attendees_display: Optional[str] = Field(default=None, alias="attendees") # For text display
     is_reminder: bool = Field(default=False)
     
+    # Coordinates for Map
+    latitude: Optional[float] = Field(default=None)
+    longitude: Optional[float] = Field(default=None)
+    
     # Mappings
     @property
     def start_time(self) -> datetime:
@@ -78,3 +82,24 @@ class Schedule(SQLModel, table=True):
     @start_time.setter
     def start_time(self, value: datetime):
         self.meeting_time = value.isoformat()
+    
+    @property
+    def location(self) -> Optional[str]:
+        """Alias for meeting_location for app compatibility"""
+        return self.meeting_location
+    
+    @location.setter
+    def location(self, value: Optional[str]):
+        self.meeting_location = value
+    
+    # Override dict() to include computed properties
+    def dict(self, *args, **kwargs):
+        """Override dict to include @property fields for API serialization"""
+        data = super().dict(*args, **kwargs)
+        # Add computed properties that the frontend expects
+        data['start_time'] = self.start_time.isoformat() if hasattr(self, 'meeting_time') and self.meeting_time else None
+        data['location'] = self.meeting_location
+        data['latitude'] = self.latitude
+        data['longitude'] = self.longitude
+        data['id'] = self.schedule_id  # Frontend expects 'id' to be the schedule_id
+        return data

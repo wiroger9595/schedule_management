@@ -24,3 +24,17 @@ flutter run -d macos
 
 # apple oauth
 644901002244-soa2s80jbm0l9ne9jgdf7ifrq5rl7rac.apps.googleusercontent.com
+
+
+
+map api 
+
+AIzaSyCeppdyrBY73xJ-sZzqChzlzOc0u1nqgmc
+
+
+
+// 
+zeabur
+render
+koyeb
+fly.io

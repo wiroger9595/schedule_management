@@ -5,7 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import "../l10n/app_localizations.dart";
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -98,30 +100,27 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       }
       
       // 更新其他資料
-      headers['Content-Type'] = 'application/json';
-      final response = await http.patch(
-        Uri.parse('${ApiService.baseUrl}/users/profile'),
-        headers: headers,
-        body: jsonEncode({
+      // headers['Content-Type'] = 'application/json'; // Handled by provider
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      await auth.updateProfile({
           'full_name': _nameController.text,
           'phone': _phoneController.text,
           'line_id': _lineIdController.text.isNotEmpty ? _lineIdController.text : null,
           'language': _selectedLanguage,
-        }),
-      );
+      });
       
-      if (response.statusCode == 200) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(AppLocalizations.of(context)!.profileUpdated)),
         );
         Navigator.pop(context, true); // 返回並通知更新成功
-      } else {
-        throw Exception('更新失敗');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('儲存失敗：$e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('儲存失敗：$e')),
+        );
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -144,7 +143,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-      appBar: AppBar(
         title: Text(AppLocalizations.of(context)!.edit),
         actions: [
           IconButton(
@@ -166,11 +164,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     radius: 60,
                     backgroundImage: _imageFile != null
                         ? FileImage(_imageFile!)
-                        : (widget.user['profile_picture'] != null
-                            ? NetworkImage(widget.user['profile_picture'])
+                        : (widget.user['profile_image_path'] != null
+                            ? NetworkImage(widget.user['profile_image_path'])
                             : null) as ImageProvider?,
                     backgroundColor: Colors.purple[100],
-                    child: _imageFile == null && widget.user['profile_picture'] == null
+                    child: _imageFile == null && widget.user['profile_image_path'] == null
                         ? Icon(Icons.person, size: 60, color: Colors.purple[700])
                         : null,
                   ),

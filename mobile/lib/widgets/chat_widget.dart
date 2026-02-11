@@ -3,7 +3,7 @@ import '../services/api_service.dart';
 import 'dart:convert';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import "../l10n/app_localizations.dart";
 
 class ChatWidget extends StatefulWidget {
   final Function() onScheduleCreated;
@@ -41,15 +41,10 @@ class _ChatWidgetState extends State<ChatWidget> {
 
     try {
       final apiService = ApiService();
-      final headers = await apiService.getHeaders();
-      final response = await http.post(
-        Uri.parse('${ApiService.baseUrl}/chat/schedule'),
-        headers: headers,
-        body: jsonEncode({'message': userMessage}),
-      );
+      final data = await apiService.chatWithAI(userMessage);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      // Success
+      if (mounted) {
         setState(() {
           _messages.add(ChatMessage(
             text: data['ai_response'],
@@ -67,9 +62,6 @@ class _ChatWidgetState extends State<ChatWidget> {
             curve: Curves.easeOut,
           );
         });
-      } else {
-        final error = jsonDecode(response.body);
-        throw Exception(error['detail'] ?? 'Unknown error');
       }
     } catch (e) {
       setState(() {

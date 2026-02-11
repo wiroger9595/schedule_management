@@ -6,7 +6,7 @@ import '../models/schedule.dart';
 import 'dart:convert';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import "../l10n/app_localizations.dart";
 import '../utils/constants.dart';
 
 class CalendarScreen extends StatefulWidget {

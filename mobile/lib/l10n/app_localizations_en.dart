@@ -223,4 +223,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notConnected => 'Not connected';
+
+  @override
+  String get selectLocation => 'Select Location';
 }

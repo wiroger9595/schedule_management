@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/add_schedule_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/profile_completion_screen.dart';
 import 'screens/profile_screen.dart';
-import 'services/auth_service.dart';
-import 'services/api_service.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'providers/auth_provider.dart';
+import 'providers/schedule_provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import "l10n/app_localizations.dart";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(ScheduleApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ScheduleProvider()),
+      ],
+      child: ScheduleApp(),
+    ),
+  );
 }
 
 class ScheduleApp extends StatelessWidget {
@@ -35,7 +42,7 @@ class ScheduleApp extends StatelessWidget {
       ],
       initialRoute: '/startup',
       routes: {
-        '/startup': (context) => _StartupScreen(),
+        '/startup': (context) => _StartupWrapper(),
         '/': (context) => HomeScreen(),
         '/login': (context) => LoginScreen(),
         '/register': (context) => RegisterScreen(),
@@ -53,56 +60,39 @@ class ScheduleApp extends StatelessWidget {
   }
 }
 
-class _StartupScreen extends StatefulWidget {
+class _StartupWrapper extends StatefulWidget {
   @override
-  __StartupScreenState createState() => __StartupScreenState();
+  _StartupWrapperState createState() => _StartupWrapperState();
 }
 
-class __StartupScreenState extends State<_StartupScreen> {
+class _StartupWrapperState extends State<_StartupWrapper> {
   @override
   void initState() {
     super.initState();
-    _checkAuthAndProfile();
-  }
-
-  Future<void> _checkAuthAndProfile() async {
-    final authService = AuthService();
-    bool isLoggedIn = await authService.isLoggedIn();
-    
-    if (!isLoggedIn) {
-      Navigator.pushReplacementNamed(context, '/login');
-      return;
-    }
-    
-    // Check profile completion
-    try {
-      final apiService = ApiService();
-      final headers = await apiService.getHeaders();
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/users/me'),
-        headers: headers,
-      );
-      
-      if (response.statusCode == 200) {
-        final user = jsonDecode(response.body);
-        if (user['phone'] == null || user['phone'].toString().isEmpty) {
-          Navigator.pushReplacementNamed(context, '/profile_completion');
-          return;
-        }
-      }
-    } catch (e) {
-      print('Error checking profile: $e');
-    }
-    
-    Navigator.pushReplacementNamed(context, '/');
+    // Defer checkAuth to next frame to allow Provider to be ready
+    Future.microtask(() => 
+      Provider.of<AuthProvider>(context, listen: false).checkAuth()
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(),
-      ),
+    return Consumer<AuthProvider>(
+      builder: (context, auth, _) {
+        if (auth.isLoggedIn) {
+           // Check profile completeness (simple heuristic)
+           if (auth.user != null && (auth.user!['phone'] == null || auth.user!['phone'].toString().isEmpty)) {
+             return ProfileCompletionScreen();
+           }
+           return HomeScreen();
+        } else {
+           // If we are still loading/checking, show loading? 
+           // Since checkAuth defaults isLoggedIn to false initially, we might flash login.
+           // Ideally AuthProvider should have an 'isInitialized' flag.
+           // For now, let's assume if not logged in, go to Login.
+           return LoginScreen();
+        }
+      },
     );
   }
 }

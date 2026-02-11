@@ -26,7 +26,7 @@ def upload_user_photo(user_id: str, file_data: bytes, filename: str) -> dict:
         dict with 'url' and 'public_id'
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    public_id = f"user-photo/{user_id}/{timestamp}"
+    public_id = f"home/user-photo/{user_id}/{timestamp}"
     
     result = cloudinary.uploader.upload(
         file_data,

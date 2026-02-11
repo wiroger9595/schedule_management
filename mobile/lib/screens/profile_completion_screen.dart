@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class ProfileCompletionScreen extends StatefulWidget {
   @override
@@ -21,31 +20,24 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    // setState(() => _isLoading = true); // Managed by provider
 
     try {
-      final apiService = ApiService();
-      final headers = await apiService.getHeaders();
-      final response = await http.patch(
-        Uri.parse('${ApiService.baseUrl}/users/profile'),
-        headers: headers,
-        body: jsonEncode({
-          'phone': _phoneController.text,
-          'full_name': _nameController.text.isNotEmpty ? _nameController.text : null,
-        }),
-      );
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      await auth.updateProfile({
+        'phone': _phoneController.text,
+        'full_name': _nameController.text.isNotEmpty ? _nameController.text : null,
+      });
 
-      if (response.statusCode == 200) {
-        Navigator.pushReplacementNamed(context, '/');
-      } else {
-        throw Exception('Failed to update profile');
+      if (mounted) {
+         Navigator.pushReplacementNamed(context, '/');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('儲存失敗：$e')),
-      );
-    } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('儲存失敗：$e')),
+        );
+      }
     }
   }
 
@@ -91,11 +83,15 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
             SizedBox(
               width: double.infinity,
               height: 50,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _saveProfile,
-                child: _isLoading
-                    ? CircularProgressIndicator(color: Colors.white)
-                    : Text('儲存', style: TextStyle(fontSize: 18)),
+              child: Consumer<AuthProvider>(
+                builder: (context, auth, _) {
+                  return ElevatedButton(
+                    onPressed: auth.isLoading ? null : _saveProfile,
+                    child: auth.isLoading
+                        ? CircularProgressIndicator(color: Colors.white)
+                        : Text('儲存', style: TextStyle(fontSize: 18)),
+                  );
+                }
               ),
             ),
           ],

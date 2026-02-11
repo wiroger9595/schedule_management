@@ -3,7 +3,7 @@ import '../services/api_service.dart';
 import 'profile_edit_screen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import "../l10n/app_localizations.dart";
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -65,7 +65,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-        appBar: AppBar(
           title: Text(AppLocalizations.of(context)!.profile),
           actions: [
             if (_user != null)
@@ -88,7 +87,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         body: _isLoading
             ? Center(child: CircularProgressIndicator())
-            : _user == null
             : _user == null
                 ? Center(child: Text(AppLocalizations.of(context)!.error))
                 : SingleChildScrollView(
@@ -113,11 +111,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 60,
-                                backgroundImage: _user!['profile_picture'] != null
-                                    ? NetworkImage(_user!['profile_picture'])
+                                backgroundImage: _user!['profile_image_path'] != null
+                                    ? NetworkImage(_user!['profile_image_path'])
                                     : null,
                                 backgroundColor: Colors.purple[100],
-                                child: _user!['profile_picture'] == null
+                                child: _user!['profile_image_path'] == null
                                     ? Icon(Icons.person, size: 80, color: Colors.purple[700])
                                     : null,
                               ),

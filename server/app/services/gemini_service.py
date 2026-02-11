@@ -1,4 +1,4 @@
-from google import genai
+import google.genai as genai
 import os
 import json
 from datetime import datetime
@@ -14,8 +14,9 @@ class GeminiService:
             raise ValueError("GEMINI_API_KEY not found in environment")
         
         self.client = genai.Client(api_key=self.api_key)
-        # Using a stable model alias or specific version as per new SDK recommendations
-        self.model_name = 'gemini-1.5-flash' 
+        # Use the latest stable Gemini 2.5 Flash model
+        # Model name must include 'models/' prefix as per google-genai SDK
+        self.model_name = 'models/gemini-2.5-flash' 
     
     def extract_schedule_info(self, user_message: str) -> Dict:
         """

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/schedule.dart';
-import '../services/api_service.dart';
-import '../services/auth_service.dart';
+import '../providers/auth_provider.dart';
+import '../providers/schedule_provider.dart';
 import '../widgets/chat_widget.dart';
 import '../utils/error_handler.dart';
 import 'add_schedule_screen.dart';
@@ -10,11 +11,9 @@ import 'map_screen.dart';
 import 'profile_screen.dart';
 import 'call_log_screen.dart';
 import 'calendar_screen.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../services/notification_service.dart';
 import 'contact_list_screen.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import "../l10n/app_localizations.dart";
 import '../utils/constants.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,30 +22,28 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ApiService apiService = ApiService();
-  final AuthService authService = AuthService();
   final NotificationService notificationService = NotificationService();
-  late Future<List<Schedule>> futureSchedules;
 
   @override
   void initState() {
     super.initState();
     notificationService.init();
-    refreshSchedules();
+    // Fetch data on init
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshSchedules();
+      Provider.of<AuthProvider>(context, listen: false).fetchUserProfile();
+    });
   }
 
   void _logout() async {
-    await authService.logout();
+    await Provider.of<AuthProvider>(context, listen: false).logout();
     Navigator.pushReplacementNamed(context, '/login');
   }
 
-  void refreshSchedules() {
-    setState(() {
-      futureSchedules = apiService.getSchedules().then((schedules) {
-        _scheduleReminders(schedules);
-        return schedules;
-      });
-    });
+  Future<void> _refreshSchedules() async {
+    final scheduleProvider = Provider.of<ScheduleProvider>(context, listen: false);
+    await scheduleProvider.fetchSchedules();
+    _scheduleReminders(scheduleProvider.schedules);
   }
 
   void _scheduleReminders(List<Schedule> schedules) async {
@@ -85,45 +82,32 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-      appBar: AppBar(
         title: Text(AppLocalizations.of(context)!.mySchedules),
         actions: [
-          IconButton(icon: Icon(Icons.refresh), onPressed: refreshSchedules),
+          IconButton(icon: Icon(Icons.refresh), onPressed: _refreshSchedules),
         ],
       ),
       drawer: _buildDrawer(),
-      body: FutureBuilder<List<Schedule>>(
-        future: futureSchedules,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      body: Consumer<ScheduleProvider>(
+        builder: (context, provider, child) {
+          if (provider.isLoading) {
             return Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            // Handle unauthorized error
-            if (ErrorHandler.isUnauthorized(snapshot.error)) {
-              // Trigger logout and redirect
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                ErrorHandler.handleError(context, snapshot.error);
-              });
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.lock_outline, size: 64, color: Colors.grey),
-                    SizedBox(height: 16),
-                    Text(AppLocalizations.of(context)!.sessionExpired),
-                  ],
-                ),
-              );
-            }
-            return Center(child: Text('${AppLocalizations.of(context)!.error}: ${snapshot.error}'));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          }
+          
+          if (provider.error != null) {
+             // Handle unauthorized via ErrorHandler if needed, basically same logic
+             // But simpler here: just show text
+             return Center(child: Text('${AppLocalizations.of(context)!.error}: ${provider.error}'));
+          }
+
+          if (provider.schedules.isEmpty) {
             return Center(child: Text(AppLocalizations.of(context)!.noSchedules));
           }
 
           return ListView.builder(
-            itemCount: snapshot.data!.length,
+            itemCount: provider.schedules.length,
             itemBuilder: (context, index) {
-              final schedule = snapshot.data![index];
+              final schedule = provider.schedules[index];
               return Card(
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(
@@ -212,7 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
                 builder: (context) => ChatWidget(
-                  onScheduleCreated: refreshSchedules,
+                  onScheduleCreated: _refreshSchedules,
                 ),
               );
             },
@@ -228,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(builder: (context) => AddScheduleScreen()),
               );
-              refreshSchedules();
+              _refreshSchedules();
             },
             child: Icon(Icons.add),
             backgroundColor: Colors.blue,
@@ -250,33 +234,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 colors: [Colors.purple[700]!, Colors.blue[700]!],
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FutureBuilder<Map>(
-                  future: _getUserInfo(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData && snapshot.data != null) {
-                      final user = snapshot.data!;
-                      return Row(
+            child: Consumer<AuthProvider>(
+              builder: (context, auth, _) {
+                 final user = auth.user;
+                 if (user != null) {
+                    return Row(
                         children: [
                           GestureDetector(
                             onTap: () async {
                               final result = await Navigator.pushNamed(context, '/profile');
                               if (result == true) {
-                                setState(() {
-                                  // This will trigger FutureBuilder to fetch new data
-                                });
+                                auth.fetchUserProfile();
                               }
                             },
                             child: CircleAvatar(
                               radius: 35,
-                              backgroundImage: user['profile_picture'] != null
-                                  ? NetworkImage(user['profile_picture'])
+                              backgroundImage: user['profile_image_path'] != null
+                                  ? NetworkImage(user['profile_image_path'])
                                   : null,
                               backgroundColor: Colors.white,
-                              child: user['profile_picture'] == null
+                              child: user['profile_image_path'] == null
                                   ? Icon(Icons.person, size: 40, color: Colors.purple[700])
                                   : null,
                             ),
@@ -310,24 +287,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       );
-                    }
-                    return Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 35,
-                          backgroundColor: Colors.white,
-                          child: Icon(Icons.person, size: 40, color: Colors.purple[700]),
-                        ),
-                        SizedBox(width: 16),
-                        Text(
-                          AppLocalizations.of(context)!.loading,
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
+                 }
+                 return Center(child: CircularProgressIndicator(color: Colors.white));
+              }
             ),
           ),
           ListTile(
@@ -385,18 +347,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<Map> _getUserInfo() async {
-    final headers = await apiService.getHeaders();
-    final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/users/me'),
-      headers: headers,
-    );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    }
-    return {};
-  }
-
   Color _getStatusColor(String status) {
     switch (status) {
       case ScheduleStatus.pending:
@@ -410,7 +360,6 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         return Colors.grey;
     }
-  }
   }
 
   String _getStatusText(BuildContext context, String status) {

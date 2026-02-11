@@ -4,9 +4,14 @@ import '../models/schedule.dart';
 import '../services/api_service.dart';
 import 'package:home_widget/home_widget.dart';
 import '../widgets/contact_picker.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import '../l10n/app_localizations.dart';
+import 'location_picker_screen.dart';
 
 class AddScheduleScreen extends StatefulWidget {
+  final Schedule? schedule;
+
+  AddScheduleScreen({this.schedule});
+
   @override
   _AddScheduleScreenState createState() => _AddScheduleScreenState();
 }
@@ -22,6 +27,10 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   DateTime startTime = DateTime.now().add(Duration(hours: 1));
   String? location;
   String transportMode = 'car';
+  double? latitude;
+  double? longitude;
+
+  final TextEditingController _locationController = TextEditingController();
 
   final List<Map<String, String>> transportModes = [
     {'value': 'car', 'label': '汽車'},
@@ -31,11 +40,27 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     {'value': 'walk', 'label': '行走'},
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.schedule != null) {
+      final s = widget.schedule!;
+      title = s.title;
+      description = s.description;
+      startTime = s.startTime;
+      location = s.location;
+      transportMode = s.transportMode ?? 'car';
+      latitude = s.latitude;
+      longitude = s.longitude;
+      _locationController.text = location ?? '';
+    }
+  }
+
   Future<void> _selectDateTime(BuildContext context) async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: startTime,
-      firstDate: DateTime.now(),
+      firstDate: DateTime(2000),
       lastDate: DateTime(2101),
     );
     if (pickedDate != null) {
@@ -57,36 +82,83 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     }
   }
 
-  void _updateWidget(String title, String time) {
-    HomeWidget.saveWidgetData<String>('title', title);
-    HomeWidget.saveWidgetData<String>('content', '時間: $time');
-    HomeWidget.updateWidget(
-      iOSName: 'ScheduleWidget',
-      androidName: 'ScheduleWidgetProvider',
+  void _updateWidget(String title, String time) async {
+    try {
+      await HomeWidget.setAppGroupId('group.com.example.scheduleManagement');
+      await HomeWidget.saveWidgetData<String>('title', title);
+      await HomeWidget.saveWidgetData<String>('content', '時間: $time');
+      await HomeWidget.updateWidget(
+        iOSName: 'ScheduleWidget',
+        androidName: 'ScheduleWidgetProvider',
+      );
+    } catch (e) {
+      debugPrint('Error updating widget: $e');
+    }
+  }
+
+  void _pickLocation() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LocationPickerScreen(
+          initialLat: latitude, 
+          initialLon: longitude
+        ),
+      ),
     );
+
+    if (result != null && result is Map) {
+      setState(() {
+        latitude = result['latitude'];
+        longitude = result['longitude'];
+        // If location text is empty, maybe set a placeholder?
+        if (_locationController.text.isEmpty) {
+          _locationController.text = "Pinned Location";
+        }
+      });
+    }
   }
 
   void _save() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
+      location = _locationController.text;
+      
       try {
-        await apiService.createSchedule(Schedule(
-          id: '',
-          title: title,
-          description: description,
-          startTime: startTime,
-          location: location,
-          status: 'PENDING',
-          transportMode: transportMode,
-          attendeeIds: selectedContacts.map((c) => c['id'] as String).toList(),
-        ));
-        
-        _updateWidget(title, DateFormat('HH:mm').format(startTime));
-        
-        Navigator.pop(context);
+        if (widget.schedule == null) {
+          // Create
+          final newSchedule = await apiService.createSchedule(Schedule(
+            id: '',
+            title: title,
+            description: description,
+            startTime: startTime,
+            location: location,
+            latitude: latitude,
+            longitude: longitude,
+            status: 'PENDING',
+            transportMode: transportMode,
+            attendeeIds: selectedContacts.map((c) => c['id'] as String).toList(),
+          ));
+          _updateWidget(title, DateFormat('HH:mm').format(startTime));
+          Navigator.pop(context, newSchedule);
+        } else {
+          // Update
+          final updatedSchedule = await apiService.updateSchedule(widget.schedule!.id, {
+            'title': title,
+            'description': description,
+            'start_time': startTime.toIso8601String(),
+            'location': location,
+            'transport_mode': transportMode,
+            'latitude': latitude,
+            'longitude': longitude,
+          });
+          print('DEBUG: AddScheduleScreen popping with updated schedule: ${updatedSchedule.latitude}, ${updatedSchedule.longitude}');
+          _updateWidget(title, DateFormat('HH:mm').format(startTime));
+          Navigator.pop(context, updatedSchedule);
+        }
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save schedule')),
+          SnackBar(content: Text('Failed to save schedule: $e')),
         );
       }
     }
@@ -95,7 +167,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(AppLocalizations.of(context)!.addSchedule)),
+      appBar: AppBar(title: Text(widget.schedule == null ? AppLocalizations.of(context)!.addSchedule : 'Edit Schedule')),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(20),
         child: Form(
@@ -104,12 +176,14 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextFormField(
+                initialValue: title,
                 decoration: InputDecoration(labelText: AppLocalizations.of(context)!.title, border: OutlineInputBorder()),
                 validator: (value) => value!.isEmpty ? AppLocalizations.of(context)!.pleaseEnterTitle : null,
                 onSaved: (value) => title = value!,
               ),
               SizedBox(height: 16),
               TextFormField(
+                initialValue: description,
                 decoration: InputDecoration(labelText: AppLocalizations.of(context)!.description, border: OutlineInputBorder()),
                 maxLines: 3,
                 onSaved: (value) => description = value,
@@ -135,10 +209,31 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 onChanged: (value) => setState(() => transportMode = value!),
               ),
               SizedBox(height: 16),
-              TextFormField(
-                decoration: InputDecoration(labelText: AppLocalizations.of(context)!.location, border: OutlineInputBorder()),
-                onSaved: (value) => location = value,
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _locationController,
+                      decoration: InputDecoration(labelText: AppLocalizations.of(context)!.location, border: OutlineInputBorder()),
+                      onSaved: (value) => location = value,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(Icons.map, color: latitude != null ? Colors.blue : Colors.grey),
+                    onPressed: _pickLocation,
+                    tooltip: 'Select on Map',
+                  ),
+                ],
               ),
+              if (latitude != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(
+                    '📍 Coordinate selected', 
+                    style: TextStyle(color: Colors.blue, fontSize: 12)
+                  ),
+                ),
               SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -149,6 +244,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 ),
               ),
               SizedBox(height: 16),
+              if (widget.schedule == null) // Only show invite for new schedules for now
               OutlinedButton.icon(
                 icon: Icon(Icons.people),
                 label: Text(selectedContacts.isEmpty 

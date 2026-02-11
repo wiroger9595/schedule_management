@@ -68,5 +68,6 @@
   "hours": "小時",
   "minutes": "分",
   "seconds": "秒",
-  "notConnected": "未接通"
+  "notConnected": "未接通",
+  "selectLocation": "選擇位置"
 }

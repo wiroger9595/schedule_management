@@ -68,5 +68,6 @@
   "hours": "hrs",
   "minutes": "mins",
   "seconds": "secs",
-  "notConnected": "Not connected"
+  "notConnected": "Not connected",
+  "selectLocation": "Select Location"
 }

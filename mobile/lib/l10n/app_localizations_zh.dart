@@ -221,4 +221,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get notConnected => '未接通';
+
+  @override
+  String get selectLocation => '選擇位置';
 }

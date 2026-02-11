@@ -34,3 +34,6 @@ uvicorn main:app --reload
 Run the mobile app:
 cd mobile
 flutter run
+
+
+// 跟小明去淡水碼頭下個月

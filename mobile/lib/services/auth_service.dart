@@ -10,10 +10,16 @@ class AuthService {
   final storage = FlutterSecureStorage();
   
   // Configure GoogleSignIn with explicit parameters
+  // IMPORTANT: Use different client IDs for different platforms
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
-    // iOS Client ID from Info.plist URL Scheme
-    clientId: '644901002244-soa2s80jbm0l9ne9jgdf7ifrq5rl7rac.apps.googleusercontent.com',
+    // iOS Client ID - only works for native iOS app
+    // For web/Android, you need to create a separate OAuth client in Google Cloud Console
+    clientId: Platform.isIOS 
+      ? '644901002244-soa2s80jbm0l9ne9jgdf7ifrq5rl7rac.apps.googleusercontent.com' 
+      : null, // For Android, client ID comes from google-services.json
+    // If testing on web, create a Web Application client ID and uncomment below:
+    // serverClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
   );
 
   Future<bool> signInWithGoogle() async {

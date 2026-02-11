@@ -35,6 +35,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}"/>
         
         <receiver android:name=".ScheduleWidgetProvider" android:exported="true">
             <intent-filter>

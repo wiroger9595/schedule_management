@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -8,61 +9,60 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final AuthService _authService = AuthService();
   
   String email = '';
   String password = '';
-  bool isLoading = false;
 
   void _login() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      setState(() => isLoading = true);
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      
       try {
-        bool success = await _authService.login(email, password);
+        bool success = await auth.login(email, password);
         if (success) {
           Navigator.pushReplacementNamed(context, '/');
         } else {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('登入失敗，請檢查帳號密碼')),
           );
         }
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('連線錯誤: $e')),
         );
-      } finally {
-        setState(() => isLoading = false);
       }
     }
   }
 
   void _loginGoogle() async {
-    setState(() => isLoading = true);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     try {
-      bool success = await _authService.signInWithGoogle();
-      if (success) Navigator.pushReplacementNamed(context, '/');
+      bool success = await auth.googleLogin();
+      if (success && mounted) Navigator.pushReplacementNamed(context, '/');
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google 登入出錯: $e')));
-    } finally {
-      setState(() => isLoading = false);
     }
   }
 
   void _loginApple() async {
-    setState(() => isLoading = true);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     try {
-      bool success = await _authService.signInWithApple();
-      if (success) Navigator.pushReplacementNamed(context, '/');
+      bool success = await auth.appleLogin();
+      if (success && mounted) Navigator.pushReplacementNamed(context, '/');
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Apple 登入出錯: $e')));
-    } finally {
-      setState(() => isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context);
+    
     return Scaffold(
       appBar: AppBar(title: Text('登入')),
       body: Padding(
@@ -85,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   onSaved: (value) => password = value!,
                 ),
                 SizedBox(height: 24),
-                if (isLoading)
+                if (auth.isLoading)
                   CircularProgressIndicator()
                 else ...[
                   SizedBox(

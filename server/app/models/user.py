@@ -41,6 +41,9 @@ class User(SQLModel, table=True):
     # public_id VARCHAR(255) NULL
     public_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     
+    # language VARCHAR(10) NULL
+    language: Optional[str] = Field(default="zh-TW", sa_column=Column(String(10), nullable=True))
+    
     # status VARCHAR(2) DEFAULT 'Y'
     status: str = Field(default="Y", sa_column=Column(String(2), nullable=True, server_default="Y"))
     

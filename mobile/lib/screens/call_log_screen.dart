@@ -3,7 +3,7 @@ import 'package:call_log/call_log.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import "../l10n/app_localizations.dart";
 
 class CallLogScreen extends StatefulWidget {
   @override

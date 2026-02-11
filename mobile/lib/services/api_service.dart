@@ -58,6 +58,22 @@ class ApiService {
     }
   }
 
+  Future<Schedule> updateSchedule(String id, Map<String, dynamic> data) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/schedules/$id'),
+      headers: await getHeaders(),
+      body: jsonEncode(data),
+    );
+    if (response.statusCode == 200) {
+      return Schedule.fromJson(jsonDecode(response.body));
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      throw Exception('Unauthorized');
+    } else {
+      throw Exception('Failed to update schedule: ${response.body}');
+    }
+  }
+
   Future<void> updateStatus(String id, String status) async {
     final response = await http.patch(
       Uri.parse('$baseUrl/schedules/$id'),
@@ -69,6 +85,47 @@ class ApiService {
       throw Exception('Unauthorized');
     } else if (response.statusCode != 200) {
       throw Exception('Failed to update status');
+    }
+  }
+
+  Future<Map<String, dynamic>> estimateTravelTime(double lat1, double lon1, double lat2, double lon2, String mode) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/estimate/?lat1=$lat1&lon1=$lon1&lat2=$lat2&lon2=$lon2&mode=$mode'),
+      headers: await getHeaders(),
+    );
+    
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get estimate: ${response.statusCode} - ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> estimateAllTravelTimes(double lat1, double lon1, double lat2, double lon2) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/estimate/all?lat1=$lat1&lon1=$lon1&lat2=$lat2&lon2=$lon2'),
+      headers: await getHeaders(),
+    );
+    
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get all estimates: ${response.statusCode} - ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> chatWithAI(String message) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/schedules/chat'),
+      headers: await getHeaders(),
+      body: jsonEncode({'message': message}),
+    );
+    
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Unknown error');
     }
   }
 }
