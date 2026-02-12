@@ -5,13 +5,13 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
-import "../l10n/app_localizations.dart";
+import '../i18n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> user;
-  
+
   ProfileEditScreen({required this.user});
 
   @override
@@ -52,7 +52,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       maxHeight: 800,
       imageQuality: 85,
     );
-    
+
     if (pickedFile != null) {
       setState(() {
         _imageFile = File(pickedFile.path);
@@ -62,13 +62,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       final apiService = ApiService();
       final headers = await apiService.getHeaders();
-      
+
       // 上傳圖片（如果有選擇）
       if (_imageFile != null) {
         var request = http.MultipartRequest(
@@ -76,39 +76,43 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           Uri.parse('${ApiService.baseUrl}/users/upload-photo'),
         );
         request.headers.addAll(headers);
-        
+
         // 讀取檔案並設定正確的 MIME type
         final bytes = await _imageFile!.readAsBytes();
         final fileName = _imageFile!.path.split('/').last;
-        final mimeType = fileName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-        
+        final mimeType = fileName.toLowerCase().endsWith('.png')
+            ? 'image/png'
+            : 'image/jpeg';
+
         request.files.add(
           http.MultipartFile.fromBytes(
             'file',
             bytes,
             filename: fileName,
             contentType: MediaType.parse(mimeType),
-          )
+          ),
         );
-        
+
         final streamedResponse = await request.send();
         final response = await http.Response.fromStream(streamedResponse);
-        
+
         if (response.statusCode != 200) {
           throw Exception('圖片上傳失敗');
         }
       }
-      
+
       // 更新其他資料
       // headers['Content-Type'] = 'application/json'; // Handled by provider
       final auth = Provider.of<AuthProvider>(context, listen: false);
       await auth.updateProfile({
-          'full_name': _nameController.text,
-          'phone': _phoneController.text,
-          'line_id': _lineIdController.text.isNotEmpty ? _lineIdController.text : null,
-          'language': _selectedLanguage,
+        'full_name': _nameController.text,
+        'phone': _phoneController.text,
+        'line_id': _lineIdController.text.isNotEmpty
+            ? _lineIdController.text
+            : null,
+        'language': _selectedLanguage,
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(AppLocalizations.of(context)!.profileUpdated)),
@@ -117,9 +121,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('儲存失敗：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('儲存失敗：$e')));
       }
     } finally {
       setState(() => _isLoading = false);
@@ -165,11 +169,20 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     backgroundImage: _imageFile != null
                         ? FileImage(_imageFile!)
                         : (widget.user['profile_image_path'] != null
-                            ? NetworkImage(widget.user['profile_image_path'])
-                            : null) as ImageProvider?,
+                                  ? NetworkImage(
+                                      widget.user['profile_image_path'],
+                                    )
+                                  : null)
+                              as ImageProvider?,
                     backgroundColor: Colors.purple[100],
-                    child: _imageFile == null && widget.user['profile_image_path'] == null
-                        ? Icon(Icons.person, size: 60, color: Colors.purple[700])
+                    child:
+                        _imageFile == null &&
+                            widget.user['profile_image_path'] == null
+                        ? Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Colors.purple[700],
+                          )
                         : null,
                   ),
                   Positioned(
@@ -186,11 +199,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
             ),
             SizedBox(height: 32),
-            
+
             // 用戶帳號（唯讀）
             Card(
               child: ListTile(
-                title: Text(AppLocalizations.of(context)!.accountNumber, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                title: Text(
+                  AppLocalizations.of(context)!.accountNumber,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
                 subtitle: Text(
                   widget.user['account_number'] ?? 'N/A',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -198,7 +214,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
             ),
             SizedBox(height: 16),
-            
+
             // 姓名
             TextFormField(
               controller: _nameController,
@@ -209,7 +225,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
             ),
             SizedBox(height: 16),
-            
+
             // Email（唯讀）
             TextFormField(
               initialValue: widget.user['email'],
@@ -221,7 +237,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               enabled: false,
             ),
             SizedBox(height: 16),
-            
+
             // 電話（必填）
             TextFormField(
               controller: _phoneController,
@@ -231,11 +247,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.phone,
-              validator: (value) =>
-                  value?.isEmpty ?? true ? '${AppLocalizations.of(context)!.phone} is required' : null,
+              validator: (value) => value?.isEmpty ?? true
+                  ? '${AppLocalizations.of(context)!.phone} is required'
+                  : null,
             ),
             SizedBox(height: 16),
-            
+
             // Line ID
             TextFormField(
               controller: _lineIdController,
@@ -246,7 +263,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
             ),
             SizedBox(height: 16),
-            
+
             // 語言選擇
             DropdownButtonFormField<String>(
               value: _selectedLanguage,
@@ -265,7 +282,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               },
             ),
             SizedBox(height: 32),
-            
+
             // 儲存按鈕
             SizedBox(
               height: 50,
@@ -283,7 +300,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                           strokeWidth: 2,
                         ),
                       )
-                    : Text(AppLocalizations.of(context)!.save, style: TextStyle(fontSize: 18, color: Colors.white)),
+                    : Text(
+                        AppLocalizations.of(context)!.save,
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
               ),
             ),
           ],

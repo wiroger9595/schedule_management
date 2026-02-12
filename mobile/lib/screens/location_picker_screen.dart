@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import "../l10n/app_localizations.dart";
+import '../i18n/app_localizations.dart';
 
 class LocationPickerScreen extends StatefulWidget {
   final double? initialLat;
@@ -24,10 +24,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     if (widget.initialLat != null && widget.initialLon != null) {
       _pickedLocation = LatLng(widget.initialLat!, widget.initialLon!);
       _markers.add(
-        Marker(
-          markerId: MarkerId('picked'),
-          position: _pickedLocation!,
-        ),
+        Marker(markerId: MarkerId('picked'), position: _pickedLocation!),
       );
     } else {
       _determinePosition();
@@ -50,7 +47,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     if (permission == LocationPermission.deniedForever) return;
 
     Position position = await Geolocator.getCurrentPosition();
-    
+
     if (mounted && _controller != null) {
       _controller!.animateCamera(
         CameraUpdate.newCameraPosition(
@@ -67,12 +64,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     setState(() {
       _pickedLocation = position;
       _markers.clear();
-      _markers.add(
-        Marker(
-          markerId: MarkerId('picked'),
-          position: position,
-        ),
-      );
+      _markers.add(Marker(markerId: MarkerId('picked'), position: position));
     });
   }
 
@@ -89,7 +81,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.selectLocation ?? 'Select Location'),
+        title: Text(
+          AppLocalizations.of(context)!.selectLocation ?? 'Select Location',
+        ),
         actions: [
           IconButton(
             icon: Icon(Icons.check),
@@ -101,7 +95,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(
-              target: _pickedLocation ?? LatLng(25.0330, 121.5654), // Default Taipei 101
+              target:
+                  _pickedLocation ??
+                  LatLng(25.0330, 121.5654), // Default Taipei 101
               zoom: 15,
             ),
             onMapCreated: (controller) => _controller = controller,

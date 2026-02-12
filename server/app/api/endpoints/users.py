@@ -4,6 +4,7 @@ from typing import List
 from ...db.database import get_session
 from ...models.user import User
 from ...repositories.user_repository import UserRepository
+from ...schemas.user import UserUpdate, ProfilePictureUpdate
 from .auth import get_current_user
 from datetime import datetime
 
@@ -22,9 +23,9 @@ def search_users(q: str, current_user: User = Depends(get_current_user), session
 
 
 @router.put("/me/profile_picture")
-def update_profile_picture(data: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+def update_profile_picture(data: ProfilePictureUpdate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = UserRepository(session)
-    image_url = data.get("image_url")
+    image_url = data.image_url
     if not image_url:
         # handle error or specific logic
         pass
@@ -34,24 +35,24 @@ def update_profile_picture(data: dict, current_user: User = Depends(get_current_
     return repo.update(current_user)
 
 @router.patch("/me")
-def update_user_me(data: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+def update_user_me(data: UserUpdate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = UserRepository(session)
     
-    if "full_name" in data:
-        current_user.full_name = data["full_name"]
-    if "phone" in data:
-        current_user.phone = data["phone"]
-    if "email" in data:
-        current_user.email = data["email"]
-    if "line_id" in data:
-        current_user.line_id = data["line_id"]
-    if "language" in data:
-        current_user.language = data["language"]
+    if data.full_name is not None:
+        current_user.full_name = data.full_name
+    if data.phone is not None:
+        current_user.phone = data.phone
+    if data.email is not None:
+        current_user.email = data.email
+    if data.line_id is not None:
+        current_user.line_id = data.line_id
+    if data.language is not None:
+        current_user.language = data.language
         
     return repo.update(current_user)
 
 @router.put("/{user_id}")
-def update_user_profile(user_id: str, data: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+def update_user_profile(user_id: str, data: UserUpdate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     # Basic check
     if current_user.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -59,16 +60,16 @@ def update_user_profile(user_id: str, data: dict, current_user: User = Depends(g
     repo = UserRepository(session)
     
     # Update allowed fields
-    if "full_name" in data:
-        current_user.full_name = data["full_name"]
-    if "phone" in data:
-        current_user.phone = data["phone"]
-    if "email" in data:
-        current_user.email = data["email"]
-    if "line_id" in data:
-        current_user.line_id = data["line_id"]
-    if "language" in data:
-        current_user.language = data["language"]
+    if data.full_name is not None:
+        current_user.full_name = data.full_name
+    if data.phone is not None:
+        current_user.phone = data.phone
+    if data.email is not None:
+        current_user.email = data.email
+    if data.line_id is not None:
+        current_user.line_id = data.line_id
+    if data.language is not None:
+        current_user.language = data.language
         
     return repo.update(current_user)
 

@@ -31,7 +31,7 @@ class Contact(SQLModel, table=True):
     contact_user_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
 
     # New fields from DDL
-    neck_name: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    nick_name: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     phone: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     email: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     line_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))

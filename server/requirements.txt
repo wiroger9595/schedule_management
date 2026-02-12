@@ -14,9 +14,8 @@ asyncpg
 redis
 python-jose[cryptography]
 passlib[bcrypt]
+python-multipart
 email-validator
-asyncpgredis
 google-genai
 cloudinary
-genai
-google
+psycopg2-binary

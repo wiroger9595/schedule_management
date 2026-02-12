@@ -8,7 +8,7 @@ from sqlmodel import create_engine, SQLModel, text
 from app.models.user import User
 from app.models.schedule import Schedule
 from app.models.contact import Contact
-from app.models.attendee import Attendee
+from app.models.attend import attend
 # (Old models intentionally omitted so they are not created, but we need to drop them)
 
 load_dotenv()
@@ -28,7 +28,7 @@ async def reset_database():
         conn = await asyncpg.connect(DATABASE_URL)
         
         # 1. Drop all existing tables (CASCADE)
-        tables = ["attendee", "contact", "schedule_attendee", "schedule", "users", "user"] # "user" is old table name
+        tables = ["attend", "contact", "schedule_attend", "schedule", "users", "user"] # "user" is old table name
         
         print("Dropping old tables...")
         for table in tables:

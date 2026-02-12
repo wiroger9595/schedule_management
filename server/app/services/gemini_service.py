@@ -37,14 +37,14 @@ class GeminiService:
 - location: 地點名稱
 - transport_mode: 交通方式（car/motorcycle/transit/bike/walk）
 - type: 行程類型（"meeting" 表示與他人有約，"personal" 表示個人行程）
-- attendees: 參與者姓名（字串，如果有多人請用逗號分隔，若無則 null）
+- attends: 參與者姓名（字串，如果有多人請用逗號分隔，若無則 null）
 - is_reminder: 是否需要提醒（布林值 true/false，如果用戶語氣包含"提醒我"、"別忘了"等意圖則為 true）
 
 **重要規則**：
 1. 如果用戶說「明天」、「後天」，請根據今天日期計算實際日期
 2. 如果只提到時間（如「下午3點」）但沒說日期，假設是今天
 3. transport_mode 只能是 car/motorcycle/transit/bike/walk 其中之一，若用戶未提及則設為 null (不要預設 car)
-4. 如果是與人約會（如"跟Robert吃飯"），type設為"meeting"，attendees設為"Robert"
+4. 如果是與人約會（如"跟Robert吃飯"），type設為"meeting"，attends設為"Robert"
 5. 只回應 JSON，不要有其他文字
 
 範例回應格式：
@@ -55,7 +55,7 @@ class GeminiService:
   "location": "信義區",
   "transport_mode": "car",
   "type": "meeting",
-  "attendees": "Robert",
+  "attends": "Robert",
   "is_reminder": false
 }}
 """
@@ -100,8 +100,8 @@ class GeminiService:
         if schedule_data.get('description'):
             msg += f"📝 {schedule_data['description']}\n"
             
-        if schedule_data.get('type') == 'meeting' and schedule_data.get('attendees'):
-            msg += f"👥 與會者: {schedule_data['attendees']}\n"
+        if schedule_data.get('type') == 'meeting' and schedule_data.get('attends'):
+            msg += f"👥 與會者: {schedule_data['attends']}\n"
             
         if schedule_data.get('is_reminder'):
             msg += f"🔔 已設定提醒\n"

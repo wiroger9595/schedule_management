@@ -3,6 +3,8 @@ import os
 from dotenv import load_dotenv
 import asyncpg
 
+from app.models.enums import Status
+
 load_dotenv()
 
 postgres_user = os.getenv("POSTGRES_USER", "postgres")
@@ -13,16 +15,16 @@ postgres_db = os.getenv("POSTGRES_DB", "schedule_management")
 
 DATABASE_URL = f"postgresql://{postgres_user}:{postgres_password}@{postgres_server}:{postgres_port}/{postgres_db}"
 
-async def create_schedule_attendee_table():
+async def create_schedule_attend_table():
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        print("Creating 'schedule_attendee' table...")
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS attendee (
+        print("Creating 'schedule_attend' table...")
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS attend (
                 id SERIAL PRIMARY KEY,
                 schedule_id INT NOT NULL,
                 user_id UUID NOT NULL,
-                status VARCHAR(20) DEFAULT 'PENDING',
+                status VARCHAR(20) DEFAULT '{Status.PENDING.value}',
                 PRIMARY KEY (schedule_id, user_id),
                 FOREIGN KEY (schedule_id) REFERENCES "schedule" (id),
                 FOREIGN KEY (user_id) REFERENCES "user" (id)
@@ -35,4 +37,4 @@ async def create_schedule_attendee_table():
         await conn.close()
 
 if __name__ == "__main__":
-    asyncio.run(create_schedule_attendee_table())
+    asyncio.run(create_schedule_attend_table())

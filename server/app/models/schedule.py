@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, Integer, Identity, String, DateTime
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from ..utils.id_generator import generate_schedule_id
 
@@ -40,10 +40,9 @@ class Schedule(SQLModel, table=True):
     cancel_reason: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     
     # Contact Details
-    contact_name: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
-    contact_email: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
-    contact_phone: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
-    contact_line_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    contact_id: Optional[int] = Field(default=None, sa_column=Column(Integer, nullable=True))
+    # Legacy fields removed as per refactor plan
+    # contact_name, contact_email, contact_phone, contact_line_id are removed.
     
     # created_at TIMESTAMPTZ
     created_at: datetime = Field(
@@ -61,7 +60,7 @@ class Schedule(SQLModel, table=True):
     # The user said "My table needs to be reconfigurable", "Here is the schema".
     # If I drop title/description, the app BREAKS.
     # I will add them as columns but make them nullable, or user meant "These are the CORE fields".
-    # I will keep title/description/transport_mode/type/attendees for now to keep app working.
+    # I will keep title/description/transport_mode/type/attends for now to keep app working.
     # But user might want strict adherence. 
     # Logic: "Don't use id reference".
     # I will ADD title and description.
@@ -74,12 +73,30 @@ class Schedule(SQLModel, table=True):
     
     transport_mode: Optional[str] = None
     type: Optional[str] = None # meeting/personal
-    attendees_display: Optional[str] = Field(default=None, alias="attendees") # For text display
+    attends_display: Optional[str] = Field(default=None, alias="attends") # For text display
     is_reminder: bool = Field(default=False)
     
     # Coordinates for Map
     latitude: Optional[float] = Field(default=None)
     longitude: Optional[float] = Field(default=None)
+
+    # Relationship
+    from sqlmodel import Relationship
+    # Use string forward reference and explicit join condition since we use custom string IDs
+    attend_records: List["attend"] = Relationship(
+        sa_relationship_kwargs={
+            "primaryjoin": "Schedule.schedule_id==foreign(attend.schedule_id)",
+            "cascade": "all, delete-orphan",
+            "uselist": True
+        }
+    )
+
+    contact: Optional["Contact"] = Relationship(
+        sa_relationship_kwargs={
+            "primaryjoin": "Schedule.contact_id==foreign(Contact.id)",
+            "uselist": False
+        }
+    )
     
     # Mappings
     @property
@@ -111,4 +128,22 @@ class Schedule(SQLModel, table=True):
         data['latitude'] = self.latitude
         data['longitude'] = self.longitude
         data['id'] = self.schedule_id  # Frontend expects 'id' to be the schedule_id
+        
+        # Serialize attends
+        # We need to be careful about lazy loading. 
+        # Trying to access self.attend_records might fail if session is gone.
+        # But usually in Pydantic/FastAPI flow, we are inside a route with session.
+        try:
+            data['attends'] = [a.dict() for a in self.attend_records]
+        except Exception as e:
+            # print(f"Warning: Could not load attends: {e}")
+            data['attends'] = []
+            
+        # Serialize contact info from relationship if available
+        if self.contact_id and self.contact:
+            data['contact_name'] = self.contact.nick_name  # Contact has nick_name
+            data['contact_email'] = self.contact.email
+            data['contact_phone'] = self.contact.phone
+            data['contact_line_id'] = self.contact.line_id
+            
         return data

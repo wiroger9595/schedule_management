@@ -1,9 +1,18 @@
 from enum import Enum
 
 class Status(str, Enum):
-    ACTIVE = "A"
-    PENDING = "P"
-    NOT_GOING = "N"
-    CANCEL = "C"
+    ACTIVE = "AT"
+    PENDING = "PD"
+    NOT_GOING = "NG"
+    CANCEL = "CL"
+    NOT_ATTEND = "NA"
+    ATTEND = "AT"
+    
+    
+class Type(str, Enum):
+    PERSONAL = "PL"
+    BUSINESS = "BS"
+
+
 
 # Mapping for legacy data migration (Optional, logic will be in migration script)

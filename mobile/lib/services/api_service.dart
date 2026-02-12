@@ -1,22 +1,14 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/schedule.dart';
-import 'dart:io';
+import '../config/app_config.dart';
 
 import 'auth_service.dart';
 
 class ApiService {
   final AuthService _authService = AuthService();
 
-  static String get baseUrl {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000/api';
-    } else {
-      // Use localhost for iOS simulator (resolves to host machine)
-      // For real device, change to your Mac's IP: http://10.0.0.7:3000/api
-      return 'http://localhost:3000/api';
-    }
-  }
+  static String get baseUrl => AppConfig.baseUrl;
 
   Future<Map<String, String>> getHeaders() async {
     String? token = await _authService.getToken();

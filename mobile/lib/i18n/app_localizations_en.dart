@@ -117,6 +117,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get saveSchedule => 'Save Schedule';
 
   @override
+  String get participants => 'Participants';
+
+  @override
   String get inviteFriends => 'Invite Friends';
 
   @override
@@ -161,6 +164,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statusNotGoing => 'Not Going';
+
+  @override
+  String get statusNotAttend => 'Not Attend';
+
+  @override
+  String get statusAttend => 'Attend';
 
   @override
   String get statusCancelled => 'Cancelled';

@@ -117,6 +117,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get saveSchedule => '儲存行程';
 
   @override
+  String get participants => '參與者';
+
+  @override
   String get inviteFriends => '邀請朋友';
 
   @override
@@ -161,6 +164,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get statusNotGoing => '不參加';
+
+  @override
+  String get statusNotAttend => '未出席';
+
+  @override
+  String get statusAttend => '出席';
 
   @override
   String get statusCancelled => '已取消';

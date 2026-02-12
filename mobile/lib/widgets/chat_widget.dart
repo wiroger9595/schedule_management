@@ -3,11 +3,11 @@ import '../services/api_service.dart';
 import 'dart:convert';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import "../l10n/app_localizations.dart";
+import '../i18n/app_localizations.dart';
 
 class ChatWidget extends StatefulWidget {
   final Function() onScheduleCreated;
-  
+
   ChatWidget({required this.onScheduleCreated});
 
   @override
@@ -22,14 +22,14 @@ class _ChatWidgetState extends State<ChatWidget> {
 
   Future<void> _sendMessage() async {
     if (_controller.text.trim().isEmpty) return;
-    
+
     final userMessage = _controller.text.trim();
     setState(() {
       _messages.add(ChatMessage(text: userMessage, isUser: true));
       _isLoading = true;
     });
     _controller.clear();
-    
+
     // 捲動到底部
     Future.delayed(Duration(milliseconds: 100), () {
       _scrollController.animateTo(
@@ -46,14 +46,11 @@ class _ChatWidgetState extends State<ChatWidget> {
       // Success
       if (mounted) {
         setState(() {
-          _messages.add(ChatMessage(
-            text: data['ai_response'],
-            isUser: false,
-          ));
+          _messages.add(ChatMessage(text: data['ai_response'], isUser: false));
           _isLoading = false;
         });
         widget.onScheduleCreated(); // 重新載入行程列表
-        
+
         // 捲動到底部
         Future.delayed(Duration(milliseconds: 100), () {
           _scrollController.animateTo(
@@ -65,10 +62,7 @@ class _ChatWidgetState extends State<ChatWidget> {
       }
     } catch (e) {
       setState(() {
-        _messages.add(ChatMessage(
-          text: '抱歉，發生錯誤：$e',
-          isUser: false,
-        ));
+        _messages.add(ChatMessage(text: '抱歉，發生錯誤：$e', isUser: false));
         _isLoading = false;
       });
     }
@@ -119,7 +113,7 @@ class _ChatWidgetState extends State<ChatWidget> {
               ],
             ),
           ),
-          
+
           // 訊息列表
           Expanded(
             child: _messages.isEmpty
@@ -127,7 +121,11 @@ class _ChatWidgetState extends State<ChatWidget> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[300]),
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 64,
+                          color: Colors.grey[300],
+                        ),
                         SizedBox(height: 16),
                         SizedBox(height: 16),
                         Text(
@@ -147,7 +145,7 @@ class _ChatWidgetState extends State<ChatWidget> {
                     },
                   ),
           ),
-          
+
           // 載入動畫
           if (_isLoading)
             Padding(
@@ -162,11 +160,14 @@ class _ChatWidgetState extends State<ChatWidget> {
                   ),
                   SizedBox(width: 8),
                   SizedBox(width: 8),
-                  Text(AppLocalizations.of(context)!.loading, style: TextStyle(color: Colors.grey[600])),
+                  Text(
+                    AppLocalizations.of(context)!.loading,
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
                 ],
               ),
             ),
-          
+
           // 輸入框
           Container(
             padding: EdgeInsets.all(16),
@@ -187,7 +188,10 @@ class _ChatWidgetState extends State<ChatWidget> {
                         borderRadius: BorderRadius.circular(25),
                         borderSide: BorderSide.none,
                       ),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                     ),
                     onSubmitted: (_) => _sendMessage(),
                     enabled: !_isLoading,
@@ -198,7 +202,9 @@ class _ChatWidgetState extends State<ChatWidget> {
                   mini: true,
                   onPressed: _isLoading ? null : _sendMessage,
                   child: Icon(Icons.send, size: 20),
-                  backgroundColor: _isLoading ? Colors.grey : Colors.purple[700],
+                  backgroundColor: _isLoading
+                      ? Colors.grey
+                      : Colors.purple[700],
                 ),
               ],
             ),
@@ -220,7 +226,9 @@ class ChatMessage extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[

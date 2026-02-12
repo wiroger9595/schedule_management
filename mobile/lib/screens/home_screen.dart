@@ -5,18 +5,17 @@ import '../models/schedule.dart';
 import '../providers/auth_provider.dart';
 import '../providers/schedule_provider.dart';
 import '../widgets/chat_widget.dart';
+import '../widgets/app_drawer.dart';
+import '../widgets/schedule_list_tile.dart';
 import '../utils/error_handler.dart';
 import 'add_schedule_screen.dart';
 import 'map_screen.dart';
-import 'profile_screen.dart';
-import 'call_log_screen.dart';
-import 'calendar_screen.dart';
 import '../services/notification_service.dart';
-import 'package:geolocator/geolocator.dart'; // Added
-import '../services/api_service.dart'; // Added
-import 'contact_list_screen.dart';
-import "../l10n/app_localizations.dart";
+import 'package:geolocator/geolocator.dart';
+import '../services/api_service.dart';
+import '../i18n/app_localizations.dart';
 import '../utils/constants.dart';
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -25,6 +24,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final NotificationService notificationService = NotificationService();
+  Timer? _statusCheckTimer; // Added timer
 
   // Filter State
   String? _filterStatus;
@@ -43,16 +43,32 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _statusCheckTimer?.cancel();
+    super.dispose();
+  }
+
   void _logout() async {
     await Provider.of<AuthProvider>(context, listen: false).logout();
     Navigator.pushReplacementNamed(context, '/login');
   }
 
   Future<void> _refreshSchedules() async {
-    final scheduleProvider = Provider.of<ScheduleProvider>(context, listen: false);
+    final scheduleProvider = Provider.of<ScheduleProvider>(
+      context,
+      listen: false,
+    );
     await scheduleProvider.fetchSchedules();
     _scheduleReminders(scheduleProvider.schedules);
     _checkScheduleArrivals(scheduleProvider.schedules);
+
+    // Start periodic check if not running
+    _statusCheckTimer?.cancel();
+    _statusCheckTimer = Timer.periodic(Duration(hours: 2), (timer) {
+      print('--- Timer Tick: Checking Schedules ---');
+      _checkScheduleArrivals(scheduleProvider.schedules);
+    });
   }
 
   Future<void> _checkScheduleArrivals(List<Schedule> schedules) async {
@@ -60,13 +76,14 @@ class _HomeScreenState extends State<HomeScreen> {
     bool statusUpdated = false;
 
     // Filter pending schedules that have started or are about to start
-    final pendingSchedules = schedules.where((s) => 
-      s.status == ScheduleStatus.pending && 
-      s.startTime.isBefore(now.add(Duration(minutes: 15))) // Check if start time is passed or within 15 mins? 
-      // User requirement: "No arrival at time -> pending, cancel... Over time -> attend, not attend"
-      // So if time is passed, we check.
-      && s.startTime.isBefore(now)
-    ).toList();
+    // Filter pending schedules that have started
+    // We want to check any pending schedule that has started.
+    final pendingSchedules = schedules
+        .where(
+          (s) =>
+              s.status == ScheduleStatus.pending && s.startTime.isBefore(now),
+        )
+        .toList();
 
     if (pendingSchedules.isEmpty) return;
 
@@ -79,7 +96,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (permission == LocationPermission.denied) {
           permission = await Geolocator.requestPermission();
         }
-        if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        if (permission == LocationPermission.whileInUse ||
+            permission == LocationPermission.always) {
           position = await Geolocator.getCurrentPosition();
         }
       }
@@ -91,36 +109,45 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final apiService = ApiService();
 
+    print('Found ${pendingSchedules.length} pending started schedules.');
+
     for (var schedule in pendingSchedules) {
-      if (schedule.latitude == null || schedule.longitude == null) continue;
+      if (schedule.latitude == null || schedule.longitude == null) {
+        print('Skipping ${schedule.title}: No location data (lat/lon is null)');
+        continue;
+      }
 
       final distance = Geolocator.distanceBetween(
-        position.latitude, 
-        position.longitude, 
-        schedule.latitude!, 
-        schedule.longitude!
+        position.latitude,
+        position.longitude,
+        schedule.latitude!,
+        schedule.longitude!,
       );
 
       String newStatus;
       // If within 500 meters, consider attended
       if (distance <= 500) {
-        newStatus = ScheduleStatus.active; // Map "active" to "Attend" in UI text? 
-        // Constants: active='A', pending='P', notGoing='N', cancel='C'.
-        // User said: "attend, not attend". 
-        // existing 'active' (A) probably means Attended/Going.
-        // existing 'notGoing' (N) means Not Attended.
+        newStatus = ScheduleStatus.attend;
       } else {
         // If time passed and not there...
-        // Maybe give a buffer? e.g. 30 mins after start time?
-        // User: "Over time state change to attend, not attend".
-        // Let's say if > 15 mins past start time and still not there.
-        if (now.difference(schedule.startTime).inMinutes > 30) {
-           newStatus = ScheduleStatus.notGoing;
+        // Updated logic: Check every minute.
+        // If > 60 mins past start time and still not there -> Not Going.
+        final minutesLate = now.difference(schedule.startTime).inMinutes;
+        print(
+          'Schedule ${schedule.title}: $minutesLate mins late, distance ${distance.toStringAsFixed(2)}m',
+        );
+
+        if (minutesLate > 60) {
+          newStatus = ScheduleStatus.notAttended;
         } else {
+          print(
+            'Not updating ${schedule.title}: Only $minutesLate mins late (threshold > 60)',
+          );
           continue; // Still give them time
         }
       }
 
+      print('Updating status to $newStatus for ${schedule.title}');
       try {
         await apiService.updateStatus(schedule.id, newStatus);
         statusUpdated = true;
@@ -130,7 +157,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (statusUpdated) {
-      final scheduleProvider = Provider.of<ScheduleProvider>(context, listen: false);
+      final scheduleProvider = Provider.of<ScheduleProvider>(
+        context,
+        listen: false,
+      );
       // Refresh without loop
       await scheduleProvider.fetchSchedules();
     }
@@ -173,7 +203,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) {
         String? tempStatus = _filterStatus;
-        TextEditingController tempLocationController = TextEditingController(text: _filterLocation);
+        TextEditingController tempLocationController = TextEditingController(
+          text: _filterLocation,
+        );
         DateTime? tempStartDate = _filterStartDate;
         DateTime? tempEndDate = _filterEndDate;
 
@@ -191,10 +223,22 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: InputDecoration(labelText: 'Status'),
                       items: [
                         DropdownMenuItem(value: null, child: Text('All')),
-                        DropdownMenuItem(value: ScheduleStatus.pending, child: Text('Pending')),
-                        DropdownMenuItem(value: ScheduleStatus.active, child: Text('Active')),
-                        DropdownMenuItem(value: ScheduleStatus.notGoing, child: Text('Not Going')),
-                        DropdownMenuItem(value: ScheduleStatus.cancel, child: Text('Cancelled')),
+                        DropdownMenuItem(
+                          value: ScheduleStatus.pending,
+                          child: Text('Pending'),
+                        ),
+                        DropdownMenuItem(
+                          value: ScheduleStatus.active,
+                          child: Text('Active'),
+                        ),
+                        DropdownMenuItem(
+                          value: ScheduleStatus.notGoing,
+                          child: Text('Not Going'),
+                        ),
+                        DropdownMenuItem(
+                          value: ScheduleStatus.cancel,
+                          child: Text('Cancelled'),
+                        ),
                       ],
                       onChanged: (val) => setState(() => tempStatus = val),
                     ),
@@ -202,7 +246,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Location Filter
                     TextField(
                       controller: tempLocationController,
-                      decoration: InputDecoration(labelText: 'Location (contains)'),
+                      decoration: InputDecoration(
+                        labelText: 'Location (contains)',
+                      ),
                     ),
                     SizedBox(height: 16),
                     // Date Range Filter
@@ -211,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       subtitle: Text(
                         tempStartDate != null && tempEndDate != null
                             ? '${DateFormat('yyyy-MM-dd').format(tempStartDate!)} - ${DateFormat('yyyy-MM-dd').format(tempEndDate!)}'
-                            : 'All Time'
+                            : 'All Time',
                       ),
                       trailing: Icon(Icons.calendar_today),
                       onTap: () async {
@@ -219,8 +265,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2101),
-                          initialDateRange: tempStartDate != null && tempEndDate != null
-                              ? DateTimeRange(start: tempStartDate!, end: tempEndDate!)
+                          initialDateRange:
+                              tempStartDate != null && tempEndDate != null
+                              ? DateTimeRange(
+                                  start: tempStartDate!,
+                                  end: tempEndDate!,
+                                )
                               : null,
                         );
                         if (picked != null) {
@@ -265,7 +315,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () {
                     this.setState(() {
                       _filterStatus = tempStatus;
-                      _filterLocation = tempLocationController.text.isEmpty ? null : tempLocationController.text;
+                      _filterLocation = tempLocationController.text.isEmpty
+                          ? null
+                          : tempLocationController.text;
                       _filterStartDate = tempStartDate;
                       _filterEndDate = tempEndDate;
                     });
@@ -295,17 +347,21 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(icon: Icon(Icons.refresh), onPressed: _refreshSchedules),
         ],
       ),
-      drawer: _buildDrawer(),
+      drawer: AppDrawer(onLogout: _logout),
       body: Consumer<ScheduleProvider>(
         builder: (context, provider, child) {
           if (provider.isLoading) {
             return Center(child: CircularProgressIndicator());
           }
-          
+
           if (provider.error != null) {
-             // Handle unauthorized via ErrorHandler if needed, basically same logic
-             // But simpler here: just show text
-             return Center(child: Text('${AppLocalizations.of(context)!.error}: ${provider.error}'));
+            // Handle unauthorized via ErrorHandler if needed, basically same logic
+            // But simpler here: just show text
+            return Center(
+              child: Text(
+                '${AppLocalizations.of(context)!.error}: ${provider.error}',
+              ),
+            );
           }
 
           // Apply filters
@@ -316,7 +372,10 @@ class _HomeScreenState extends State<HomeScreen> {
             }
             // Location Filter
             if (_filterLocation != null && _filterLocation!.isNotEmpty) {
-              if (s.location == null || !s.location!.toLowerCase().contains(_filterLocation!.toLowerCase())) {
+              if (s.location == null ||
+                  !s.location!.toLowerCase().contains(
+                    _filterLocation!.toLowerCase(),
+                  )) {
                 return false;
               }
             }
@@ -324,8 +383,11 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_filterStartDate != null && _filterEndDate != null) {
               // Check if schedule overlaps or is within range? Usually just check start time.
               // Let's check if start time is within the range [start, end + 1 day (exclusive)] to include end date fully.
-              final endOfDay = _filterEndDate!.add(Duration(days: 1)).subtract(Duration(milliseconds: 1));
-              if (s.startTime.isBefore(_filterStartDate!) || s.startTime.isAfter(endOfDay)) {
+              final endOfDay = _filterEndDate!
+                  .add(Duration(days: 1))
+                  .subtract(Duration(milliseconds: 1));
+              if (s.startTime.isBefore(_filterStartDate!) ||
+                  s.startTime.isAfter(endOfDay)) {
                 return false;
               }
             }
@@ -333,84 +395,25 @@ class _HomeScreenState extends State<HomeScreen> {
           }).toList();
 
           if (filteredSchedules.isEmpty) {
-            return Center(child: Text(AppLocalizations.of(context)!.noSchedules));
+            return Center(
+              child: Text(AppLocalizations.of(context)!.noSchedules),
+            );
           }
 
           return ListView.builder(
             itemCount: filteredSchedules.length,
             itemBuilder: (context, index) {
               final schedule = filteredSchedules[index];
-              return Card(
-                margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 4,
-                child: ListTile(
-                  contentPadding: EdgeInsets.all(16),
-                  title: Text(
-                    schedule.title,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.access_time, size: 16, color: Colors.grey),
-                          SizedBox(width: 8),
-                          Text(
-                            DateFormat(
-                              'yyyy-MM-dd HH:mm',
-                            ).format(schedule.startTime),
-                          ),
-                        ],
-                      ),
-                      if (schedule.location != null) ...[
-                        SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on,
-                              size: 16,
-                              color: Colors.grey,
-                            ),
-                            SizedBox(width: 8),
-                            Text(schedule.location!),
-                          ],
-                        ),
-                      ],
-                      SizedBox(height: 8),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getStatusColor(schedule.status),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          _getStatusText(context, schedule.status),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => MapScreen(schedule: schedule),
-                      ),
-                    );
-                  },
-                ),
+              return ScheduleListTile(
+                schedule: schedule,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MapScreen(schedule: schedule),
+                    ),
+                  );
+                },
               );
             },
           );
@@ -427,9 +430,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 context: context,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
-                builder: (context) => ChatWidget(
-                  onScheduleCreated: _refreshSchedules,
-                ),
+                builder: (context) =>
+                    ChatWidget(onScheduleCreated: _refreshSchedules),
               );
             },
             child: Icon(Icons.assistant),
@@ -452,160 +454,5 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-  }
-
-
-  Widget _buildDrawer() {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.purple[700]!, Colors.blue[700]!],
-              ),
-            ),
-            child: Consumer<AuthProvider>(
-              builder: (context, auth, _) {
-                 final user = auth.user;
-                 if (user != null) {
-                    return Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () async {
-                              final result = await Navigator.pushNamed(context, '/profile');
-                              if (result == true) {
-                                auth.fetchUserProfile();
-                              }
-                            },
-                            child: CircleAvatar(
-                              radius: 35,
-                              backgroundImage: user['profile_image_path'] != null
-                                  ? NetworkImage(user['profile_image_path'])
-                                  : null,
-                              backgroundColor: Colors.white,
-                              child: user['profile_image_path'] == null
-                                  ? Icon(Icons.person, size: 40, color: Colors.purple[700])
-                                  : null,
-                            ),
-                          ),
-                          SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  user['full_name'] ?? AppLocalizations.of(context)!.user,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  user['account_number'] ?? '',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                 }
-                 return Center(child: CircularProgressIndicator(color: Colors.white));
-              }
-            ),
-          ),
-          ListTile(
-            leading: Icon(Icons.person, color: Colors.blue),
-            title: Text(AppLocalizations.of(context)!.profile),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ProfileScreen()),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.phone, color: Colors.green),
-            title: Text(AppLocalizations.of(context)!.callLog),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => CallLogScreen()),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.calendar_month, color: Colors.orange),
-            title: Text(AppLocalizations.of(context)!.calendar),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => CalendarScreen()),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.people, color: Colors.purple),
-            title: Text(AppLocalizations.of(context)!.myContacts),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ContactListScreen()),
-              );
-            },
-          ),
-          Divider(),
-          ListTile(
-            leading: Icon(Icons.logout, color: Colors.red),
-            title: Text(AppLocalizations.of(context)!.logout),
-            onTap: _logout,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case ScheduleStatus.pending:
-        return Colors.orange;
-      case ScheduleStatus.active:
-        return Colors.green;
-      case ScheduleStatus.notGoing:
-        return Colors.grey;
-      case ScheduleStatus.cancel:
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _getStatusText(BuildContext context, String status) {
-    switch (status) {
-      case ScheduleStatus.pending:
-        return AppLocalizations.of(context)!.statusPending;
-      case ScheduleStatus.active:
-        return AppLocalizations.of(context)!.statusActive;
-      case ScheduleStatus.notGoing:
-        return AppLocalizations.of(context)!.statusNotGoing;
-      case ScheduleStatus.cancel:
-        return AppLocalizations.of(context)!.statusCancelled;
-      default:
-        return status;
-    }
   }
 }

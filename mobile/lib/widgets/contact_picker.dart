@@ -77,49 +77,53 @@ class _ContactPickerState extends State<ContactPicker> {
             child: isLoading
                 ? Center(child: CircularProgressIndicator())
                 : contacts.isEmpty
-                    ? Center(child: Text('尚無聯絡人'))
-                    : ListView.builder(
-                        itemCount: contacts.length,
-                        itemBuilder: (context, index) {
-                          final contact = contacts[index];
-                          final String id = contact['id'].toString();
-                          final isSelected = selectedIds.contains(id);
+                ? Center(child: Text('尚無聯絡人'))
+                : ListView.builder(
+                    itemCount: contacts.length,
+                    itemBuilder: (context, index) {
+                      final contact = contacts[index];
+                      final String id = contact['id'].toString();
+                      final isSelected = selectedIds.contains(id);
 
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundImage: contact['profile_picture'] != null
-                                  ? NetworkImage(contact['profile_picture'])
-                                  : null,
-                              child: contact['profile_picture'] == null
-                                  ? Icon(Icons.person)
-                                  : null,
-                            ),
-                            title: Text(contact['neck_name'] ?? contact['contact_user_id'] ?? 'Unknown'),
-                            subtitle: Text(contact['email'] ?? ''),
-                            trailing: Checkbox(
-                              value: isSelected,
-                              onChanged: (val) {
-                                setState(() {
-                                  if (val == true) {
-                                    selectedIds.add(id);
-                                  } else {
-                                    selectedIds.remove(id);
-                                  }
-                                });
-                              },
-                            ),
-                            onTap: () {
-                              setState(() {
-                                if (isSelected) {
-                                  selectedIds.remove(id);
-                                } else {
-                                  selectedIds.add(id);
-                                }
-                              });
-                            },
-                          );
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: contact['profile_picture'] != null
+                              ? NetworkImage(contact['profile_picture'])
+                              : null,
+                          child: contact['profile_picture'] == null
+                              ? Icon(Icons.person)
+                              : null,
+                        ),
+                        title: Text(
+                          contact['nick_name'] ??
+                              contact['contact_user_id'] ??
+                              'Unknown',
+                        ),
+                        subtitle: Text(contact['email'] ?? ''),
+                        trailing: Checkbox(
+                          value: isSelected,
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                selectedIds.add(id);
+                              } else {
+                                selectedIds.remove(id);
+                              }
+                            });
+                          },
+                        ),
+                        onTap: () {
+                          setState(() {
+                            if (isSelected) {
+                              selectedIds.remove(id);
+                            } else {
+                              selectedIds.add(id);
+                            }
+                          });
                         },
-                      ),
+                      );
+                    },
+                  ),
           ),
           ElevatedButton(
             onPressed: _confirmSelection,

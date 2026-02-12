@@ -6,7 +6,7 @@ import '../models/schedule.dart';
 import 'dart:convert';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import "../l10n/app_localizations.dart";
+import '../i18n/app_localizations.dart';
 import '../utils/constants.dart';
 import 'map_screen.dart';
 
@@ -15,7 +15,8 @@ class CalendarScreen extends StatefulWidget {
   _CalendarScreenState createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProviderStateMixin {
+class _CalendarScreenState extends State<CalendarScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
@@ -84,9 +85,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
   void _navigateToMapScreen(Schedule schedule) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => MapScreen(schedule: schedule),
-      ),
+      MaterialPageRoute(builder: (context) => MapScreen(schedule: schedule)),
     );
     // Refresh schedules on return
     _loadSchedules();
@@ -100,9 +99,18 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
         bottom: TabBar(
           controller: _tabController,
           tabs: [
-            Tab(icon: Icon(Icons.calendar_month), text: AppLocalizations.of(context)!.month),
-            Tab(icon: Icon(Icons.view_week), text: AppLocalizations.of(context)!.week),
-            Tab(icon: Icon(Icons.view_day), text: AppLocalizations.of(context)!.day),
+            Tab(
+              icon: Icon(Icons.calendar_month),
+              text: AppLocalizations.of(context)!.month,
+            ),
+            Tab(
+              icon: Icon(Icons.view_week),
+              text: AppLocalizations.of(context)!.week,
+            ),
+            Tab(
+              icon: Icon(Icons.view_day),
+              text: AppLocalizations.of(context)!.day,
+            ),
           ],
         ),
         actions: [
@@ -121,11 +129,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
           ? Center(child: CircularProgressIndicator())
           : TabBarView(
               controller: _tabController,
-              children: [
-                _buildMonthView(),
-                _buildWeekView(),
-                _buildDayView(),
-              ],
+              children: [_buildMonthView(), _buildWeekView(), _buildDayView()],
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -192,8 +196,13 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
   }
 
   Widget _buildWeekView() {
-    DateTime startOfWeek = _focusedDay.subtract(Duration(days: _focusedDay.weekday - 1));
-    List<DateTime> weekDays = List.generate(7, (index) => startOfWeek.add(Duration(days: index)));
+    DateTime startOfWeek = _focusedDay.subtract(
+      Duration(days: _focusedDay.weekday - 1),
+    );
+    List<DateTime> weekDays = List.generate(
+      7,
+      (index) => startOfWeek.add(Duration(days: index)),
+    );
 
     return RefreshIndicator(
       onRefresh: _loadSchedules,
@@ -232,7 +241,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
               children: weekDays.map((day) {
                 List<Schedule> daySchedules = _getSchedulesForDay(day);
                 bool isToday = isSameDay(day, DateTime.now());
-                
+
                 return Card(
                   margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   color: isToday ? Colors.blue.withOpacity(0.1) : null,
@@ -248,21 +257,36 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                       DateFormat('EEEE').format(day),
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text(AppLocalizations.of(context)!.eventsCount(daySchedules.length)),
+                    subtitle: Text(
+                      AppLocalizations.of(
+                        context,
+                      )!.eventsCount(daySchedules.length),
+                    ),
                     children: [
                       if (daySchedules.isEmpty)
                         Padding(
                           padding: EdgeInsets.all(16),
-                          child: Text(AppLocalizations.of(context)!.noEvents, style: TextStyle(color: Colors.grey)),
+                          child: Text(
+                            AppLocalizations.of(context)!.noEvents,
+                            style: TextStyle(color: Colors.grey),
+                          ),
                         )
                       else
-                        ...daySchedules.map((schedule) => ListTile(
-                          dense: true,
-                          leading: Icon(Icons.circle, size: 12, color: _getStatusColor(schedule.status)),
-                          title: Text(schedule.title),
-                          subtitle: Text(DateFormat('HH:mm').format(schedule.startTime)),
-                          onTap: () => _navigateToMapScreen(schedule),
-                        )),
+                        ...daySchedules.map(
+                          (schedule) => ListTile(
+                            dense: true,
+                            leading: Icon(
+                              Icons.circle,
+                              size: 12,
+                              color: _getStatusColor(schedule.status),
+                            ),
+                            title: Text(schedule.title),
+                            subtitle: Text(
+                              DateFormat('HH:mm').format(schedule.startTime),
+                            ),
+                            onTap: () => _navigateToMapScreen(schedule),
+                          ),
+                        ),
                     ],
                   ),
                 );
@@ -317,8 +341,10 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
               itemCount: 24,
               itemBuilder: (context, hour) {
                 // Find schedules for this hour
-                List<Schedule> hourSchedules = daySchedules.where((s) => s.startTime.hour == hour).toList();
-                
+                List<Schedule> hourSchedules = daySchedules
+                    .where((s) => s.startTime.hour == hour)
+                    .toList();
+
                 return Container(
                   height: 100,
                   decoration: BoxDecoration(
@@ -352,19 +378,26 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                                       margin: EdgeInsets.all(4),
                                       padding: EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: _getStatusColor(schedule.status).withOpacity(0.2),
+                                        color: _getStatusColor(
+                                          schedule.status,
+                                        ).withOpacity(0.2),
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                          color: _getStatusColor(schedule.status),
+                                          color: _getStatusColor(
+                                            schedule.status,
+                                          ),
                                           width: 2,
                                         ),
                                       ),
                                       child: GestureDetector(
-                                        onTap: () => _navigateToMapScreen(schedule),
+                                        onTap: () =>
+                                            _navigateToMapScreen(schedule),
                                         child: SingleChildScrollView(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
                                               Text(
                                                 schedule.title,
@@ -377,24 +410,36 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                                               ),
                                               SizedBox(height: 2),
                                               Text(
-                                                DateFormat('HH:mm').format(schedule.startTime),
+                                                DateFormat(
+                                                  'HH:mm',
+                                                ).format(schedule.startTime),
                                                 style: TextStyle(
                                                   fontSize: 12,
                                                   color: Colors.grey[700],
                                                 ),
                                               ),
-                                              if (schedule.location != null) ...[
+                                              if (schedule.location !=
+                                                  null) ...[
                                                 SizedBox(height: 2),
                                                 Row(
                                                   children: [
-                                                    Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
+                                                    Icon(
+                                                      Icons.location_on,
+                                                      size: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
                                                     SizedBox(width: 2),
                                                     Expanded(
                                                       child: Text(
                                                         schedule.location!,
-                                                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          color:
+                                                              Colors.grey[600],
+                                                        ),
                                                         maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                       ),
                                                     ),
                                                   ],
@@ -441,10 +486,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       itemBuilder: (context, index) {
         Schedule schedule = schedules[index];
         return ListTile(
-          leading: Icon(
-            Icons.event,
-            color: _getStatusColor(schedule.status),
-          ),
+          leading: Icon(Icons.event, color: _getStatusColor(schedule.status)),
           title: Text(schedule.title),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -484,7 +526,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       case ScheduleStatus.cancel:
         return Colors.red;
       default:
-        return Colors.grey;
+        return const Color.fromARGB(255, 240, 77, 6);
     }
   }
 

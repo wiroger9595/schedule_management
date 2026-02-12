@@ -18,7 +18,7 @@ import 'app_localizations_zh.dart';
 /// `supportedLocales` list. For example:
 ///
 /// ```dart
-/// import 'l10n/app_localizations.dart';
+/// import 'i18n/app_localizations.dart';
 ///
 /// return MaterialApp(
 ///   localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -314,6 +314,12 @@ abstract class AppLocalizations {
   /// **'Save Schedule'**
   String get saveSchedule;
 
+  /// No description provided for @participants.
+  ///
+  /// In en, this message translates to:
+  /// **'Participants'**
+  String get participants;
+
   /// No description provided for @inviteFriends.
   ///
   /// In en, this message translates to:
@@ -397,6 +403,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not Going'**
   String get statusNotGoing;
+
+  /// No description provided for @statusNotAttend.
+  ///
+  /// In en, this message translates to:
+  /// **'Not Attend'**
+  String get statusNotAttend;
+
+  /// No description provided for @statusAttend.
+  ///
+  /// In en, this message translates to:
+  /// **'Attend'**
+  String get statusAttend;
 
   /// No description provided for @statusCancelled.
   ///

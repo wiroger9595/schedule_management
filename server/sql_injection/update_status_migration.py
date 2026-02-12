@@ -1,6 +1,6 @@
 from sqlmodel import Session, select, create_engine
 from app.models.schedule import Schedule
-from app.models.attendee import Attendee
+from app.models.attend import attend
 from app.models.enums import Status
 from app.core.config import settings
 
@@ -25,12 +25,14 @@ def migrate_status():
 
             if old_status == 'PENDING':
                 new_status = Status.PENDING
-            elif old_status in ['ON_THE_WAY', 'LATE', 'COMPLETED', 'ACTIVE']:
-                new_status = Status.ACTIVE
-            elif old_status == 'CANCELLED':
+            elif old_status in ['ON_THE_WAY', 'LATE', 'COMPLETED', 'ACTIVE', 'ATTEND']:
+                new_status = Status.ATTEND
+            elif old_status == 'ATTEND':
                 new_status = Status.CANCEL
-            elif old_status == 'NOT_GOING':
-                new_status = Status.NOT_GOING # Unlikely for schedule but possible
+            elif old_status == 'CANCEL':
+                new_status = Status.CANCEL
+            elif old_status == 'NOT_ATTEND':
+                new_status = Status.NOT_ATTEND 
             
             # If it's already a single letter, assume it's correct or map it if needed
             if len(old_status) > 1 and new_status != old_status:
@@ -38,11 +40,11 @@ def migrate_status():
                 schedule.status = new_status
                 session.add(schedule)
 
-        # 2. Update Attendees
-        print("Migrating Attendees...")
-        attendees = session.exec(select(Attendee)).all()
-        for attendee in attendees:
-            old_status = attendee.status
+        # 2. Update attends
+        print("Migrating attends...")
+        attends = session.exec(select(attend)).all()
+        for attend in attends:
+            old_status = attend.status
             new_status = old_status
 
             if old_status == 'PENDING':
@@ -51,13 +53,17 @@ def migrate_status():
                 new_status = Status.ACTIVE
             elif old_status == 'DECLINED':
                 new_status = Status.NOT_GOING
-            elif old_status == 'CANCELLED':
-                new_status = Status.CANCEL # ??
+            elif old_status == 'ATTEND':
+                new_status = Status.CANCEL
+            elif old_status == 'CANCEL':
+                new_status = Status.CANCEL
+            elif old_status == 'NOT_ATTEND':
+                new_status = Status.NOT_ATTEND 
             
             if len(old_status) > 1 and new_status != old_status:
-                print(f"Updating Attendee {attendee.id}: {old_status} -> {new_status}")
-                attendee.status = new_status
-                session.add(attendee)
+                print(f"Updating attend {attend.id}: {old_status} -> {new_status}")
+                attend.status = new_status
+                session.add(attend)
         
         session.commit()
         print("Migration complete!")

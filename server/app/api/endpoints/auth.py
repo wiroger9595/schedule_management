@@ -6,6 +6,7 @@ from ...core.redis_client import redis_client
 from ...db.database import get_session
 from ...models.user import User
 from ...repositories.user_repository import UserRepository
+from ...schemas.auth import RegisterRequest, LoginRequest, OAuthRequest, ForgotPasswordRequest, ResetPasswordRequest
 from jose import jwt, JWTError
 
 router = APIRouter()
@@ -33,14 +34,11 @@ def get_current_user(auth: HTTPAuthorizationCredentials = Security(security), se
         raise HTTPException(status_code=401, detail="Invalid token")
 
 @router.post("/register")
-def register(user_data: dict, session: Session = Depends(get_session)):
+def register(user_data: RegisterRequest, session: Session = Depends(get_session)):
     repo = UserRepository(session)
-    email = user_data.get('email')
-    password = user_data.get('password')
-    full_name = user_data.get('full_name')
-    
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password are required")
+    email = user_data.email
+    password = user_data.password
+    full_name = user_data.full_name
     
     if repo.get_by_email(email):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -53,13 +51,10 @@ def register(user_data: dict, session: Session = Depends(get_session)):
     return repo.create(user)
 
 @router.post("/login")
-def login(user_data: dict, session: Session = Depends(get_session)):
+def login(user_data: LoginRequest, session: Session = Depends(get_session)):
     repo = UserRepository(session)
-    email = user_data.get('email')
-    password = user_data.get('password')
-    
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password are required")
+    email = user_data.email
+    password = user_data.password
     
     user = repo.get_by_email(email)
     if not user or not verify_password(password, user.hashed_password):
@@ -74,10 +69,10 @@ def login(user_data: dict, session: Session = Depends(get_session)):
     return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.post("/google")
-def google_auth(data: dict, session: Session = Depends(get_session)):
+def google_auth(data: OAuthRequest, session: Session = Depends(get_session)):
     # In a real app, verify the google id_token here.
-    google_id = data.get("sub")
-    email = data.get("email")
+    google_id = data.sub
+    email = data.email
     
     repo = UserRepository(session)
     # Check by google_id
@@ -93,7 +88,7 @@ def google_auth(data: dict, session: Session = Depends(get_session)):
         if user:
             user.google_id = google_id
         else:
-            user = User(email=email, google_id=google_id, full_name=data.get("name"))
+            user = User(email=email, google_id=google_id, full_name=data.name)
         repo.create(user) # Create or Update (if session attached? create handles add)
         # Actually repo.create adds, if user already in session it might error or warn.
         # Let's use repo.update if existing.
@@ -105,9 +100,9 @@ def google_auth(data: dict, session: Session = Depends(get_session)):
     return {"access_token": access_token}
 
 @router.post("/apple")
-def apple_auth(data: dict, session: Session = Depends(get_session)):
-    apple_id = data.get("sub")
-    email = data.get("email")
+def apple_auth(data: OAuthRequest, session: Session = Depends(get_session)):
+    apple_id = data.sub
+    email = data.email
     
     repo = UserRepository(session)
     user = session.exec(select(User).where(User.apple_id == apple_id)).first()
@@ -118,7 +113,7 @@ def apple_auth(data: dict, session: Session = Depends(get_session)):
             user.apple_id = apple_id
             repo.update(user)
         else:
-            user = User(email=email, apple_id=apple_id, full_name=data.get("name"))
+            user = User(email=email, apple_id=apple_id, full_name=data.name)
             repo.create(user)
     
     access_token = create_access_token(data={"sub": user.user_id})
@@ -137,10 +132,8 @@ def logout(auth: HTTPAuthorizationCredentials = Security(security)):
         return {"msg": "Invalid token"}
 
 @router.post("/forgot-password")
-def forgot_password(data: dict, session: Session = Depends(get_session)):
-    email = data.get("email")
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
+def forgot_password(data: ForgotPasswordRequest, session: Session = Depends(get_session)):
+    email = data.email
     
     repo = UserRepository(session)
     user = repo.get_by_email(email)
@@ -165,13 +158,10 @@ def forgot_password(data: dict, session: Session = Depends(get_session)):
     return {"msg": "Reset code sent"}
 
 @router.post("/reset-password")
-def reset_password(data: dict, session: Session = Depends(get_session)):
-    email = data.get("email")
-    code = data.get("code")
-    new_password = data.get("new_password")
-    
-    if not email or not code or not new_password:
-        raise HTTPException(status_code=400, detail="Missing fields")
+def reset_password(data: ResetPasswordRequest, session: Session = Depends(get_session)):
+    email = data.email
+    code = data.code
+    new_password = data.new_password
     
     # Verify code
     saved_code = redis_client.get_reset_code(email)

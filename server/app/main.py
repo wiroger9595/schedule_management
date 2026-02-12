@@ -14,6 +14,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import Request
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"DEBUG: API Call - {request.method} {request.url.path}")
+    response = await call_next(request)
+    return response
+
 @app.on_event("startup")
 def on_startup():
     from sqlmodel import SQLModel
@@ -21,7 +28,7 @@ def on_startup():
     from .models.user import User
     from .models.schedule import Schedule
     from .models.contact import Contact
-    from .models.attendee import Attendee
+    from .models.attend import attend
     
     SQLModel.metadata.create_all(engine)
 

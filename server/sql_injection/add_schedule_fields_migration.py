@@ -19,8 +19,8 @@ async def add_columns():
         print("Adding 'type' column...")
         await conn.execute("ALTER TABLE schedule ADD COLUMN IF NOT EXISTS type VARCHAR DEFAULT 'personal'")
         
-        print("Adding 'attendees' column...")
-        await conn.execute("ALTER TABLE schedule ADD COLUMN IF NOT EXISTS attendees VARCHAR")
+        print("Adding 'attends' column...")
+        await conn.execute("ALTER TABLE schedule ADD COLUMN IF NOT EXISTS attends VARCHAR")
         
         print("Adding 'is_reminder' column...")
         await conn.execute("ALTER TABLE schedule ADD COLUMN IF NOT EXISTS is_reminder BOOLEAN DEFAULT FALSE")

@@ -16,5 +16,5 @@ def generate_schedule_id() -> str:
 def generate_contact_id() -> str:
     return generate_id("ct")
 
-def generate_attendee_id() -> str:
+def generate_attend_id() -> str:
     return generate_id("atd")

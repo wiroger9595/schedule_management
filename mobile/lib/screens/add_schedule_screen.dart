@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/schedule.dart';
 import '../services/api_service.dart';
+import '../utils/constants.dart'; // Import constants
 import 'package:home_widget/home_widget.dart';
 import '../widgets/contact_picker.dart';
-import '../l10n/app_localizations.dart';
+import '../widgets/attendee_selector.dart';
+import '../i18n/app_localizations.dart';
 import 'location_picker_screen.dart';
 
 class AddScheduleScreen extends StatefulWidget {
@@ -19,9 +21,9 @@ class AddScheduleScreen extends StatefulWidget {
 class _AddScheduleScreenState extends State<AddScheduleScreen> {
   final _formKey = GlobalKey<FormState>();
   final ApiService apiService = ApiService();
-  
+
   List<Map<String, dynamic>> selectedContacts = [];
-  
+
   DateTime startTime = DateTime.now().add(Duration(hours: 1));
   String? location;
   String transportMode = 'car';
@@ -34,7 +36,8 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   final TextEditingController _contactNameController = TextEditingController();
   final TextEditingController _contactEmailController = TextEditingController();
   final TextEditingController _contactPhoneController = TextEditingController();
-  final TextEditingController _contactLineIdController = TextEditingController();
+  final TextEditingController _contactLineIdController =
+      TextEditingController();
 
   final List<Map<String, String>> transportModes = [
     {'value': 'car', 'label': '汽車'},
@@ -61,6 +64,22 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
       _contactEmailController.text = s.contactEmail ?? '';
       _contactPhoneController.text = s.contactPhone ?? '';
       _contactLineIdController.text = s.contactLineId ?? '';
+
+      if (s.attends != null) {
+        selectedContacts = List<Map<String, dynamic>>.from(s.attends!);
+      } else if (s.contactName != null) {
+        // Backward compatibility: create a guest/contact from legacy fields
+        selectedContacts = [
+          {
+            'name': s.contactName,
+            'email': s.contactEmail,
+            'phone': s.contactPhone,
+            'line_id': s.contactLineId,
+            'type':
+                'guest', // Assume guest if no ID, but we don't have ID here easily unless we check attendIds
+          },
+        ];
+      }
     }
   }
 
@@ -120,10 +139,8 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => LocationPickerScreen(
-          initialLat: latitude, 
-          initialLon: longitude
-        ),
+        builder: (context) =>
+            LocationPickerScreen(initialLat: latitude, initialLon: longitude),
       ),
     );
 
@@ -139,55 +156,117 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     }
   }
 
+  void _showAttendeeSelector() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AttendeeSelector(
+        initialSelectedContacts: selectedContacts,
+        onSelectionChanged: (contacts) {
+          setState(() {
+            selectedContacts = contacts.cast<Map<String, dynamic>>();
+          });
+        },
+      ),
+    );
+  }
+
   void _save() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       location = _locationController.text;
-      
+
+      // Prepare contact info from first attend if available, for backward compat
+      String? contactName;
+      String? contactEmail;
+      String? contactPhone;
+      String? contactLineId;
+
+      if (selectedContacts.isNotEmpty) {
+        final first = selectedContacts.first;
+        contactName = first['name'] ?? first['full_name'] ?? first['user_id'];
+        contactEmail = first['email'];
+        contactPhone = first['phone'];
+        contactLineId = first['line_id'];
+      }
+
       try {
         if (widget.schedule == null) {
           // Create
-          final newSchedule = await apiService.createSchedule(Schedule(
-            id: '',
-            title: _titleController.text,
-            description: _descriptionController.text,
-            startTime: startTime,
-            location: location,
-            latitude: latitude,
-            longitude: longitude,
-            status: 'PENDING',
-            transportMode: transportMode,
-            attendeeIds: selectedContacts.map((c) => c['id'] as String).toList(),
-            contactName: _contactNameController.text,
-            contactEmail: _contactEmailController.text,
-            contactPhone: _contactPhoneController.text,
-            contactLineId: _contactLineIdController.text,
-          ));
-          _updateWidget(_titleController.text, DateFormat('HH:mm').format(startTime));
+          final newSchedule = await apiService.createSchedule(
+            Schedule(
+              id: '',
+              title: _titleController.text,
+              description: _descriptionController.text,
+              startTime: startTime,
+              location: location,
+              latitude: latitude,
+              longitude: longitude,
+              status: ScheduleStatus.pending, // Use constant
+              transportMode: transportMode,
+              attends: selectedContacts, // Send full list including guests
+              attendIds: selectedContacts
+                  .where((c) => c['id'] != null)
+                  .map((c) => c['id'].toString())
+                  .toList(),
+              contactName: contactName,
+              contactEmail: contactEmail,
+              contactPhone: contactPhone,
+              contactLineId: contactLineId,
+            ),
+          );
+          _updateWidget(
+            _titleController.text,
+            DateFormat('HH:mm').format(startTime),
+          );
           Navigator.pop(context, newSchedule);
         } else {
           // Update
-          final updatedSchedule = await apiService.updateSchedule(widget.schedule!.id, {
+          final scheduleData = {
             'title': _titleController.text,
             'description': _descriptionController.text,
             'start_time': startTime.toIso8601String(),
-            'location': location,
+            'location': _locationController.text,
             'transport_mode': transportMode,
             'latitude': latitude,
             'longitude': longitude,
-            'contact_name': _contactNameController.text,
-            'contact_email': _contactEmailController.text,
-            'contact_phone': _contactPhoneController.text,
-            'contact_line_id': _contactLineIdController.text,
-          });
-          print('DEBUG: AddScheduleScreen popping with updated schedule: ${updatedSchedule.latitude}, ${updatedSchedule.longitude}');
-          _updateWidget(_titleController.text, DateFormat('HH:mm').format(startTime));
+            'attends': selectedContacts
+                .map(
+                  (c) => {
+                    'contact_id': c['id'], // Ensure contact_id is sent
+                    'contact_user_id':
+                        c['contact_user_id'], // Keep for backward compatibility or linking
+                    'nick_name': c['nick_name'] ?? c['name'],
+                    'name': c['name'] ?? c['nick_name'], // Fallback
+                    'email': c['email'],
+                    'phone': c['phone'],
+                    'line_id': c['line_id'],
+                  },
+                )
+                .toList(),
+            'contact_name': contactName,
+            'contact_email': contactEmail,
+            'contact_phone': contactPhone,
+            'contact_line_id': contactLineId,
+          };
+          final updatedSchedule = await apiService.updateSchedule(
+            widget.schedule!.id,
+            scheduleData,
+          );
+          print(
+            'DEBUG: AddScheduleScreen popping with updated schedule: ${updatedSchedule.latitude}, ${updatedSchedule.longitude}',
+          );
+          _updateWidget(
+            _titleController.text,
+            DateFormat('HH:mm').format(startTime),
+          );
           Navigator.pop(context, updatedSchedule);
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save schedule: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save schedule: $e')));
       }
     }
   }
@@ -195,7 +274,13 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.schedule == null ? AppLocalizations.of(context)!.addSchedule : 'Edit Schedule')),
+      appBar: AppBar(
+        title: Text(
+          widget.schedule == null
+              ? AppLocalizations.of(context)!.addSchedule
+              : 'Edit Schedule',
+        ),
+      ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(20),
         child: Form(
@@ -205,19 +290,31 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             children: [
               TextFormField(
                 controller: _titleController,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context)!.title, border: OutlineInputBorder()),
-                validator: (value) => value!.isEmpty ? AppLocalizations.of(context)!.pleaseEnterTitle : null,
+                decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context)!.title,
+                  border: OutlineInputBorder(),
+                ),
+                autovalidateMode: AutovalidateMode
+                    .onUserInteraction, // Fix validation behavior
+                validator: (value) => value!.isEmpty
+                    ? AppLocalizations.of(context)!.pleaseEnterTitle
+                    : null,
               ),
               SizedBox(height: 16),
               TextFormField(
                 controller: _descriptionController,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context)!.description, border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context)!.description,
+                  border: OutlineInputBorder(),
+                ),
                 maxLines: 3,
               ),
               SizedBox(height: 16),
               ListTile(
                 title: Text(AppLocalizations.of(context)!.startTime),
-                subtitle: Text(DateFormat('yyyy-MM-dd HH:mm').format(startTime)),
+                subtitle: Text(
+                  DateFormat('yyyy-MM-dd HH:mm').format(startTime),
+                ),
                 trailing: Icon(Icons.calendar_today),
                 onTap: () => _selectDateTime(context),
                 shape: RoundedRectangleBorder(
@@ -228,9 +325,15 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: transportMode,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context)!.transportMode, border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context)!.transportMode,
+                  border: OutlineInputBorder(),
+                ),
                 items: transportModes.map((mode) {
-                  return DropdownMenuItem(value: mode['value'], child: Text(mode['label']!));
+                  return DropdownMenuItem(
+                    value: mode['value'],
+                    child: Text(mode['label']!),
+                  );
                 }).toList(),
                 onChanged: (value) => setState(() => transportMode = value!),
               ),
@@ -240,13 +343,19 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _locationController,
-                      decoration: InputDecoration(labelText: AppLocalizations.of(context)!.location, border: OutlineInputBorder()),
+                      decoration: InputDecoration(
+                        labelText: AppLocalizations.of(context)!.location,
+                        border: OutlineInputBorder(),
+                      ),
                       onSaved: (value) => location = value,
                     ),
                   ),
                   SizedBox(width: 8),
                   IconButton(
-                    icon: Icon(Icons.map, color: latitude != null ? Colors.blue : Colors.grey),
+                    icon: Icon(
+                      Icons.map,
+                      color: latitude != null ? Colors.blue : Colors.grey,
+                    ),
                     onPressed: _pickLocation,
                     tooltip: 'Select on Map',
                   ),
@@ -256,66 +365,53 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4.0),
                   child: Text(
-                    '📍 Coordinate selected', 
-                    style: TextStyle(color: Colors.blue, fontSize: 12)
+                    '📍 Coordinate selected',
+                    style: TextStyle(color: Colors.blue, fontSize: 12),
                   ),
                 ),
               SizedBox(height: 24),
-              Text('Attendee Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              // Participants Section
+              Text(
+                '${AppLocalizations.of(context)!.participants} (${selectedContacts.length})',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
               SizedBox(height: 8),
-              Row(
+              Wrap(
+                spacing: 8,
                 children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _contactNameController,
-                      decoration: InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(Icons.person_search, color: Colors.blue),
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        builder: (context) => ContactPicker(
-                          initialSelectedIds: selectedContacts.map((c) => c['id'] as String).toList(),
-                          onSelectionChanged: (selected) {
-                            setState(() {
-                              selectedContacts = selected;
-                              if (selected.isNotEmpty) {
-                                final c = selected.first;
-                                // Use neck_name or full_name or name
-                                _contactNameController.text = c['neck_name'] ?? c['full_name'] ?? c['name'] ?? '';
-                                _contactEmailController.text = c['email'] ?? '';
-                                _contactPhoneController.text = c['phone'] ?? '';
-                                _contactLineIdController.text = c['line_id'] ?? '';
-                              }
-                            });
-                          },
-                        ),
-                      );
-                    },
-                    tooltip: 'Select Contact',
+                  ...selectedContacts.map((contact) {
+                    final name =
+                        contact['nick_name'] ?? // Prioritize nick_name for friends
+                        contact['name'] ??
+                        contact['full_name'] ??
+                        contact['contact_user_id'] ?? // Fallback to contact_user_id
+                        'Unknown';
+
+                    return Chip(
+                      avatar: CircleAvatar(
+                        backgroundImage: contact['profile_picture'] != null
+                            ? NetworkImage(contact['profile_picture'])
+                            : null,
+                        child: contact['profile_picture'] == null
+                            ? Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                              )
+                            : null,
+                      ),
+                      label: Text(name),
+                      onDeleted: () {
+                        setState(() {
+                          selectedContacts.remove(contact);
+                        });
+                      },
+                    );
+                  }).toList(),
+                  ActionChip(
+                    avatar: Icon(Icons.person_add),
+                    label: Text('選擇參與者'),
+                    onPressed: _showAttendeeSelector,
                   ),
                 ],
-              ),
-              SizedBox(height: 12),
-              TextFormField(
-                controller: _contactEmailController,
-                decoration: InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              SizedBox(height: 12),
-              TextFormField(
-                controller: _contactPhoneController,
-                decoration: InputDecoration(labelText: 'Phone', border: OutlineInputBorder()),
-                keyboardType: TextInputType.phone,
-              ),
-              SizedBox(height: 12),
-              TextFormField(
-                controller: _contactLineIdController,
-                decoration: InputDecoration(labelText: 'Line ID', border: OutlineInputBorder()),
               ),
 
               SizedBox(height: 32),
@@ -324,7 +420,10 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 height: 50,
                 child: ElevatedButton(
                   onPressed: _save,
-                  child: Text(AppLocalizations.of(context)!.saveSchedule, style: TextStyle(fontSize: 18)),
+                  child: Text(
+                    AppLocalizations.of(context)!.saveSchedule,
+                    style: TextStyle(fontSize: 18),
+                  ),
                 ),
               ),
             ],

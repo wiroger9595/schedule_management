@@ -3,7 +3,7 @@ import 'package:call_log/call_log.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
-import "../l10n/app_localizations.dart";
+import '../i18n/app_localizations.dart';
 
 class CallLogScreen extends StatefulWidget {
   @override
@@ -105,12 +105,13 @@ class _CallLogScreenState extends State<CallLogScreen> {
   }
 
   String _formatDuration(int? seconds) {
-    if (seconds == null || seconds == 0) return AppLocalizations.of(context)!.notConnected;
-    
+    if (seconds == null || seconds == 0)
+      return AppLocalizations.of(context)!.notConnected;
+
     int hours = seconds ~/ 3600;
     int minutes = (seconds % 3600) ~/ 60;
     int secs = seconds % 60;
-    
+
     if (hours > 0) {
       return '$hours ${AppLocalizations.of(context)!.hours} $minutes ${AppLocalizations.of(context)!.minutes} $secs ${AppLocalizations.of(context)!.seconds}';
     } else if (minutes > 0) {
@@ -122,13 +123,13 @@ class _CallLogScreenState extends State<CallLogScreen> {
 
   String _formatTimestamp(int? timestamp) {
     if (timestamp == null) return '';
-    
+
     DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
     DateTime yesterday = today.subtract(Duration(days: 1));
     DateTime callDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
-    
+
     if (callDate == today) {
       return '${AppLocalizations.of(context)!.today} ${DateFormat('HH:mm').format(dateTime)}';
     } else if (callDate == yesterday) {
@@ -146,12 +147,14 @@ class _CallLogScreenState extends State<CallLogScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
-            onPressed: _isIOS ? null : () {
-              setState(() {
-                _isLoading = true;
-              });
-              _loadCallLogs();
-            },
+            onPressed: _isIOS
+                ? null
+                : () {
+                    setState(() {
+                      _isLoading = true;
+                    });
+                    _loadCallLogs();
+                  },
           ),
         ],
       ),
@@ -259,7 +262,9 @@ class _CallLogScreenState extends State<CallLogScreen> {
               ),
             ),
             title: Text(
-              entry.name ?? entry.number ?? AppLocalizations.of(context)!.unknownNumber,
+              entry.name ??
+                  entry.number ??
+                  AppLocalizations.of(context)!.unknownNumber,
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Column(

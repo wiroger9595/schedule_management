@@ -9,7 +9,8 @@ class Schedule {
   final double? longitude;
   final String status;
   final String transportMode; // car, motorcycle, transit, bike, walk
-  final List<String>? attendeeIds;
+  final List<String>? attendIds;
+  final List<Map<String, dynamic>>? attends; // Added attends list
   final String? contactName;
   final String? contactEmail;
   final String? contactPhone;
@@ -28,7 +29,8 @@ class Schedule {
     this.longitude,
     required this.status,
     required this.transportMode,
-    this.attendeeIds,
+    this.attendIds,
+    this.attends,
     this.cancelReason,
     this.contactName,
     this.contactEmail,
@@ -38,24 +40,29 @@ class Schedule {
 
   factory Schedule.fromJson(Map<String, dynamic> json) {
     return Schedule(
-      id: json['id'],
-      title: json['title'],
-      description: json['description'],
-      startTime: DateTime.parse(json['start_time'] ?? json['startTime']),
-      endTime: json['end_time'] != null 
-          ? DateTime.parse(json['end_time']) 
+      id: json['id'] as String? ?? '', // Handle possible mismatch
+      title: json['title'] as String? ?? 'No Title', // Handle null title
+      description: json['description'] as String?,
+      startTime: DateTime.parse(json['start_time'] ?? json['startTime'] ?? DateTime.now().toIso8601String()),
+      endTime: json['end_time'] != null
+          ? DateTime.parse(json['end_time'])
           : (json['endTime'] != null ? DateTime.parse(json['endTime']) : null),
-      location: json['location'],
-      latitude: json['latitude']?.toDouble(),
-      longitude: json['longitude']?.toDouble(),
-      status: json['status'] ?? 'P',
-      transportMode: json['transport_mode'] ?? json['transportMode'] ?? 'car',
-      cancelReason: json['cancel_reason'],
-      contactName: json['contact_name'],
-      contactEmail: json['contact_email'],
-      contactPhone: json['contact_phone'],
-      contactLineId: json['contact_line_id'],
-      attendeeIds: (json['attendee_ids'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      location: json['location'] as String?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+      status: json['status'] as String? ?? 'P',
+      transportMode: json['transport_mode'] as String? ?? json['transportMode'] as String? ?? 'car',
+      cancelReason: json['cancel_reason'] as String?,
+      contactName: json['contact_name'] as String?,
+      contactEmail: json['contact_email'] as String?,
+      contactPhone: json['contact_phone'] as String?,
+      contactLineId: json['contact_line_id'] as String?,
+      attendIds: (json['attend_ids'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      attends: (json['attends'] as List<dynamic>?)
+          ?.map((e) => e as Map<String, dynamic>)
+          .toList(),
     );
   }
 
@@ -69,7 +76,8 @@ class Schedule {
       'latitude': latitude,
       'longitude': longitude,
       'transport_mode': transportMode,
-      'attendee_ids': attendeeIds,
+      'attend_ids': attendIds,
+      'attends': attends,
       'cancel_reason': cancelReason,
       'contact_name': contactName,
       'contact_email': contactEmail,
