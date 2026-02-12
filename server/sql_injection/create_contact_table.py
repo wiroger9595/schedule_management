@@ -21,16 +21,15 @@ async def create_contact_table():
             CREATE TABLE IF NOT EXISTS contact (
                 id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
                 contract_id UUID NOT NULL,
-                owner_id UUID NOT NULL,
+                user_id UUID NOT NULL,
                 contact_user_id UUID NOT NULL,
                 created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
-                FOREIGN KEY (owner_id) REFERENCES "user" (id),
                 FOREIGN KEY (contact_user_id) REFERENCES "user" (id)
             );
         """)
         
         # Add index for faster lookups
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_contact_owner_id ON contact (owner_id);")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_contact_user_id ON contact (user_id);")
         
         print("Migration complete!")
     except Exception as e:

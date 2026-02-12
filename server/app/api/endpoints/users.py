@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlmodel import Session
+from typing import List
 from ...db.database import get_session
 from ...models.user import User
 from ...repositories.user_repository import UserRepository
@@ -11,6 +12,14 @@ router = APIRouter()
 @router.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.get("/search", response_model=List[User])
+def search_users(q: str, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    repo = UserRepository(session)
+    if not q:
+        return []
+    return repo.search_users(q)
+
 
 @router.put("/me/profile_picture")
 def update_profile_picture(data: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):

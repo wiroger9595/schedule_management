@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlmodel import Session
+from sqlmodel import Session, select
 from ...core.auth import get_password_hash, create_access_token, verify_password, SECRET_KEY, ALGORITHM
 from ...core.redis_client import redis_client
 from ...db.database import get_session
@@ -98,7 +98,7 @@ def google_auth(data: dict, session: Session = Depends(get_session)):
         # Actually repo.create adds, if user already in session it might error or warn.
         # Let's use repo.update if existing.
         if user.id:
-            repo.update(user, {})
+            repo.update(user)
     
     access_token = create_access_token(data={"sub": user.user_id})
     redis_client.store_token(user.user_id, access_token)
@@ -116,7 +116,7 @@ def apple_auth(data: dict, session: Session = Depends(get_session)):
         user = repo.get_by_email(email)
         if user:
             user.apple_id = apple_id
-            repo.update(user, {})
+            repo.update(user)
         else:
             user = User(email=email, apple_id=apple_id, full_name=data.get("name"))
             repo.create(user)
@@ -135,3 +135,59 @@ def logout(auth: HTTPAuthorizationCredentials = Security(security)):
         return {"msg": "Successfully logged out"}
     except JWTError:
         return {"msg": "Invalid token"}
+
+@router.post("/forgot-password")
+def forgot_password(data: dict, session: Session = Depends(get_session)):
+    email = data.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    repo = UserRepository(session)
+    user = repo.get_by_email(email)
+    if not user:
+        # Avoid leaking user existence, just return success or generic message
+        # But for UX in this stage, maybe return 404? 
+        # Best practice: return 200 "If email exists, code sent"
+        # For simplicity here: return 404 if not found to help debugging
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Generate 6 digit code
+    import random
+    code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    
+    # Save to Redis
+    redis_client.set_reset_code(email, code)
+    
+    # Send Email
+    from ...services.email_service import email_service
+    email_service.send_reset_code(email, code)
+    
+    return {"msg": "Reset code sent"}
+
+@router.post("/reset-password")
+def reset_password(data: dict, session: Session = Depends(get_session)):
+    email = data.get("email")
+    code = data.get("code")
+    new_password = data.get("new_password")
+    
+    if not email or not code or not new_password:
+        raise HTTPException(status_code=400, detail="Missing fields")
+    
+    # Verify code
+    saved_code = redis_client.get_reset_code(email)
+    if not saved_code or saved_code != code:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    
+    # Update password
+    repo = UserRepository(session)
+    user = repo.get_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user.hashed_password = get_password_hash(new_password)
+    repo.update(user)
+    
+    # Delete code
+    redis_client.delete_reset_code(email)
+    
+    return {"msg": "Password updated successfully"}

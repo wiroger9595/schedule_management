@@ -434,3 +434,7 @@ redis-cli ping  # 應回傳 PONG
 ---
 
 **Made with ❤️ using Flutter & FastAPI**
+
+
+
+明天跟副理去摩鐵

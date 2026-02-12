@@ -84,7 +84,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   validator: (value) => value!.isEmpty ? '請輸入密碼' : null,
                   onSaved: (value) => password = value!,
                 ),
-                SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.pushNamed(context, '/forgot_password'),
+                    child: Text('忘記密碼？'),
+                  ),
+                ),
+                SizedBox(height: 16),
                 if (auth.isLoading)
                   CircularProgressIndicator()
                 else ...[

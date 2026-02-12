@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import "../l10n/app_localizations.dart";
 import '../utils/constants.dart';
+import 'map_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   @override
@@ -78,6 +79,17 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
   List<Schedule> _getSchedulesForDay(DateTime day) {
     DateTime normalizedDay = DateTime(day.year, day.month, day.day);
     return _schedules[normalizedDay] ?? [];
+  }
+
+  void _navigateToMapScreen(Schedule schedule) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MapScreen(schedule: schedule),
+      ),
+    );
+    // Refresh schedules on return
+    _loadSchedules();
   }
 
   @override
@@ -249,6 +261,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                           leading: Icon(Icons.circle, size: 12, color: _getStatusColor(schedule.status)),
                           title: Text(schedule.title),
                           subtitle: Text(DateFormat('HH:mm').format(schedule.startTime)),
+                          onTap: () => _navigateToMapScreen(schedule),
                         )),
                     ],
                   ),
@@ -307,7 +320,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                 List<Schedule> hourSchedules = daySchedules.where((s) => s.startTime.hour == hour).toList();
                 
                 return Container(
-                  height: 80,
+                  height: 100,
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(color: Colors.grey.shade300),
@@ -346,45 +359,50 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                                           width: 2,
                                         ),
                                       ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            schedule.title,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          SizedBox(height: 2),
-                                          Text(
-                                            DateFormat('HH:mm').format(schedule.startTime),
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey[700],
-                                            ),
-                                          ),
-                                          if (schedule.location != null) ...[
-                                            SizedBox(height: 2),
-                                            Row(
-                                              children: [
-                                                Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
-                                                SizedBox(width: 2),
-                                                Expanded(
-                                                  child: Text(
-                                                    schedule.location!,
-                                                    style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
+                                      child: GestureDetector(
+                                        onTap: () => _navigateToMapScreen(schedule),
+                                        child: SingleChildScrollView(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                schedule.title,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 14,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              SizedBox(height: 2),
+                                              Text(
+                                                DateFormat('HH:mm').format(schedule.startTime),
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[700],
+                                                ),
+                                              ),
+                                              if (schedule.location != null) ...[
+                                                SizedBox(height: 2),
+                                                Row(
+                                                  children: [
+                                                    Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
+                                                    SizedBox(width: 2),
+                                                    Expanded(
+                                                      child: Text(
+                                                        schedule.location!,
+                                                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ],
-                                            ),
-                                          ],
-                                        ],
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   );
@@ -449,6 +467,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
             ),
             backgroundColor: _getStatusColor(schedule.status).withOpacity(0.2),
           ),
+          onTap: () => _navigateToMapScreen(schedule),
         );
       },
     );

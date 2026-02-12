@@ -74,11 +74,16 @@ class ApiService {
     }
   }
 
-  Future<void> updateStatus(String id, String status) async {
+  Future<void> updateStatus(String id, String status, {String? cancelReason}) async {
+    final body = {
+      'status': status,
+      if (cancelReason != null) 'cancel_reason': cancelReason,
+    };
+
     final response = await http.patch(
-      Uri.parse('$baseUrl/schedules/$id'),
-      headers: await getHeaders(), // Optimized to use getter
-      body: jsonEncode({'status': status}),
+      Uri.parse('$baseUrl/schedules/$id/status'),
+      headers: await getHeaders(),
+      body: jsonEncode(body),
     );
     if (response.statusCode == 401) {
       await _authService.logout();
@@ -128,4 +133,47 @@ class ApiService {
       throw Exception(error['detail'] ?? 'Unknown error');
     }
   }
+  Future<List<dynamic>> searchUsers(String query) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/users/search?q=$query'),
+      headers: await getHeaders(),
+    );
+    
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to search users');
+    }
+  }
+
+  Future<void> forgotPassword(String email) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/forgot-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    
+    if (response.statusCode != 200) {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to send reset code');
+    }
+  }
+
+  Future<void> resetPassword(String email, String code, String newPassword) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'code': code,
+        'new_password': newPassword
+      }),
+    );
+    
+    if (response.statusCode != 200) {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to reset password');
+    }
+  }
 }
+

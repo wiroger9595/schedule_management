@@ -23,3 +23,15 @@ class UserRepository:
         self.session.commit()
         self.session.refresh(user)
         return user
+
+    def search_users(self, query: str) -> list[User]:
+        from sqlmodel import or_
+        statement = select(User).where(
+            or_(
+                User.phone == query,
+                User.email == query,
+                User.line_id == query
+            )
+        )
+        return self.session.exec(statement).all()
+

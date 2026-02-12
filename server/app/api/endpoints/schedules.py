@@ -13,6 +13,7 @@ from .auth import get_current_user
 router = APIRouter()
 
 @router.get("/", response_model=List[dict])
+@router.get("", response_model=List[dict], include_in_schema=False)
 def get_schedules(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = ScheduleRepository(session)
     schedules = repo.get_by_user_id(current_user.user_id)
@@ -23,36 +24,64 @@ def get_schedules(current_user: User = Depends(get_current_user), session: Sessi
     return results
 
 @router.post("/", response_model=dict)
+@router.post("", response_model=dict, include_in_schema=False)
 def create_schedule(data: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    message = data.get("message")
-    if not message:
-        raise HTTPException(status_code=400, detail="Message is required")
+    # Check if manual creation (title present) or AI creation (message present)
+    if "title" in data:
+        # Manual Creation
+        print(f"DEBUG: Manual creation with data: {data}")
+        from datetime import datetime
+        start_time_str = data.get("start_time") or data.get("startTime")
+        start_time = datetime.fromisoformat(start_time_str) if start_time_str else datetime.now()
         
-    # Text validation
-    if not validate_schedule_message(message):
-        raise HTTPException(status_code=400, detail="Invalid input content")
-        
-    # Gemini processing
-    try:
-        schedule_data = gemini_service.extract_schedule_from_text(message)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
-        
-    # Create Schedule object
-    schedule = Schedule(
-        user_id=current_user.user_id,
-        title=schedule_data.get("title", "未命名行程"),
-        start_time=schedule_data.get("start_time"),
-        end_time=schedule_data.get("end_time"),
-        location=schedule_data.get("location"),
-        description=schedule_data.get("description"),
-        is_all_day=schedule_data.get("is_all_day", False)
-    )
-    
-    # Geocoding
-    if schedule.location:
+        schedule = Schedule(
+            user_id=current_user.user_id,
+            title=data["title"],
+            description=data.get("description"),
+            meeting_time=start_time.isoformat(), # Map to meeting_time as per model
+            meeting_location=data.get("location"),
+            transport_mode=data.get("transport_mode") or data.get("transportMode"),
+            status="PENDING",
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            
+            # Contact Details
+            contact_name=data.get("contact_name"),
+            contact_email=data.get("contact_email"),
+            contact_phone=data.get("contact_phone"),
+            contact_line_id=data.get("contact_line_id"),
+        )
+    else:
+        # AI Creation
+        message = data.get("message")
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required for AI creation")
+            
+        # Text validation
+        if not validate_schedule_message(message):
+            raise HTTPException(status_code=400, detail="Invalid input content")
+            
+        # Gemini processing
         try:
-            coords = OSMnxService.get_coordinates(schedule.location)
+            schedule_data = gemini_service.extract_schedule_from_text(message)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
+            
+        # Create Schedule object
+        schedule = Schedule(
+            user_id=current_user.user_id,
+            title=schedule_data.get("title", "未命名行程"),
+            start_time=schedule_data.get("start_time"),
+            end_time=schedule_data.get("end_time"),
+            location=schedule_data.get("location"),
+            description=schedule_data.get("description"),
+            is_all_day=schedule_data.get("is_all_day", False)
+        )
+    
+    # Geocoding if needed (Unified logic)
+    if schedule.meeting_location and (not schedule.latitude or not schedule.longitude):
+        try:
+            coords = OSMnxService.get_coordinates(schedule.meeting_location)
             if coords:
                 schedule.latitude = coords[0]
                 schedule.longitude = coords[1]
@@ -65,6 +94,7 @@ def create_schedule(data: dict, current_user: User = Depends(get_current_user), 
     return created_schedule.dict()
 
 @router.put("/{schedule_id}/status")
+@router.patch("/{schedule_id}/status")
 def update_schedule_status(schedule_id: str, status_data: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = ScheduleRepository(session)
     schedule = repo.get_by_schedule_id(schedule_id)
@@ -73,7 +103,8 @@ def update_schedule_status(schedule_id: str, status_data: dict, current_user: Us
         raise HTTPException(status_code=404, detail="Schedule not found")
         
     schedule.status = status_data.get("status", schedule.status)
-    schedule.status = status_data.get("status", schedule.status)
+    if "cancel_reason" in status_data:
+        schedule.cancel_reason = status_data["cancel_reason"]
     return repo.update(schedule)
 
 @router.put("/{schedule_id}", response_model=dict)

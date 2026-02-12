@@ -15,7 +15,7 @@ class RedisClient:
             decode_responses=True
         )
     
-    def set_token(self, user_id: str, token: str, expire_seconds: int = 604800):
+    def store_token(self, user_id: str, token: str, expire_seconds: int = 604800):
         """
         儲存 JWT Token 到 Redis
         key 格式: jwt:{user_id}:{token_hash}
@@ -23,7 +23,7 @@ class RedisClient:
         """
         token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
         key = f"jwt:{user_id}:{token_hash}"
-        self.client.setex(key, expire_seconds, token)
+        return self.client.setex(key, expire_seconds, token)
     
     def validate_token(self, user_id: str, token: str) -> bool:
         """驗證 Token 是否存在於 Redis"""
@@ -31,7 +31,7 @@ class RedisClient:
         key = f"jwt:{user_id}:{token_hash}"
         return self.client.exists(key) > 0
     
-    def delete_token(self, user_id: str, token: str):
+    def revoke_token(self, user_id: str, token: str):
         """登出時刪除 Token"""
         token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
         key = f"jwt:{user_id}:{token_hash}"
@@ -42,5 +42,20 @@ class RedisClient:
         pattern = f"jwt:{user_id}:*"
         for key in self.client.scan_iter(match=pattern):
             self.client.delete(key)
+
+    def set_reset_code(self, email: str, code: str, expire_seconds: int = 600):
+        """儲存密碼重置驗證碼 (預設 10 分鐘)"""
+        key = f"reset:{email}"
+        self.client.setex(key, expire_seconds, code)
+
+    def get_reset_code(self, email: str) -> Optional[str]:
+        """獲取密碼重置驗證碼"""
+        key = f"reset:{email}"
+        return self.client.get(key)
+
+    def delete_reset_code(self, email: str):
+        """刪除密碼重置驗證碼"""
+        key = f"reset:{email}"
+        self.client.delete(key)
 
 redis_client = RedisClient()

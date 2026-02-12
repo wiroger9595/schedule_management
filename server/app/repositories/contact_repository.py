@@ -21,3 +21,9 @@ class ContactRepository:
     def delete(self, contact: Contact) -> None:
         self.session.delete(contact)
         self.session.commit()
+
+    def update(self, contact: Contact) -> Contact:
+        self.session.add(contact)
+        self.session.commit()
+        self.session.refresh(contact)
+        return contact

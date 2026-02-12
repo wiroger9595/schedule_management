@@ -20,13 +20,22 @@ class Contact(SQLModel, table=True):
         sa_column=Column(String(255), nullable=False)
     )
     
-    # owner_id VARCHAR(255) NOT NULL
+    # user_id VARCHAR(255) NOT NULL
     # FK to users.user_id
-    owner_id: str = Field(sa_column=Column(String(255), nullable=False))
+    user_id: str = Field(sa_column=Column(String(255), nullable=False))
     
     # contact_user_id VARCHAR(255) NOT NULL
     # FK to users.user_id (The friend)
-    contact_user_id: str = Field(sa_column=Column(String(255), nullable=False))
+    # contact_user_id VARCHAR(255) NULL
+    # FK to users.user_id (The friend) - Optional, as per DDL
+    contact_user_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+
+    # New fields from DDL
+    neck_name: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    phone: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    email: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    line_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    comment: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     
     # created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
     created_at: datetime = Field(

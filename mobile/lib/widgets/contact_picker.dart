@@ -54,7 +54,7 @@ class _ContactPickerState extends State<ContactPicker> {
 
   void _confirmSelection() {
     final selectedContacts = contacts
-        .where((c) => selectedIds.contains(c['id']))
+        .where((c) => selectedIds.contains(c['id'].toString()))
         .map((c) => c as Map<String, dynamic>)
         .toList();
     widget.onSelectionChanged(selectedContacts);
@@ -82,7 +82,7 @@ class _ContactPickerState extends State<ContactPicker> {
                         itemCount: contacts.length,
                         itemBuilder: (context, index) {
                           final contact = contacts[index];
-                          final id = contact['id'];
+                          final String id = contact['id'].toString();
                           final isSelected = selectedIds.contains(id);
 
                           return ListTile(
@@ -94,8 +94,8 @@ class _ContactPickerState extends State<ContactPicker> {
                                   ? Icon(Icons.person)
                                   : null,
                             ),
-                            title: Text(contact['full_name'] ?? 'Unknown'),
-                            subtitle: Text(contact['email']),
+                            title: Text(contact['neck_name'] ?? contact['contact_user_id'] ?? 'Unknown'),
+                            subtitle: Text(contact['email'] ?? ''),
                             trailing: Checkbox(
                               value: isSelected,
                               onChanged: (val) {

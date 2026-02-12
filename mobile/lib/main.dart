@@ -6,6 +6,7 @@ import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/profile_completion_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/forgot_password_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/schedule_provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -49,6 +50,7 @@ class ScheduleApp extends StatelessWidget {
         '/profile_completion': (context) => ProfileCompletionScreen(),
         '/add': (context) => AddScheduleScreen(),
         '/profile': (context) => ProfileScreen(),
+        '/forgot_password': (context) => ForgotPasswordScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == 'scheduleapp://add') {

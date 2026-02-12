@@ -12,6 +12,8 @@ import 'profile_screen.dart';
 import 'call_log_screen.dart';
 import 'calendar_screen.dart';
 import '../services/notification_service.dart';
+import 'package:geolocator/geolocator.dart'; // Added
+import '../services/api_service.dart'; // Added
 import 'contact_list_screen.dart';
 import "../l10n/app_localizations.dart";
 import '../utils/constants.dart';
@@ -23,6 +25,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final NotificationService notificationService = NotificationService();
+
+  // Filter State
+  String? _filterStatus;
+  String? _filterLocation;
+  DateTime? _filterStartDate;
+  DateTime? _filterEndDate;
 
   @override
   void initState() {
@@ -44,6 +52,88 @@ class _HomeScreenState extends State<HomeScreen> {
     final scheduleProvider = Provider.of<ScheduleProvider>(context, listen: false);
     await scheduleProvider.fetchSchedules();
     _scheduleReminders(scheduleProvider.schedules);
+    _checkScheduleArrivals(scheduleProvider.schedules);
+  }
+
+  Future<void> _checkScheduleArrivals(List<Schedule> schedules) async {
+    final now = DateTime.now();
+    bool statusUpdated = false;
+
+    // Filter pending schedules that have started or are about to start
+    final pendingSchedules = schedules.where((s) => 
+      s.status == ScheduleStatus.pending && 
+      s.startTime.isBefore(now.add(Duration(minutes: 15))) // Check if start time is passed or within 15 mins? 
+      // User requirement: "No arrival at time -> pending, cancel... Over time -> attend, not attend"
+      // So if time is passed, we check.
+      && s.startTime.isBefore(now)
+    ).toList();
+
+    if (pendingSchedules.isEmpty) return;
+
+    // Get current location
+    Position? position;
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (serviceEnabled) {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+          position = await Geolocator.getCurrentPosition();
+        }
+      }
+    } catch (e) {
+      print('Location error: $e');
+    }
+
+    if (position == null) return;
+
+    final apiService = ApiService();
+
+    for (var schedule in pendingSchedules) {
+      if (schedule.latitude == null || schedule.longitude == null) continue;
+
+      final distance = Geolocator.distanceBetween(
+        position.latitude, 
+        position.longitude, 
+        schedule.latitude!, 
+        schedule.longitude!
+      );
+
+      String newStatus;
+      // If within 500 meters, consider attended
+      if (distance <= 500) {
+        newStatus = ScheduleStatus.active; // Map "active" to "Attend" in UI text? 
+        // Constants: active='A', pending='P', notGoing='N', cancel='C'.
+        // User said: "attend, not attend". 
+        // existing 'active' (A) probably means Attended/Going.
+        // existing 'notGoing' (N) means Not Attended.
+      } else {
+        // If time passed and not there...
+        // Maybe give a buffer? e.g. 30 mins after start time?
+        // User: "Over time state change to attend, not attend".
+        // Let's say if > 15 mins past start time and still not there.
+        if (now.difference(schedule.startTime).inMinutes > 30) {
+           newStatus = ScheduleStatus.notGoing;
+        } else {
+          continue; // Still give them time
+        }
+      }
+
+      try {
+        await apiService.updateStatus(schedule.id, newStatus);
+        statusUpdated = true;
+      } catch (e) {
+        print('Failed to auto-update status: $e');
+      }
+    }
+
+    if (statusUpdated) {
+      final scheduleProvider = Provider.of<ScheduleProvider>(context, listen: false);
+      // Refresh without loop
+      await scheduleProvider.fetchSchedules();
+    }
   }
 
   void _scheduleReminders(List<Schedule> schedules) async {
@@ -78,12 +168,130 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        String? tempStatus = _filterStatus;
+        TextEditingController tempLocationController = TextEditingController(text: _filterLocation);
+        DateTime? tempStartDate = _filterStartDate;
+        DateTime? tempEndDate = _filterEndDate;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Filter Schedules'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Status Filter
+                    DropdownButtonFormField<String>(
+                      value: tempStatus,
+                      decoration: InputDecoration(labelText: 'Status'),
+                      items: [
+                        DropdownMenuItem(value: null, child: Text('All')),
+                        DropdownMenuItem(value: ScheduleStatus.pending, child: Text('Pending')),
+                        DropdownMenuItem(value: ScheduleStatus.active, child: Text('Active')),
+                        DropdownMenuItem(value: ScheduleStatus.notGoing, child: Text('Not Going')),
+                        DropdownMenuItem(value: ScheduleStatus.cancel, child: Text('Cancelled')),
+                      ],
+                      onChanged: (val) => setState(() => tempStatus = val),
+                    ),
+                    SizedBox(height: 16),
+                    // Location Filter
+                    TextField(
+                      controller: tempLocationController,
+                      decoration: InputDecoration(labelText: 'Location (contains)'),
+                    ),
+                    SizedBox(height: 16),
+                    // Date Range Filter
+                    ListTile(
+                      title: Text('Date Range'),
+                      subtitle: Text(
+                        tempStartDate != null && tempEndDate != null
+                            ? '${DateFormat('yyyy-MM-dd').format(tempStartDate!)} - ${DateFormat('yyyy-MM-dd').format(tempEndDate!)}'
+                            : 'All Time'
+                      ),
+                      trailing: Icon(Icons.calendar_today),
+                      onTap: () async {
+                        final picked = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2101),
+                          initialDateRange: tempStartDate != null && tempEndDate != null
+                              ? DateTimeRange(start: tempStartDate!, end: tempEndDate!)
+                              : null,
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            tempStartDate = picked.start;
+                            tempEndDate = picked.end;
+                          });
+                        }
+                      },
+                    ),
+                    if (tempStartDate != null)
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            tempStartDate = null;
+                            tempEndDate = null;
+                          });
+                        },
+                        child: Text('Clear Date Filter'),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    // Clear all
+                    setState(() {
+                      tempStatus = null;
+                      tempLocationController.clear();
+                      tempStartDate = null;
+                      tempEndDate = null;
+                    });
+                  },
+                  child: Text('Reset'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    this.setState(() {
+                      _filterStatus = tempStatus;
+                      _filterLocation = tempLocationController.text.isEmpty ? null : tempLocationController.text;
+                      _filterStartDate = tempStartDate;
+                      _filterEndDate = tempEndDate;
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(AppLocalizations.of(context)!.mySchedules),
         actions: [
+          IconButton(
+            icon: Icon(Icons.filter_list),
+            onPressed: _showFilterDialog,
+            tooltip: 'Filter',
+          ),
           IconButton(icon: Icon(Icons.refresh), onPressed: _refreshSchedules),
         ],
       ),
@@ -100,14 +308,38 @@ class _HomeScreenState extends State<HomeScreen> {
              return Center(child: Text('${AppLocalizations.of(context)!.error}: ${provider.error}'));
           }
 
-          if (provider.schedules.isEmpty) {
+          // Apply filters
+          final filteredSchedules = provider.schedules.where((s) {
+            // Status Filter
+            if (_filterStatus != null && s.status != _filterStatus) {
+              return false;
+            }
+            // Location Filter
+            if (_filterLocation != null && _filterLocation!.isNotEmpty) {
+              if (s.location == null || !s.location!.toLowerCase().contains(_filterLocation!.toLowerCase())) {
+                return false;
+              }
+            }
+            // Date Range Filter
+            if (_filterStartDate != null && _filterEndDate != null) {
+              // Check if schedule overlaps or is within range? Usually just check start time.
+              // Let's check if start time is within the range [start, end + 1 day (exclusive)] to include end date fully.
+              final endOfDay = _filterEndDate!.add(Duration(days: 1)).subtract(Duration(milliseconds: 1));
+              if (s.startTime.isBefore(_filterStartDate!) || s.startTime.isAfter(endOfDay)) {
+                return false;
+              }
+            }
+            return true;
+          }).toList();
+
+          if (filteredSchedules.isEmpty) {
             return Center(child: Text(AppLocalizations.of(context)!.noSchedules));
           }
 
           return ListView.builder(
-            itemCount: provider.schedules.length,
+            itemCount: filteredSchedules.length,
             itemBuilder: (context, index) {
-              final schedule = provider.schedules[index];
+              final schedule = filteredSchedules[index];
               return Card(
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(

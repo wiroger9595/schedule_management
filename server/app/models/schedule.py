@@ -36,6 +36,15 @@ class Schedule(SQLModel, table=True):
     # status VARCHAR(2) DEFAULT 'P'
     status: str = Field(default="P", sa_column=Column(String(2), nullable=True, server_default="P"))
     
+    # cancel_reason VARCHAR(255) NULL
+    cancel_reason: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    
+    # Contact Details
+    contact_name: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    contact_email: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    contact_phone: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    contact_line_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    
     # created_at TIMESTAMPTZ
     created_at: datetime = Field(
         default_factory=datetime.now,

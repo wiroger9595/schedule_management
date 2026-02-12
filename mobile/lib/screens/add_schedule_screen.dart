@@ -22,8 +22,6 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   
   List<Map<String, dynamic>> selectedContacts = [];
   
-  String title = '';
-  String? description;
   DateTime startTime = DateTime.now().add(Duration(hours: 1));
   String? location;
   String transportMode = 'car';
@@ -31,6 +29,12 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   double? longitude;
 
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _contactNameController = TextEditingController();
+  final TextEditingController _contactEmailController = TextEditingController();
+  final TextEditingController _contactPhoneController = TextEditingController();
+  final TextEditingController _contactLineIdController = TextEditingController();
 
   final List<Map<String, String>> transportModes = [
     {'value': 'car', 'label': '汽車'},
@@ -45,15 +49,31 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     super.initState();
     if (widget.schedule != null) {
       final s = widget.schedule!;
-      title = s.title;
-      description = s.description;
       startTime = s.startTime;
       location = s.location;
       transportMode = s.transportMode ?? 'car';
       latitude = s.latitude;
       longitude = s.longitude;
       _locationController.text = location ?? '';
+      _titleController.text = s.title;
+      _descriptionController.text = s.description ?? '';
+      _contactNameController.text = s.contactName ?? '';
+      _contactEmailController.text = s.contactEmail ?? '';
+      _contactPhoneController.text = s.contactPhone ?? '';
+      _contactLineIdController.text = s.contactLineId ?? '';
     }
+  }
+
+  @override
+  void dispose() {
+    _locationController.dispose();
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _contactNameController.dispose();
+    _contactEmailController.dispose();
+    _contactPhoneController.dispose();
+    _contactLineIdController.dispose();
+    super.dispose();
   }
 
   Future<void> _selectDateTime(BuildContext context) async {
@@ -129,8 +149,8 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
           // Create
           final newSchedule = await apiService.createSchedule(Schedule(
             id: '',
-            title: title,
-            description: description,
+            title: _titleController.text,
+            description: _descriptionController.text,
             startTime: startTime,
             location: location,
             latitude: latitude,
@@ -138,22 +158,30 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             status: 'PENDING',
             transportMode: transportMode,
             attendeeIds: selectedContacts.map((c) => c['id'] as String).toList(),
+            contactName: _contactNameController.text,
+            contactEmail: _contactEmailController.text,
+            contactPhone: _contactPhoneController.text,
+            contactLineId: _contactLineIdController.text,
           ));
-          _updateWidget(title, DateFormat('HH:mm').format(startTime));
+          _updateWidget(_titleController.text, DateFormat('HH:mm').format(startTime));
           Navigator.pop(context, newSchedule);
         } else {
           // Update
           final updatedSchedule = await apiService.updateSchedule(widget.schedule!.id, {
-            'title': title,
-            'description': description,
+            'title': _titleController.text,
+            'description': _descriptionController.text,
             'start_time': startTime.toIso8601String(),
             'location': location,
             'transport_mode': transportMode,
             'latitude': latitude,
             'longitude': longitude,
+            'contact_name': _contactNameController.text,
+            'contact_email': _contactEmailController.text,
+            'contact_phone': _contactPhoneController.text,
+            'contact_line_id': _contactLineIdController.text,
           });
           print('DEBUG: AddScheduleScreen popping with updated schedule: ${updatedSchedule.latitude}, ${updatedSchedule.longitude}');
-          _updateWidget(title, DateFormat('HH:mm').format(startTime));
+          _updateWidget(_titleController.text, DateFormat('HH:mm').format(startTime));
           Navigator.pop(context, updatedSchedule);
         }
       } catch (e) {
@@ -176,17 +204,15 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextFormField(
-                initialValue: title,
+                controller: _titleController,
                 decoration: InputDecoration(labelText: AppLocalizations.of(context)!.title, border: OutlineInputBorder()),
                 validator: (value) => value!.isEmpty ? AppLocalizations.of(context)!.pleaseEnterTitle : null,
-                onSaved: (value) => title = value!,
               ),
               SizedBox(height: 16),
               TextFormField(
-                initialValue: description,
+                controller: _descriptionController,
                 decoration: InputDecoration(labelText: AppLocalizations.of(context)!.description, border: OutlineInputBorder()),
                 maxLines: 3,
-                onSaved: (value) => description = value,
               ),
               SizedBox(height: 16),
               ListTile(
@@ -234,6 +260,64 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                     style: TextStyle(color: Colors.blue, fontSize: 12)
                   ),
                 ),
+              SizedBox(height: 24),
+              Text('Attendee Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _contactNameController,
+                      decoration: InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(Icons.person_search, color: Colors.blue),
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (context) => ContactPicker(
+                          initialSelectedIds: selectedContacts.map((c) => c['id'] as String).toList(),
+                          onSelectionChanged: (selected) {
+                            setState(() {
+                              selectedContacts = selected;
+                              if (selected.isNotEmpty) {
+                                final c = selected.first;
+                                // Use neck_name or full_name or name
+                                _contactNameController.text = c['neck_name'] ?? c['full_name'] ?? c['name'] ?? '';
+                                _contactEmailController.text = c['email'] ?? '';
+                                _contactPhoneController.text = c['phone'] ?? '';
+                                _contactLineIdController.text = c['line_id'] ?? '';
+                              }
+                            });
+                          },
+                        ),
+                      );
+                    },
+                    tooltip: 'Select Contact',
+                  ),
+                ],
+              ),
+              SizedBox(height: 12),
+              TextFormField(
+                controller: _contactEmailController,
+                decoration: InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                keyboardType: TextInputType.emailAddress,
+              ),
+              SizedBox(height: 12),
+              TextFormField(
+                controller: _contactPhoneController,
+                decoration: InputDecoration(labelText: 'Phone', border: OutlineInputBorder()),
+                keyboardType: TextInputType.phone,
+              ),
+              SizedBox(height: 12),
+              TextFormField(
+                controller: _contactLineIdController,
+                decoration: InputDecoration(labelText: 'Line ID', border: OutlineInputBorder()),
+              ),
+
               SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -241,31 +325,6 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 child: ElevatedButton(
                   onPressed: _save,
                   child: Text(AppLocalizations.of(context)!.saveSchedule, style: TextStyle(fontSize: 18)),
-                ),
-              ),
-              SizedBox(height: 16),
-              if (widget.schedule == null) // Only show invite for new schedules for now
-              OutlinedButton.icon(
-                icon: Icon(Icons.people),
-                label: Text(selectedContacts.isEmpty 
-                    ? AppLocalizations.of(context)!.inviteFriends
-                    : AppLocalizations.of(context)!.invited(selectedContacts.length)),
-                onPressed: () {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    builder: (context) => ContactPicker(
-                      initialSelectedIds: selectedContacts.map((c) => c['id'] as String).toList(),
-                      onSelectionChanged: (selected) {
-                        setState(() {
-                          selectedContacts = selected;
-                        });
-                      },
-                    ),
-                  );
-                },
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size(double.infinity, 50),
                 ),
               ),
             ],
