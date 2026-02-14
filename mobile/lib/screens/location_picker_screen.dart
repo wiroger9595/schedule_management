@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../i18n/app_localizations.dart';
+import '../services/api_service.dart';
 
 class LocationPickerScreen extends StatefulWidget {
   final double? initialLat;
@@ -17,6 +18,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   GoogleMapController? _controller;
   LatLng? _pickedLocation;
   Set<Marker> _markers = {};
+  String? _pickedPlaceName;
+  final ApiService _apiService = ApiService();
 
   @override
   void initState() {
@@ -60,12 +63,51 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
-  void _onMapTapped(LatLng position) {
+  void _onMapTapped(LatLng position) async {
     setState(() {
       _pickedLocation = position;
+      _pickedPlaceName = null; // Reset
       _markers.clear();
       _markers.add(Marker(markerId: MarkerId('picked'), position: position));
     });
+
+    // Try to find a nearby POI
+    try {
+      final places = await _apiService.getNearbyPlaces(position.latitude, position.longitude);
+      if (places.isNotEmpty && mounted) {
+        // Sort by distance is handled by backend, so first is closest
+        final closest = places.first;
+        // Check if it's close enough to be considered a "click" on it. 
+        // Backend returns distance in meters.
+        // Let's say if within 50 meters, we suggest it.
+        final distance = closest['distance'] as num;
+        if (distance < 50) {
+            final name = closest['name'];
+            setState(() {
+              _pickedPlaceName = name;
+              _markers.add(
+                Marker(
+                  markerId: MarkerId('picked'),
+                  position: position,
+                  infoWindow: InfoWindow(title: name, snippet: 'Tap check to select'),
+                ),
+              );
+            });
+            _controller?.showMarkerInfoWindow(MarkerId('picked'));
+            
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+               SnackBar(
+                 content: Text('Selected: $name'),
+                 duration: Duration(seconds: 2),
+               ),
+            );
+        }
+      }
+    } catch (e) {
+      // Ignore errors for silent background check
+      print("Error fetching nearby POI on tap: $e");
+    }
   }
 
   void _confirmSelection() {
@@ -73,6 +115,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       Navigator.pop(context, {
         "latitude": _pickedLocation!.latitude,
         "longitude": _pickedLocation!.longitude,
+        "name": _pickedPlaceName,
       });
     }
   }
@@ -102,6 +145,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
             onMapCreated: (controller) => _controller = controller,
             onTap: _onMapTapped,
+            // onPoiClick removed as it is not supported in this version
             markers: _markers,
             myLocationEnabled: true,
             myLocationButtonEnabled: true,
@@ -119,7 +163,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   foregroundColor: Colors.white,
                 ),
                 child: Text(
-                  AppLocalizations.of(context)!.confirm ?? 'Confirm Location',
+                  _pickedPlaceName != null 
+                      ? 'Confirm: $_pickedPlaceName' 
+                      : (AppLocalizations.of(context)!.confirm ?? 'Confirm Location'),
                   style: TextStyle(fontSize: 18),
                 ),
               ),

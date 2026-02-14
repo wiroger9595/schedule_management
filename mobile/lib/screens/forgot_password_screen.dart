@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../utils/form_validators.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   @override
@@ -97,8 +98,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value == null || value.isEmpty) return '請輸入電子郵件';
-                    if (!value.contains('@')) return '請輸入有效的電子郵件';
-                    return null;
+                    return FormValidators.validateEmail(value);
                   },
                 ),
                 SizedBox(height: 32),

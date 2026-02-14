@@ -138,6 +138,34 @@ class ApiService {
     }
   }
 
+  Future<String> reverseGeocode(double lat, double lon) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/estimate/reverse?lat=$lat&lon=$lon'),
+      headers: await getHeaders(),
+    );
+    
+    if (response.statusCode == 200) {
+      final body = jsonDecode(response.body);
+      return body['address'];
+    } else {
+      throw Exception('Failed to reverse geocode');
+    }
+  }
+
+  Future<List<Schedule>> getContactScheduleHistory(int contactId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/contacts/$contactId/schedules'),
+      headers: await getHeaders(),
+    );
+    
+    if (response.statusCode == 200) {
+      List<dynamic> body = jsonDecode(response.body);
+      return body.map((dynamic item) => Schedule.fromJson(item)).toList();
+    } else {
+      throw Exception('Failed to load contact history');
+    }
+  }
+
   Future<void> forgotPassword(String email) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/forgot-password'),
@@ -165,6 +193,20 @@ class ApiService {
     if (response.statusCode != 200) {
       final error = jsonDecode(response.body);
       throw Exception(error['detail'] ?? 'Failed to reset password');
+    }
+  }
+  Future<List<Map<String, dynamic>>> getNearbyPlaces(double lat, double lon) async {
+    final headers = await getHeaders();
+    final response = await http.get(
+      Uri.parse('$baseUrl/estimate/nearby?lat=$lat&lon=$lon&radius=300'),
+      headers: headers,
+    );
+    
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Failed to load nearby places');
     }
   }
 }

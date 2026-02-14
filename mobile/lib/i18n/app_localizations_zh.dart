@@ -233,4 +233,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get selectLocation => '選擇位置';
+
+  @override
+  String get statusComingSoon => '即將開始';
+
+  @override
+  String get pleaseEnterFutureTime => '請選擇未來的時間';
+
+  @override
+  String get endTime => '結束時間';
+
+  @override
+  String get notSet => '未設定';
+
+  @override
+  String get endTimeMustBeAfterStartTime => '結束時間必須晚於開始時間';
 }

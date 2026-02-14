@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../utils/form_validators.dart';
+import 'contact_history_screen.dart';
 
 class ContactListScreen extends StatefulWidget {
   @override
@@ -14,6 +17,56 @@ class _ContactListScreenState extends State<ContactListScreen> {
   bool isLoading = true;
   bool isSelectionMode = false;
   Set<int> selectedContactIds = {};
+
+  Future<void> _inviteFriend(String contactInfo) async {
+    final String inviteSubject = 'Join me on Schedule Management App!';
+    final String inviteBody = 'Hey! I use this app to manage my schedules. Join me here: https://example.com/download';
+
+    Uri? launchUri;
+    
+    // Simple check for email
+    if (contactInfo.contains('@')) {
+      final Uri emailLaunchUri = Uri(
+        scheme: 'mailto',
+        path: contactInfo,
+        query: encodeQueryParameters(<String, String>{
+          'subject': inviteSubject,
+          'body': inviteBody,
+        }),
+      );
+      launchUri = emailLaunchUri;
+    } else {
+      // Assume phone for SMS
+      final Uri smsLaunchUri = Uri(
+        scheme: 'sms',
+        path: contactInfo,
+        queryParameters: <String, String>{
+          'body': inviteBody,
+        },
+      );
+      launchUri = smsLaunchUri;
+    }
+
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri);
+      } else {
+        throw 'Could not launch $launchUri';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not launch invite: $e')),
+        );
+      }
+    }
+  }
+
+  String? encodeQueryParameters(Map<String, String> params) {
+    return params.entries
+        .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+  }
 
   @override
   void initState() {
@@ -31,6 +84,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
       );
 
       if (response.statusCode == 200) {
+        if (!mounted) return;
         setState(() {
           contacts = jsonDecode(response.body);
           isLoading = false;
@@ -39,6 +93,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
         throw Exception('Failed to load contacts');
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => isLoading = false);
       ScaffoldMessenger.of(
         context,
@@ -70,11 +125,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
       );
 
       if (response.statusCode == 200) {
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Contact added successfully')));
         fetchContacts(); // Refresh list
       } else {
+        if (!mounted) return;
         final error = jsonDecode(response.body)['detail'];
         ScaffoldMessenger.of(
           context,
@@ -110,11 +167,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
       );
 
       if (response.statusCode == 200) {
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Contact updated successfully')));
         fetchContacts(); // Refresh list
       } else {
+        if (!mounted) return;
         final error = jsonDecode(response.body)['detail'];
         ScaffoldMessenger.of(
           context,
@@ -133,33 +192,62 @@ class _ContactListScreenState extends State<ContactListScreen> {
     final emailController = TextEditingController(text: contact['email']);
     final lineIdController = TextEditingController(text: contact['line_id']);
 
+    final formKey = GlobalKey<FormState>();
+
+    // Helper for cross-field validation
+    String? validateContactMethod(String? value) {
+      if (phoneController.text.trim().isEmpty &&
+          emailController.text.trim().isEmpty &&
+          lineIdController.text.trim().isEmpty) {
+        return '請至少填寫一項';
+      }
+      return null;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('編輯聯絡人'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(labelText: '姓名/暱稱'),
-              ),
-              TextField(
-                controller: phoneController,
-                decoration: InputDecoration(labelText: '電話'),
-                keyboardType: TextInputType.phone,
-              ),
-              TextField(
-                controller: emailController,
-                decoration: InputDecoration(labelText: 'Email (選填)'),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              TextField(
-                controller: lineIdController,
-                decoration: InputDecoration(labelText: 'Line ID (選填)'),
-              ),
-            ],
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: InputDecoration(labelText: '姓名/暱稱 *'),
+                  validator: (v) => v?.trim().isEmpty == true ? '請輸入姓名' : null,
+                ),
+                SizedBox(height: 24),
+                TextFormField(
+                  controller: phoneController,
+                  decoration: InputDecoration(labelText: '電話'),
+                  keyboardType: TextInputType.phone,
+                  validator: validateContactMethod,
+                  onChanged: (_) => setState((){}),
+                ),
+                SizedBox(height: 24),
+                TextFormField(
+                  controller: emailController,
+                  decoration: InputDecoration(labelText: 'Email (選填)'),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) {
+                    final emailError = FormValidators.validateEmail(v);
+                    if (emailError != null) return emailError;
+                    return validateContactMethod(v);
+                  },
+                  onChanged: (_) => setState((){}),
+                ),
+                SizedBox(height: 24),
+                TextFormField(
+                  controller: lineIdController,
+                  decoration: InputDecoration(labelText: 'Line ID (選填)'),
+                  validator: validateContactMethod,
+                  onChanged: (_) => setState((){}),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -169,8 +257,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (nameController.text.isNotEmpty ||
-                  phoneController.text.isNotEmpty) {
+              if (formKey.currentState!.validate()) {
                 updateContact(
                   contact['id'].toString(),
                   nameController.text.trim(),
@@ -179,10 +266,6 @@ class _ContactListScreenState extends State<ContactListScreen> {
                   lineIdController.text.trim(),
                 );
                 Navigator.pop(context);
-              } else {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('請至少輸入姓名或電話')));
               }
             },
             child: Text('儲存'),
@@ -211,6 +294,17 @@ class _ContactListScreenState extends State<ContactListScreen> {
             builder: (context, setState) {
               List<dynamic> searchResults = [];
               bool isSearching = false;
+              final formKey = GlobalKey<FormState>();
+
+              // Helper for cross-field validation (reused logic)
+              String? validateContactMethod(String? value) {
+                if (phoneController.text.trim().isEmpty &&
+                    emailController.text.trim().isEmpty &&
+                    lineIdController.text.trim().isEmpty) {
+                  return '請至少填寫一項';
+                }
+                return null;
+              }
 
               Future<void> performSearch() async {
                 if (searchController.text.isEmpty) return;
@@ -220,11 +314,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
                   final results = await apiService.searchUsers(
                     searchController.text,
                   );
+                  if (!context.mounted) return;
                   setState(() {
                     searchResults = results;
                     isSearching = false;
                   });
                 } catch (e) {
+                  if (!context.mounted) return;
                   setState(() => isSearching = false);
                   ScaffoldMessenger.of(
                     context,
@@ -253,35 +349,52 @@ class _ContactListScreenState extends State<ContactListScreen> {
                           children: [
                             // Manual Tab
                             SingleChildScrollView(
-                              child: Column(
-                                children: [
-                                  TextField(
-                                    controller: nameController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Name/Nickname',
+                              child: Form(
+                                key: formKey, // Define this key above inside builder or StatefulBuilder
+                                child: Column(
+                                  children: [
+                                    TextFormField(
+                                      controller: nameController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Name/Nickname *',
+                                      ),
+                                      validator: (v) => v?.trim().isEmpty == true ? '請輸入姓名' : null,
                                     ),
-                                  ),
-                                  TextField(
-                                    controller: phoneController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Phone',
+                                    SizedBox(height: 24),
+                                    TextFormField(
+                                      controller: phoneController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Phone',
+                                      ),
+                                      keyboardType: TextInputType.phone,
+                                      validator: validateContactMethod,
+                                      onChanged: (_) => setState((){}),
                                     ),
-                                    keyboardType: TextInputType.phone,
-                                  ),
-                                  TextField(
-                                    controller: emailController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Email (Optional)',
+                                    SizedBox(height: 24),
+                                    TextFormField(
+                                      controller: emailController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Email (Optional)',
+                                      ),
+                                      keyboardType: TextInputType.emailAddress,
+                                      validator: (v) {
+                                        final emailError = FormValidators.validateEmail(v);
+                                        if (emailError != null) return emailError;
+                                        return validateContactMethod(v);
+                                      },
+                                      onChanged: (_) => setState((){}),
                                     ),
-                                    keyboardType: TextInputType.emailAddress,
-                                  ),
-                                  TextField(
-                                    controller: lineIdController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Line ID (Optional)',
+                                    SizedBox(height: 24),
+                                    TextFormField(
+                                      controller: lineIdController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Line ID (Optional)',
+                                      ),
+                                      validator: validateContactMethod,
+                                      onChanged: (_) => setState((){}),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
 
@@ -303,17 +416,37 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                         onSubmitted: (_) => performSearch(),
                                       ),
                                     ),
-                                  ],
-                                ),
-                                SizedBox(height: 10),
-                                Expanded(
-                                  child: isSearching
-                                      ? Center(
-                                          child: CircularProgressIndicator(),
-                                        )
-                                      : searchResults.isEmpty
-                                      ? Center(child: Text('No users found'))
-                                      : ListView.builder(
+                                    ],
+                                  ),
+                                  SizedBox(height: 10),
+                                  Expanded(
+                                child: isSearching
+                                    ? Center(
+                                        child: CircularProgressIndicator(),
+                                      )
+                                    : searchResults.isEmpty
+                                    ? Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text('No users found'),
+                                          if (searchController.text.isNotEmpty) ...[
+                                            SizedBox(height: 16),
+                                            ElevatedButton.icon(
+                                              icon: Icon(Icons.share),
+                                              label: Text('Invite "${searchController.text}" to App'),
+                                              onPressed: () => _inviteFriend(searchController.text),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Text(
+                                                'Send an invitation via Email or SMS',
+                                                style: TextStyle(color: Colors.grey, fontSize: 12),
+                                              ),
+                                            ),
+                                          ]
+                                        ],
+                                      )
+                                    : ListView.builder(
                                           shrinkWrap: true,
                                           itemCount: searchResults.length,
                                           itemBuilder: (context, index) {
@@ -391,26 +524,42 @@ class _ContactListScreenState extends State<ContactListScreen> {
                   ),
                   ElevatedButton(
                     onPressed: () {
-                      if (nameController.text.isNotEmpty ||
-                          phoneController.text.isNotEmpty) {
-                        // TODO: Update addContact to accept contact_user_id if needed
-                        addContact(
-                          nameController.text.trim(),
-                          phoneController.text.trim(),
-                          emailController.text.trim(),
-                          lineIdController.text.trim(),
-                          contactUserId: selectedContactUserId,
-                        );
-                        Navigator.pop(context);
+                      // If form is mounted (Manual tab), validate it
+                      if (formKey.currentState != null) {
+                         if (formKey.currentState!.validate()) {
+                            // Proceed
+                         } else {
+                            return; // Show errors
+                         }
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Please enter at least Name or Phone',
-                            ),
-                          ),
-                        );
+                        // We are likely on Search tab or elsewhere.
+                        // Check controllers manually.
+                        if (nameController.text.trim().isEmpty) {
+                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter a name')));
+                           // Ideally switch to tab 0 here, but we need TabController
+                           DefaultTabController.of(context).animateTo(0);
+                           return;
+                        }
+                        // Check at least one
+                         if (phoneController.text.trim().isEmpty &&
+                              emailController.text.trim().isEmpty &&
+                              lineIdController.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('請至少填寫一項聯絡方式')));
+                             DefaultTabController.of(context).animateTo(0);
+                            return;
+                        }
                       }
+                      
+                      // ... Proceed to add contact ...
+                      
+                      addContact(
+                        nameController.text.trim(),
+                        phoneController.text.trim(),
+                        emailController.text.trim(),
+                        lineIdController.text.trim(),
+                        contactUserId: selectedContactUserId,
+                      );
+                      Navigator.pop(context);
                     },
                     child: Text('Add'),
                   ),
@@ -481,6 +630,8 @@ class _ContactListScreenState extends State<ContactListScreen> {
 
         // CHeck if all successful (or handled individually).
         // For simplicity, if any fail, we might want to know, but we'll refresh regardless.
+        if (!mounted) return;
+        
         bool allSuccess = responses.every(
           (r) => r.statusCode == 200 || r.statusCode == 204,
         );
@@ -501,6 +652,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
         });
         fetchContacts();
       } catch (e) {
+        if (!mounted) return;
         setState(() => isLoading = false);
         ScaffoldMessenger.of(
           context,
@@ -523,6 +675,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
         throw Exception('Failed to delete');
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error removing contact')));
@@ -582,6 +735,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
                   onTap: () {
                     if (isSelectionMode) {
                       _toggleContactSelection(id);
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ContactHistoryScreen(contact: contact),
+                        ),
+                      );
                     }
                   },
                   leading: isSelectionMode
@@ -592,12 +752,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
                           },
                         )
                       : CircleAvatar(
-                          child: Text(
-                            contact['nick_name'] != null &&
-                                    contact['nick_name'].isNotEmpty
-                                ? contact['nick_name'][0]
-                                : '?',
-                          ),
+                          backgroundImage: contact['profile_image_path'] != null
+                              ? NetworkImage(contact['profile_image_path'])
+                              : null,
+                          backgroundColor: Colors.grey[200],
+                          child: contact['profile_image_path'] == null
+                              ? Icon(Icons.person, color: Colors.grey[500])
+                              : null,
                         ),
                   title: Text(contact['nick_name'] ?? 'Unknown'),
                   subtitle: Column(

@@ -541,6 +541,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select Location'**
   String get selectLocation;
+
+  /// No description provided for @statusComingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming Soon'**
+  String get statusComingSoon;
+
+  /// No description provided for @pleaseEnterFutureTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a future time'**
+  String get pleaseEnterFutureTime;
+
+  /// No description provided for @endTime.
+  ///
+  /// In en, this message translates to:
+  /// **'End Time'**
+  String get endTime;
+
+  /// No description provided for @notSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not Set'**
+  String get notSet;
+
+  /// No description provided for @endTimeMustBeAfterStartTime.
+  ///
+  /// In en, this message translates to:
+  /// **'End Time must be after Start Time'**
+  String get endTimeMustBeAfterStartTime;
 }
 
 class _AppLocalizationsDelegate

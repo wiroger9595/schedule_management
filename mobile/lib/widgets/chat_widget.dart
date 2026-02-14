@@ -46,7 +46,7 @@ class _ChatWidgetState extends State<ChatWidget> {
       // Success
       if (mounted) {
         setState(() {
-          _messages.add(ChatMessage(text: data['ai_response'], isUser: false));
+          _messages.add(ChatMessage(text: data['ai_reply'] ?? '', isUser: false));
           _isLoading = false;
         });
         widget.onScheduleCreated(); // 重新載入行程列表

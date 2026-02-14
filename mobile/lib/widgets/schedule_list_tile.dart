@@ -39,7 +39,9 @@ class ScheduleListTile extends StatelessWidget {
                 Icon(Icons.access_time, size: 16, color: Colors.grey),
                 SizedBox(width: 8),
                 Text(
-                  DateFormat('yyyy-MM-dd HH:mm').format(schedule.startTime),
+                  schedule.endTime != null
+                      ? '${DateFormat('yyyy-MM-dd HH:mm').format(schedule.startTime)} - ${DateFormat('HH:mm').format(schedule.endTime!)}'
+                      : DateFormat('yyyy-MM-dd HH:mm').format(schedule.startTime),
                 ),
               ],
             ),
@@ -126,6 +128,8 @@ class ScheduleListTile extends StatelessWidget {
         return const Color.fromARGB(255, 189, 203, 131);
       case ScheduleStatus.cancel:
         return Colors.red;
+      case ScheduleStatus.comingSoon:
+        return Colors.amber[800]!;
       default:
         return Colors.grey;
     }
@@ -145,6 +149,8 @@ class ScheduleListTile extends StatelessWidget {
         return AppLocalizations.of(context)!.statusNotGoing;
       case ScheduleStatus.cancel:
         return AppLocalizations.of(context)!.statusCancelled;
+      case ScheduleStatus.comingSoon:
+        return AppLocalizations.of(context)!.statusComingSoon;
       default:
         return status;
     }

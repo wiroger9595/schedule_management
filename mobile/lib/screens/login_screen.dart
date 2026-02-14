@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/form_validators.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -74,7 +75,10 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 TextFormField(
                   decoration: InputDecoration(labelText: '電子郵件', border: OutlineInputBorder()),
-                  validator: (value) => value!.isEmpty ? '請輸入電子郵件' : null,
+                  validator: (value) {
+                      if (value == null || value.isEmpty) return '請輸入電子郵件';
+                      return FormValidators.validateEmail(value);
+                  },
                   onSaved: (value) => email = value!,
                 ),
                 SizedBox(height: 16),

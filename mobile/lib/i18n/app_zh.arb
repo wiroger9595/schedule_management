@@ -72,5 +72,10 @@
   "minutes": "分",
   "seconds": "秒",
   "notConnected": "未接通",
-  "selectLocation": "選擇位置"
+  "selectLocation": "選擇位置",
+  "statusComingSoon": "即將開始",
+  "pleaseEnterFutureTime": "請選擇未來的時間",
+  "endTime": "結束時間",
+  "notSet": "未設定",
+  "endTimeMustBeAfterStartTime": "結束時間必須晚於開始時間"
 }

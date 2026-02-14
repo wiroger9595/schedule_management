@@ -8,6 +8,8 @@ import '../services/api_service.dart';
 import '../i18n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/form_validators.dart';
+import '../widgets/user_avatar.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -164,26 +166,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             Center(
               child: Stack(
                 children: [
-                  CircleAvatar(
+                  UserAvatar(
                     radius: 60,
-                    backgroundImage: _imageFile != null
-                        ? FileImage(_imageFile!)
-                        : (widget.user['profile_image_path'] != null
-                                  ? NetworkImage(
-                                      widget.user['profile_image_path'],
-                                    )
-                                  : null)
-                              as ImageProvider?,
-                    backgroundColor: Colors.purple[100],
-                    child:
-                        _imageFile == null &&
-                            widget.user['profile_image_path'] == null
-                        ? Icon(
-                            Icons.person,
-                            size: 60,
-                            color: Colors.purple[700],
-                          )
-                        : null,
+                    imageFile: _imageFile,
+                    imageUrl: widget.user['profile_image_path'],
                   ),
                   Positioned(
                     bottom: 0,
@@ -247,9 +233,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.phone,
-              validator: (value) => value?.isEmpty ?? true
-                  ? '${AppLocalizations.of(context)!.phone} is required'
-                  : null,
+              validator: (value) {
+                final requiredError = FormValidators.validateRequired(value, AppLocalizations.of(context)!.phone);
+                if (requiredError != null) return requiredError;
+                
+                return FormValidators.validatePhone(value, required: true);
+              },
             ),
             SizedBox(height: 16),
 

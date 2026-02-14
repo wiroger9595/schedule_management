@@ -29,6 +29,7 @@ class Schedule(SQLModel, table=True):
     # To avoid breaking app fully right now, I will use meeting_time but add a property or alias?
     # Actually I should use the schema names.
     meeting_time: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    meeting_end_time: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     
     # meeting_location VARCHAR(255) NULL
     meeting_location: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
@@ -57,19 +58,9 @@ class Schedule(SQLModel, table=True):
     )
 
     # --- Extra fields for App Functionality (not in requested schema but needed) ---
-    # The user said "My table needs to be reconfigurable", "Here is the schema".
-    # If I drop title/description, the app BREAKS.
-    # I will add them as columns but make them nullable, or user meant "These are the CORE fields".
-    # I will keep title/description/transport_mode/type/attends for now to keep app working.
-    # But user might want strict adherence. 
-    # Logic: "Don't use id reference".
-    # I will ADD title and description.
     
     title: str = Field(default="No Title")
     description: Optional[str] = None
-    
-    # start_time is usually datetime in backend logic. meeting_time is VARCHAR.
-    # I will sync them.
     
     transport_mode: Optional[str] = None
     type: Optional[str] = None # meeting/personal
@@ -108,6 +99,16 @@ class Schedule(SQLModel, table=True):
     @start_time.setter
     def start_time(self, value: datetime):
         self.meeting_time = value.isoformat()
+
+    @property
+    def end_time(self) -> Optional[datetime]:
+        if self.meeting_end_time:
+            return datetime.fromisoformat(self.meeting_end_time)
+        return None
+        
+    @end_time.setter
+    def end_time(self, value: Optional[datetime]):
+        self.meeting_end_time = value.isoformat() if value else None
     
     @property
     def location(self) -> Optional[str]:
@@ -124,19 +125,16 @@ class Schedule(SQLModel, table=True):
         data = super().dict(*args, **kwargs)
         # Add computed properties that the frontend expects
         data['start_time'] = self.start_time.isoformat() if hasattr(self, 'meeting_time') and self.meeting_time else None
+        data['end_time'] = self.end_time.isoformat() if hasattr(self, 'meeting_end_time') and self.meeting_end_time else None
         data['location'] = self.meeting_location
         data['latitude'] = self.latitude
         data['longitude'] = self.longitude
         data['id'] = self.schedule_id  # Frontend expects 'id' to be the schedule_id
         
         # Serialize attends
-        # We need to be careful about lazy loading. 
-        # Trying to access self.attend_records might fail if session is gone.
-        # But usually in Pydantic/FastAPI flow, we are inside a route with session.
         try:
             data['attends'] = [a.dict() for a in self.attend_records]
         except Exception as e:
-            # print(f"Warning: Could not load attends: {e}")
             data['attends'] = []
             
         # Serialize contact info from relationship if available

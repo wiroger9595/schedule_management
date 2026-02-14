@@ -6,6 +6,7 @@ import '../screens/call_log_screen.dart';
 import '../screens/calendar_screen.dart';
 import '../screens/contact_list_screen.dart';
 import '../i18n/app_localizations.dart';
+import 'user_avatar.dart';
 
 /// Reusable app drawer widget extracted from HomeScreen.
 /// Displays user profile header and navigation menu items.
@@ -42,19 +43,9 @@ class AppDrawer extends StatelessWidget {
                             auth.fetchUserProfile();
                           }
                         },
-                        child: CircleAvatar(
+                        child: UserAvatar(
                           radius: 35,
-                          backgroundImage: user['profile_image_path'] != null
-                              ? NetworkImage(user['profile_image_path'])
-                              : null,
-                          backgroundColor: Colors.white,
-                          child: user['profile_image_path'] == null
-                              ? Icon(
-                                  Icons.person,
-                                  size: 40,
-                                  color: Colors.purple[700],
-                                )
-                              : null,
+                          imageUrl: user['profile_image_path'],
                         ),
                       ),
                       SizedBox(width: 16),
@@ -76,7 +67,7 @@ class AppDrawer extends StatelessWidget {
                             ),
                             SizedBox(height: 4),
                             Text(
-                              user['account_number'] ?? '',
+                              user['user_id'] ?? '',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontSize: 14,

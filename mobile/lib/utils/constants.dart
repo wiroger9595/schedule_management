@@ -5,4 +5,5 @@ class ScheduleStatus {
   static const String notGoing = 'NG';
   static const String notAttended = 'NA';
   static const String cancel = 'CL';
+  static const String comingSoon = 'CS';
 }

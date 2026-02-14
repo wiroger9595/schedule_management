@@ -107,5 +107,123 @@ class GeminiService:
             msg += f"🔔 已設定提醒\n"
         
         return msg
+    
+    
+    
+    def process_conversation(self, user_message: str, current_context: dict = None) -> dict:
+        """
+        處理對話，判斷資訊是否完整，並回傳更新後的狀態與回應。
+        支持多輪對話，當資訊不足時會詢問用戶。
+        """
+        if current_context is None:
+            current_context = {}
+        
+        # 取得今天日期供 AI 參考
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d %A")
+        
+        # 定義 Prompt，教 AI 如何當一個秘書
+        prompt = f"""你是一個專業的行程管理助理。你的目標是從對話中收集建立行程所需的資訊。
+
+【必要資訊】：
+1. title (做什麼事/標題) - 例如：打棒球、開會、吃飯
+2. start_time (什麼時候，格式 YYYY-MM-DD HH:MM:SS) - 例如：2026-02-17 10:00:00
+3. location (在哪裡) - 例如：河濱公園、信義區、台北101
+
+【非必要資訊】：
+4. participants (跟誰，以 list 格式) - 例如：["阿明", "阿甘", "小新"]
+
+【今天日期】：{today_str}
+
+【目前已知資訊 (JSON)】：
+{json.dumps(current_context, ensure_ascii=False, indent=2)}
+
+【使用者最新輸入】：
+"{user_message}"
+
+【任務】：
+1. 將「使用者最新輸入」與「目前已知資訊」合併更新
+2. 時間處理：
+   - 如果用戶說「下星期一」、「明天」，請計算實際日期
+   - 如果只說時間（早上10點）沒說日期，如果已有日期就用已知日期，否則假設是今天
+3. 如果使用者修改了之前的資訊（例如改時間、改地點），請覆蓋舊資訊
+4. 檢查「必要資訊」是否都齊全
+5. 如果不齊全：
+   - reply 中用親切的語氣詢問缺少的資訊
+   - 一次最多問 1-2 個最重要的缺少項目
+   - 例如：「請問哪一天，什麼時間？」或「請問在哪裡？」
+6. 如果齊全：
+   - reply 請回傳確認訊息，格式如下：
+     「已確認行程：
+     目的：[title]
+     時間：[start_time 的人類易讀格式，例如 2月17日 星期一 早上10:00]
+     地點：[location]
+     人員：[participants 用逗號分隔，如果沒有就不顯示此行]」
+
+請回傳純 JSON 格式，不要用 Markdown 包裝，格式如下：
+{{
+    "updated_data": {{
+        "title": "打棒球",
+        "start_time": "2026-02-17 10:00:00",
+        "location": "河濱公園",
+        "participants": ["阿明", "阿甘", "小新"]
+    }},
+    "missing_fields": [],  // 缺少的欄位名稱清單，例如 ["location", "start_time"]
+    "is_complete": true,   // 是否所有必要資訊都有了
+    "reply": "已確認行程：\\n目的：打棒球\\n時間：2月17日 星期一 早上10:00\\n地點：河濱公園\\n人員：阿明, 阿甘, 小新"
+}}
+"""
+
+        try:
+            # 呼叫 Gemini API
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
+            
+            # 清理回應中的 ```json 等標記
+            clean_text = response.text.strip()
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:-3].strip()
+            elif clean_text.startswith("```"):
+                clean_text = clean_text[3:-3].strip()
+            
+            result = json.loads(clean_text)
+            
+            # 確保回傳格式正確
+            if "updated_data" not in result:
+                result["updated_data"] = current_context
+            if "missing_fields" not in result:
+                result["missing_fields"] = []
+            if "is_complete" not in result:
+                result["is_complete"] = False
+            if "reply" not in result:
+                result["reply"] = "我不太確定，可以再說一次嗎？"
+                
+            return result
+            
+        except json.JSONDecodeError as e:
+            print(f"JSON Parse Error: {e}")
+            print(f"Response text: {response.text if 'response' in locals() else 'No response'}")
+            # JSON 解析失敗的 fallback
+            return {
+                "updated_data": current_context,
+                "missing_fields": [],
+                "is_complete": False,
+                "reply": "抱歉，我沒有理解清楚。請問您想要安排什麼行程？（至少需要標題、時間和地點）"
+            }
+        except Exception as e:
+            print(f"Gemini Error: {e}")
+            if hasattr(e, 'response') and e.response:
+                print(f"API Response: {e.response}")
+            # 發生錯誤時的 fallback
+            return {
+                "updated_data": current_context,
+                "missing_fields": [],
+                "is_complete": False,
+                "reply": "抱歉，系統暫時無法處理。請稍後再試，或直接提供完整資訊（做什麼、什麼時候、在哪裡）。"
+            }
+
+    
 
 gemini_service = GeminiService()

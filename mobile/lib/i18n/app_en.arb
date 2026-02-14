@@ -72,5 +72,10 @@
   "minutes": "mins",
   "seconds": "secs",
   "notConnected": "Not connected",
-  "selectLocation": "Select Location"
+  "selectLocation": "Select Location",
+  "statusComingSoon": "Coming Soon",
+  "pleaseEnterFutureTime": "Please enter a future time",
+  "endTime": "End Time",
+  "notSet": "Not Set",
+  "endTimeMustBeAfterStartTime": "End Time must be after Start Time"
 }

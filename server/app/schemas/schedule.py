@@ -16,6 +16,7 @@ class ScheduleCreate(BaseModel):
     description: Optional[str] = None
     meeting_time: Optional[str] = None
     start_time: Optional[str] = None
+    end_time: Optional[str] = None
     meeting_location: Optional[str] = None
     location: Optional[str] = None
     transport_mode: Optional[str] = None
@@ -36,6 +37,7 @@ class ScheduleUpdate(BaseModel):
     description: Optional[str] = None
     meeting_time: Optional[str] = None
     start_time: Optional[str] = None
+    end_time: Optional[str] = None
     meeting_location: Optional[str] = None
     location: Optional[str] = None
     transport_mode: Optional[str] = None
@@ -47,7 +49,9 @@ class ScheduleUpdate(BaseModel):
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
     contact_line_id: Optional[str] = None
+    contact_line_id: Optional[str] = None
     attends: Optional[List[AttendCreate]] = None
+    status: Optional[str] = None
 
 
 class StatusUpdate(BaseModel):
@@ -57,3 +61,16 @@ class StatusUpdate(BaseModel):
 
 class ChatMessage(BaseModel):
     message: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    current_data: Optional[dict] = None
+
+
+class ChatResponse(BaseModel):
+    ai_reply: str
+    updated_data: dict
+    is_complete: bool
+    schedule: Optional[dict] = None
+

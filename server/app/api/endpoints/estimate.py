@@ -38,3 +38,25 @@ def get_all_travel_estimates(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/reverse")
+def reverse_geocode(lat: float, lon: float):
+    try:
+        address = OSMnxService.reverse_geocode(lat, lon)
+        if not address:
+            raise HTTPException(status_code=404, detail="Address not found")
+        return {"address": address}
+    except HTTPException:
+        raise 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/nearby")
+def get_nearby_pois(lat: float, lon: float, radius: int = 300):
+    """Get nearby places of interest"""
+    try:
+        pois = OSMnxService.get_nearby_pois(lat, lon, radius)
+        return pois
+    except Exception as e:
+        print(f"Error in nearby endpoint: {e}")
+        return []

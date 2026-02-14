@@ -10,8 +10,14 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_completion_screen.dart';
 
-void main() {
+import 'services/notification_service.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Notifications
+  await NotificationService().init();
+  
   runApp(
     MultiProvider(
       providers: [

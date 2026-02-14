@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../utils/form_validators.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override
@@ -13,9 +14,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String email = '';
   String password = '';
   String fullName = '';
+  String? _emailError;
   bool isLoading = false;
 
-  void _register() async {
+  Future<void> _register() async {
+    setState(() => _emailError = null); // Reset error
+    
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       setState(() => isLoading = true);
@@ -27,14 +31,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
           );
           Navigator.pop(context);
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('註冊失敗，該信箱可能已被使用')),
-          );
+             // Basic registration failed
+             setState(() {
+                 _emailError = '註冊失敗，該信箱可能已被使用';
+             });
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('連線錯誤: $e')),
-        );
+          // Check if error message contains "already registered" keywords if possible,
+          // but usually the service just returns false or throws.
+          // For now, if it throws, we might still want to show snackbar for network errors,
+          // but if it's a 400 from API for duplicate email, AuthService might throw.
+          // Let's assume generic error for now, but prioritize email error if likely.
+          if (e.toString().contains("400") || e.toString().contains("registered")) {
+               setState(() {
+                 _emailError = '該信箱已被註冊';
+               });
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('註冊錯誤: $e')),
+            );
+          }
       } finally {
         setState(() => isLoading = false);
       }
@@ -56,9 +72,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 onSaved: (value) => fullName = value ?? '',
               ),
               SizedBox(height: 16),
+              SizedBox(height: 16),
               TextFormField(
-                decoration: InputDecoration(labelText: '電子郵件', border: OutlineInputBorder()),
-                validator: (value) => value!.isEmpty ? '請輸入電子郵件' : null,
+                decoration: InputDecoration(
+                    labelText: '電子郵件', 
+                    border: OutlineInputBorder(),
+                    errorText: _emailError, // Field-level error
+                ),
+                validator: (value) {
+                    if (value == null || value.isEmpty) return '請輸入電子郵件';
+                    return FormValidators.validateEmail(value);
+                },
+                onChanged: (_) {
+                    if (_emailError != null) {
+                        setState(() => _emailError = null); // Clear error on edit
+                    }
+                },
                 onSaved: (value) => email = value!,
               ),
               SizedBox(height: 16),

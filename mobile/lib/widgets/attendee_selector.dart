@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/api_service.dart';
+import '../utils/form_validators.dart';
 
 class AttendeeSelector extends StatefulWidget {
   final List<dynamic> initialSelectedContacts;
@@ -33,6 +34,15 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _lineIdController = TextEditingController();
   bool _isCreating = false;
+
+  String? _validateContactMethod(String? value) {
+    if (_phoneController.text.trim().isEmpty &&
+        _emailController.text.trim().isEmpty &&
+        _lineIdController.text.trim().isEmpty) {
+      return '請至少填寫一項';
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -94,13 +104,9 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
   Future<void> _createContact() async {
     if (!_formKey.currentState!.validate()) return;
     
-    // Validate at least one contact method
-    if (_phoneController.text.isEmpty && _emailController.text.isEmpty && _lineIdController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('請至少輸入電話、Email 或 Line ID 其中一項')),
-      );
-      return;
-    }
+    // Validation is now handled by the Form fields directly
+    // Force validation to show errors if fields are empty
+    // if (!_formKey.currentState!.validate()) return; is already at the top
 
     setState(() => _isCreating = true);
 
@@ -251,9 +257,13 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
 
         return ListTile(
           leading: CircleAvatar(
-            child: Text(
-              (contact['nick_name'] ?? contact['name'] ?? '?')[0].toUpperCase(),
-            ),
+            backgroundImage: contact['profile_image_path'] != null
+                ? NetworkImage(contact['profile_image_path'])
+                : null,
+            backgroundColor: Colors.grey[200],
+            child: contact['profile_image_path'] == null
+                ? Icon(Icons.person, color: Colors.grey[500])
+                : null,
           ),
           title: Text(contact['nick_name'] ?? contact['name'] ?? 'Unknown'),
           subtitle: Text(contact['phone'] ?? contact['email'] ?? ''),
@@ -292,6 +302,8 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.phone,
+              validator: _validateContactMethod,
+              onChanged: (_) => setState(() {}), // Trigger rebuild to update other fields' validation state logic if needed
             ),
             SizedBox(height: 16),
             TextFormField(
@@ -302,6 +314,12 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.emailAddress,
+              validator: (value) {
+                 final emailError = FormValidators.validateEmail(value);
+                 if (emailError != null) return emailError;
+                 return _validateContactMethod(value);
+              },
+              onChanged: (_) => setState(() {}),
             ),
             SizedBox(height: 16),
             TextFormField(
@@ -311,6 +329,8 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
                 prefixIcon: Icon(Icons.chat),
                 border: OutlineInputBorder(),
               ),
+              validator: _validateContactMethod,
+              onChanged: (_) => setState(() {}),
             ),
             SizedBox(height: 24),
             SizedBox(

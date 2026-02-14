@@ -62,30 +62,75 @@ class _HomeScreenState extends State<HomeScreen> {
     await scheduleProvider.fetchSchedules();
     _scheduleReminders(scheduleProvider.schedules);
     _checkScheduleArrivals(scheduleProvider.schedules);
+    _checkComingSoon(scheduleProvider.schedules);
 
     // Start periodic check if not running
     _statusCheckTimer?.cancel();
-    _statusCheckTimer = Timer.periodic(Duration(hours: 2), (timer) {
+    _statusCheckTimer = Timer.periodic(Duration(minutes: 5), (timer) {
       print('--- Timer Tick: Checking Schedules ---');
       _checkScheduleArrivals(scheduleProvider.schedules);
+      _checkComingSoon(scheduleProvider.schedules);
     });
+  }
+
+  Future<void> _checkComingSoon(List<Schedule> schedules) async {
+    final now = DateTime.now();
+    bool statusUpdated = false;
+    final apiService = ApiService();
+
+    final comingSoonSchedules = schedules.where((s) {
+      if (s.status != ScheduleStatus.pending) return false;
+      
+      final diff = s.startTime.difference(now);
+      final minutes = diff.inMinutes;
+
+      // Range: -60 mins (late) to +120 mins (coming soon)
+      // If it's more than 60 mins late, _checkScheduleArrivals handles it (NotAttended)
+      // If it's more than 120 mins future, it's just Pending
+      final inWindow = minutes > -60 && minutes < 120;
+      
+      if (inWindow) {
+         print('Check ComingSoon match: ${s.title} | Diff: ${minutes}m');
+      }
+
+      return inWindow;
+    }).toList();
+
+    print('Found ${comingSoonSchedules.length} schedules to update to Coming Soon');
+
+    for (var schedule in comingSoonSchedules) {
+      print('Updating status to Coming Soon for ${schedule.title}');
+      try {
+        await apiService.updateStatus(schedule.id, ScheduleStatus.comingSoon);
+        statusUpdated = true;
+      } catch (e) {
+        print('Failed to auto-update status: $e');
+      }
+    }
+
+    if (statusUpdated) {
+      final scheduleProvider = Provider.of<ScheduleProvider>(
+        context,
+        listen: false,
+      );
+      await scheduleProvider.fetchSchedules();
+    }
   }
 
   Future<void> _checkScheduleArrivals(List<Schedule> schedules) async {
     final now = DateTime.now();
     bool statusUpdated = false;
 
-    // Filter pending schedules that have started or are about to start
-    // Filter pending schedules that have started
-    // We want to check any pending schedule that has started.
-    final pendingSchedules = schedules
+    // Filter pending/comingSoon schedules that have started
+    final targetSchedules = schedules
         .where(
           (s) =>
-              s.status == ScheduleStatus.pending && s.startTime.isBefore(now),
+              (s.status == ScheduleStatus.pending || s.status == ScheduleStatus.comingSoon) && 
+              s.startTime.isBefore(now),
         )
         .toList();
 
-    if (pendingSchedules.isEmpty) return;
+    if (targetSchedules.isEmpty) return;
 
     // Get current location
     Position? position;
@@ -109,9 +154,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final apiService = ApiService();
 
-    print('Found ${pendingSchedules.length} pending started schedules.');
+    print('Found ${targetSchedules.length} started schedules to check.');
 
-    for (var schedule in pendingSchedules) {
+    for (var schedule in targetSchedules) {
       if (schedule.latitude == null || schedule.longitude == null) {
         print('Skipping ${schedule.title}: No location data (lat/lon is null)');
         continue;
@@ -190,9 +235,20 @@ class _HomeScreenState extends State<HomeScreen> {
       if (reminder3h.isAfter(now)) {
         await notificationService.scheduleNotification(
           id: schedule.id.hashCode + 1,
-          title: '行程即將開始: ${schedule.title}',
+          title: '行程準備: ${schedule.title}',
           body: '您的行程將在 3 小時後開始',
           scheduledTime: reminder3h,
+        );
+      }
+
+      // 30 minutes before
+      final reminder30m = startTime.subtract(Duration(minutes: 30));
+      if (reminder30m.isAfter(now)) {
+        await notificationService.scheduleNotification(
+          id: schedule.id.hashCode + 2,
+          title: '行程即將開始: ${schedule.title}',
+          body: '您的行程將在 30 分鐘後開始，請準備出發！',
+          scheduledTime: reminder30m,
         );
       }
     }
@@ -222,22 +278,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       value: tempStatus,
                       decoration: InputDecoration(labelText: 'Status'),
                       items: [
+
                         DropdownMenuItem(value: null, child: Text('All')),
                         DropdownMenuItem(
                           value: ScheduleStatus.pending,
-                          child: Text('Pending'),
+                          child: Text(AppLocalizations.of(context)!.statusPending),
+                        ),
+                        DropdownMenuItem(
+                          value: ScheduleStatus.comingSoon,
+                          child: Text(AppLocalizations.of(context)!.statusComingSoon),
                         ),
                         DropdownMenuItem(
                           value: ScheduleStatus.active,
-                          child: Text('Active'),
+                          child: Text(AppLocalizations.of(context)!.statusActive),
                         ),
                         DropdownMenuItem(
                           value: ScheduleStatus.notGoing,
-                          child: Text('Not Going'),
+                          child: Text(AppLocalizations.of(context)!.statusNotGoing),
                         ),
                         DropdownMenuItem(
                           value: ScheduleStatus.cancel,
-                          child: Text('Cancelled'),
+                          child: Text(AppLocalizations.of(context)!.statusCancelled),
                         ),
                       ],
                       onChanged: (val) => setState(() => tempStatus = val),
@@ -407,12 +468,25 @@ class _HomeScreenState extends State<HomeScreen> {
               return ScheduleListTile(
                 schedule: schedule,
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => MapScreen(schedule: schedule),
-                    ),
-                  );
+                  if (schedule.status == ScheduleStatus.cancel) {
+                    // Do nothing for cancelled schedules
+                    return;
+                  }
+
+                  final now = DateTime.now();
+                  if (schedule.startTime.isBefore(now) && 
+                      schedule.status != ScheduleStatus.attend) {
+                    // Past schedule interaction (Pending, ComingSoon, NotAttended)
+                    _showPastScheduleActionDialog(schedule);
+                  } else {
+                    // Normal navigation
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MapScreen(schedule: schedule),
+                      ),
+                    );
+                  }
                 },
               );
             },
@@ -454,5 +528,124 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  void _showPastScheduleActionDialog(Schedule schedule) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(child: Text('${schedule.title}', overflow: TextOverflow.ellipsis)),
+            IconButton(
+              icon: Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints(),
+            ),
+          ],
+        ),
+        content: Text('此行程時間已過，您想要？'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              await _handleCancelSchedule(schedule);
+            },
+            child: Text('取消行程', style: TextStyle(color: Colors.red)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              _showReschedulePicker(schedule);
+            },
+            child: Text('更改時間'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleCancelSchedule(Schedule schedule) async {
+    try {
+      final apiService = ApiService();
+      await apiService.updateStatus(schedule.id, ScheduleStatus.cancel);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('行程已取消')),
+        );
+        _refreshSchedules();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('取消失敗: $e')),
+        );
+      }
+    }
+  }
+
+  void _showReschedulePicker(Schedule schedule) async {
+    final now = DateTime.now();
+    final firstDate = now; 
+    
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: now.add(Duration(minutes: 5)),
+      firstDate: firstDate,
+      lastDate: DateTime(2101),
+    );
+
+    if (pickedDate != null) {
+      final pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(now.add(Duration(minutes: 30))),
+      );
+
+      if (pickedTime != null) {
+        final newDateTime = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+
+        if (newDateTime.isBefore(now)) {
+           if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('請選擇未來的時間')),
+            );
+          }
+          return;
+        }
+
+        await _handleReschedule(schedule, newDateTime);
+      }
+    }
+  }
+
+  Future<void> _handleReschedule(Schedule schedule, DateTime newTime) async {
+    try {
+      final apiService = ApiService();
+      await apiService.updateSchedule(schedule.id, {
+        'start_time': newTime.toIso8601String(),
+        'status': ScheduleStatus.pending
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('行程時間已更新')),
+        );
+        _refreshSchedules();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失敗: $e')),
+        );
+      }
+    }
   }
 }

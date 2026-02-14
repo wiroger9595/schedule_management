@@ -7,6 +7,7 @@ class Status(str, Enum):
     CANCEL = "CL"
     NOT_ATTEND = "NA"
     ATTEND = "AT"
+    COMING_SOON = "CS"
     
     
 class Type(str, Enum):

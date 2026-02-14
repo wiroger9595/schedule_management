@@ -4,6 +4,7 @@ import 'profile_edit_screen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../i18n/app_localizations.dart';
+import '../widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -110,20 +111,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       },
                       child: Stack(
                         children: [
-                          CircleAvatar(
+                          UserAvatar(
                             radius: 60,
-                            backgroundImage:
-                                _user!['profile_image_path'] != null
-                                ? NetworkImage(_user!['profile_image_path'])
-                                : null,
-                            backgroundColor: Colors.purple[100],
-                            child: _user!['profile_image_path'] == null
-                                ? Icon(
-                                    Icons.person,
-                                    size: 80,
-                                    color: Colors.purple[700],
-                                  )
-                                : null,
+                            imageUrl: _user!['profile_image_path'],
                           ),
                           // 提示按鈕
                           Positioned(

@@ -210,3 +210,134 @@ class OSMnxService:
                 
         print(f"Geocoding failed for '{location_name}' after trying variations.")
         return None
+
+    @staticmethod
+    def reverse_geocode(lat: float, lon: float):
+        """Reverse geocode (lat, lon) to address string using Nominatim API directly"""
+        try:
+             # OSMnx 2.0 removed reverse_geocode. Use direct Nominatim API.
+             import requests
+             
+             url = "https://nominatim.openstreetmap.org/reverse"
+             params = {
+                 "lat": lat,
+                 "lon": lon,
+                 "format": "json",
+                 "accept-language": "zh-TW,zh;q=0.9,en;q=0.8", # Prioritize Traditional Chinese
+                 "zoom": 18,
+                 "addressdetails": 1
+             }
+             headers = {
+                 "User-Agent": "ScheduleManagementApp/1.0" 
+             }
+             
+             response = requests.get(url, params=params, headers=headers, timeout=10)
+             if response.status_code == 200:
+                 data = response.json()
+                 address = data.get('address', {})
+                 
+                 # Prioritize specific tags for place name
+                 # Nominatim returns keys like 'tourism', 'leisure', 'amenity', 'building', 'historic' if it's a specific place
+                 place_name = None
+                 priority_keys = [
+                     'tourism', 'leisure', 'amenity', 'shop', 'historic', 
+                     'building', 'office', 'aeroway', 'railway', 'highway'
+                 ]
+                 
+                 for key in priority_keys:
+                     if key in address:
+                         place_name = address[key]
+                         break
+                 
+                 if place_name:
+                     # If we found a name, check if we should append road/area for context
+                     # User specifically asked for "Place Name" (e.g. 故宮) instead of address (e.g. 至善路)
+                     # So returning just the name is what they want.
+                     # But maybe append city/district if needed? 
+                     # For now, let's just return the Name, or Name + Road if road exists.
+                     # "National Palace Museum" is better than "National Palace Museum, Zhishan Rd..."
+                     return place_name
+                 
+                 # Fallback to road + house_number if no POI name
+                 road = address.get('road')
+                 house_number = address.get('house_number')
+                 
+                 if road:
+                     if house_number:
+                         return f"{road} {house_number}"
+                     return road
+                     
+                 # Last resort: full display_name
+                 return data.get('display_name')
+                 
+             print(f"Nominatim API returned status {response.status_code}: {response.text}")
+             return None
+        except Exception as e:
+            print(f"Reverse geocode failed: {e}")
+            return None
+
+    @staticmethod
+    def get_nearby_pois(lat: float, lon: float, radius: int = 300):
+        """Get nearby Points of Interest (POIs) using OSMnx"""
+        try:
+            # Define tags for interesting places
+            tags = {
+                'amenity': True, 
+                'tourism': True, 
+                'leisure': True,
+                'shop': ['convenience', 'supermarket', 'mall', 'department_store'],
+                'historic': True,
+                'building': ['train_station', 'transportation']
+                # 'office': True # Maybe too many?
+            }
+            
+            # Use features_from_point (OSMnx 1.0+)
+            gdf = ox.features_from_point((lat, lon), tags, dist=radius)
+            
+            if gdf.empty:
+                return []
+
+            pois = []
+            # Calculate distance and sort
+            # CRS transform might be needed for accurate distance, but simple euclidean on lat/lon 
+            # or haversine is better. OSMnx geometries are in (lat, lon).
+            
+            for index, row in gdf.iterrows():
+                name = row.get('name')
+                if not name or str(name) == 'nan':
+                    continue
+                
+                # Get centroid for distance calc
+                geometry = row.geometry
+                centroid = geometry.centroid
+                
+                dist = OSMnxService._haversine_distance(lat, lon, centroid.y, centroid.x)
+                
+                # Determine type/category
+                category = "Unknown"
+                if 'amenity' in row and str(row['amenity']) != 'nan':
+                     category = row['amenity']
+                elif 'shop' in row and str(row['shop']) != 'nan':
+                     category = row['shop']
+                elif 'tourism' in row and str(row['tourism']) != 'nan':
+                     category = row['tourism']
+                elif 'leisure' in row and str(row['leisure']) != 'nan':
+                     category = row['leisure']
+                     
+                pois.append({
+                    "name": name,
+                    "category": category,
+                    "distance": int(dist),
+                    "lat": centroid.y,
+                    "lon": centroid.x
+                })
+                
+            # Sort by distance
+            pois.sort(key=lambda x: x['distance'])
+            
+            # Return top 20
+            return pois[:20]
+            
+        except Exception as e:
+            print(f"Error fetching POIs: {e}")
+            return []

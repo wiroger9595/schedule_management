@@ -12,7 +12,7 @@ from ...repositories.schedule_repository import ScheduleRepository
 from ...services.gemini_service import gemini_service
 from ...services.osmnx_service import OSMnxService
 from ...utils.text_validator import validate_schedule_message
-from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage
+from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse
 from .auth import get_current_user
 
 router = APIRouter()
@@ -124,6 +124,28 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
     attends_data = data.attends or []
     if attends_data:
         print(f"DEBUG: Processing {len(attends_data)} attends")
+        
+        # 1. Collect contact_ids to batch fetch linked user_ids
+        contact_ids_to_fetch = []
+        for att in attends_data:
+            contact_id = att.contact_id
+            # Normalize contact_id
+            if isinstance(contact_id, str) and not contact_id.isdigit():
+                 pass 
+            elif contact_id is not None:
+                 contact_ids_to_fetch.append(int(contact_id))
+        
+        # 2. Fetch Contacts map
+        contact_user_map = {}
+        if contact_ids_to_fetch:
+            from ...models.contact import Contact
+            from sqlmodel import select
+            statement = select(Contact).where(Contact.id.in_(contact_ids_to_fetch))
+            contacts = session.exec(statement).all()
+            for c in contacts:
+                if c.contact_user_id:
+                    contact_user_map[c.id] = c.contact_user_id
+        
         for att in attends_data:
             # Check if system user or guest
             # System user has 'id' (Contact ID) and 'contact_user_id' (The friend's User ID)
@@ -132,26 +154,20 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             # Prioritize contact_user_id from a Contact object
             user_id = att.user_id
             contact_id = att.contact_id
-            # If 'id' is integer, it's likely contact_id from selection.
-            # But wait, earlier code said 'id' from ContactPicker is int (Contact ID).
-            # So we map id -> contact_id.
-            
+
             if isinstance(contact_id, str) and not contact_id.isdigit():
                  contact_id = None # It's a GUID user_id, not contact_id
             elif contact_id is not None:
                  contact_id = int(contact_id)
- 
-            # Map name: Use name if present, else user_id
-            name = att.name or att.user_id
- 
+            
+            # If user_id is missing, try to get from contact map
+            if not user_id and contact_id and contact_id in contact_user_map:
+                user_id = contact_user_map[contact_id]
+
             new_attend = attend(
                 schedule_id=created_schedule.schedule_id,
                 user_id=user_id if user_id else None,
                 contact_id=contact_id,
-                name=name,
-                email=att.email,
-                phone=att.phone,
-                line_id=att.line_id,
                 status=Status.PENDING.value
             )
             session.add(new_attend)
@@ -191,8 +207,12 @@ def update_schedule(
     if data.description is not None: schedule.description = data.description
     if data.start_time is not None: schedule.start_time = datetime.fromisoformat(data.start_time)
     if data.meeting_time is not None: schedule.start_time = datetime.fromisoformat(data.meeting_time)
+    if data.end_time is not None: schedule.end_time = datetime.fromisoformat(data.end_time)
+    
+
     
     if data.transport_mode is not None: schedule.transport_mode = data.transport_mode
+    if data.status is not None: schedule.status = data.status
     
     # Update contact_id if present
     if data.contact_id is not None:
@@ -252,6 +272,27 @@ def update_schedule(
         from ...models.attend import attend
         session.exec(delete(attend).where(attend.schedule_id == schedule_id))
         
+        # 1. Collect contact_ids to batch fetch linked user_ids
+        contact_ids_to_fetch = []
+        for att in attends_data:
+            contact_id = att.contact_id
+            # Normalize contact_id
+            if isinstance(contact_id, str) and not contact_id.isdigit():
+                 pass 
+            elif contact_id is not None:
+                 contact_ids_to_fetch.append(int(contact_id))
+        
+        # 2. Fetch Contacts map
+        contact_user_map = {}
+        if contact_ids_to_fetch:
+            from ...models.contact import Contact
+            from sqlmodel import select
+            statement = select(Contact).where(Contact.id.in_(contact_ids_to_fetch))
+            contacts = session.exec(statement).all()
+            for c in contacts:
+                if c.contact_user_id:
+                    contact_user_map[c.id] = c.contact_user_id
+
         # Add new ones
         for att in attends_data:
             # Prioritize contact_user_id from a Contact object
@@ -263,17 +304,14 @@ def update_schedule(
             elif contact_id is not None:
                  contact_id = int(contact_id)
             
-            # Map name
-            name = att.name or att.user_id
+            # If user_id is missing, try to get from contact map
+            if not user_id and contact_id and contact_id in contact_user_map:
+                user_id = contact_user_map[contact_id]
 
             new_attend = attend(
                 schedule_id=schedule_id,
                 user_id=user_id if user_id else None,
                 contact_id=contact_id,
-                name=name,
-                email=att.email,
-                phone=att.phone,
-                line_id=att.line_id,
                 status="P"
             )
             session.add(new_attend)
@@ -284,61 +322,66 @@ def update_schedule(
     print(f"DEBUG: update_schedule returning: {result}")
     return result
 
-@router.post("/chat")
+@router.post("/chat", response_model=ChatResponse)
 def chat_schedule(
-    message_data: ChatMessage,
+    request: ChatRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    user_message = message_data.message.strip()
-    if not user_message:
-        raise HTTPException(status_code=400, detail="訊息不能為空")
+    user_message = request.message.strip()
+    current_context = request.current_data
     
-    try:
-        if not validate_schedule_message(user_message):
-            return {
-                "ai_response": "請問具體的時間是什麼時候呢？（例如：明天下午3點、下週一早上10點）",
-                "schedule": None
-            }
+    # 1. 呼叫 Gemini 進行多輪對話處理
+    ai_result = gemini_service.process_conversation(user_message, current_context)
+    
+    updated_data = ai_result.get("updated_data", {})
+    is_complete = ai_result.get("is_complete", False)
+    ai_reply = ai_result.get("reply", "")
+    
+    saved_schedule = None
 
-        schedule_info = gemini_service.extract_schedule_info(user_message)
-        
-        if not schedule_info.get("title") or not schedule_info.get("start_time"):
-            raise HTTPException(status_code=400, detail="請提供更詳細的資訊（至少需要標題和時間）")
-        
-        start_dt = datetime.fromisoformat(schedule_info["start_time"])
-        
-        schedule = Schedule(
-            user_id=current_user.user_id,
-            title=schedule_info["title"],
-            description=schedule_info.get("description"),
-            meeting_time=start_dt.isoformat(),
-            meeting_location=schedule_info.get("location"),
-            transport_mode=schedule_info.get("transport_mode"),  
-            status=Status.PENDING.value,
-            type="personal"
-        )
-        
-        # Geocoding logic via Service? or Repo?
-        # Ideally Service. But we have it inline in main.py.
-        # Let's keep inline here or replicate logic from create_schedule
-        if schedule.meeting_location:
-             coords = OSMnxService.get_coordinates(schedule.meeting_location)
-             if coords:
-                 schedule.latitude = coords[0]
-                 schedule.longitude = coords[1]
-        
-        repo = ScheduleRepository(session)
-        repo.create(schedule)
-        
-        ai_response = gemini_service.generate_confirmation_message(schedule_info)
-        
-        return {
-            "ai_response": ai_response,
-            "schedule": schedule.dict()
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        print(f"Error in chat_schedule: {e}")
-        raise HTTPException(status_code=500, detail="處理失敗，請稍後再試")
+    # 2. 如果資訊完整，直接寫入資料庫
+    if is_complete:
+        try:
+            # 轉換時間字串為 datetime 物件
+            start_time_str = updated_data.get("start_time")
+            # 這裡建議加一個防呆，如果 AI 給的時間格式不對，要在 Prompt 裡嚴格要求或這裡做 try-except
+            
+            # 建立 Schedule 物件
+            new_schedule = Schedule(
+                user_id=current_user.user_id,
+                title=updated_data.get("title", "未命名行程"),
+                description=f"參與者: {', '.join(updated_data.get('participants', []))}",
+                meeting_time=start_time_str,
+                meeting_location=updated_data.get("location"),
+                status=Status.PENDING.value
+            )
+            
+            # 地理編碼 (Optional)
+            if new_schedule.meeting_location:
+                 coords = OSMnxService.get_coordinates(new_schedule.meeting_location)
+                 if coords:
+                     new_schedule.latitude = coords[0]
+                     new_schedule.longitude = coords[1]
+
+            repo = ScheduleRepository(session)
+            saved_schedule_obj = repo.create(new_schedule)
+            saved_schedule = saved_schedule_obj.dict()
+            
+            # 如果有參與者，這邊也可以處理 attend 表 (略)
+            
+        except Exception as e:
+            print(f"Error creating schedule: {e}")
+            return ChatResponse(
+                ai_reply="資訊已收集完成，但在建立行程時發生錯誤。",
+                updated_data=updated_data,
+                is_complete=True # 雖然失敗但邏輯上是對話結束
+            )
+
+    # 3. 回傳結果
+    return ChatResponse(
+        ai_reply=ai_reply,
+        updated_data=updated_data, # 把這個傳回給前端，前端下次要帶回來
+        is_complete=is_complete,
+        schedule=saved_schedule
+    )

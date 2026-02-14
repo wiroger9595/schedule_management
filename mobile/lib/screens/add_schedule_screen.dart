@@ -25,6 +25,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   List<Map<String, dynamic>> selectedContacts = [];
 
   DateTime startTime = DateTime.now().add(Duration(hours: 1));
+  DateTime? endTime;
   String? location;
   String transportMode = 'car';
   double? latitude;
@@ -53,6 +54,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     if (widget.schedule != null) {
       final s = widget.schedule!;
       startTime = s.startTime;
+      endTime = s.endTime;
       location = s.location;
       transportMode = s.transportMode ?? 'car';
       latitude = s.latitude;
@@ -96,10 +98,14 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   }
 
   Future<void> _selectDateTime(BuildContext context) async {
+    final now = DateTime.now();
+    // Ensure firstDate includes startTime if it's in the past (for editing)
+    final firstDate = startTime.isBefore(now) ? startTime : now;
+    
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: startTime,
-      firstDate: DateTime(2000),
+      firstDate: firstDate, // Restrict to now or current startTime if editing past event
       lastDate: DateTime(2101),
     );
     if (pickedDate != null) {
@@ -108,14 +114,65 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
         initialTime: TimeOfDay.fromDateTime(startTime),
       );
       if (pickedTime != null) {
-        setState(() {
-          startTime = DateTime(
-            pickedDate.year,
-            pickedDate.month,
-            pickedDate.day,
-            pickedTime.hour,
-            pickedTime.minute,
+        final newDateTime = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+
+        if (newDateTime.isBefore(DateTime.now())) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.pleaseEnterFutureTime ?? '請選擇未來的時間'),
+              backgroundColor: Colors.red,
+            ),
           );
+          return;
+        }
+
+        setState(() {
+          startTime = newDateTime;
+        });
+      }
+    }
+  }
+
+  Future<void> _selectEndTime(BuildContext context) async {
+    final initialDate = endTime ?? startTime.add(Duration(hours: 1));
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: startTime, // End time must be after start time
+      lastDate: DateTime(2101),
+    );
+    if (pickedDate != null) {
+      final TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(initialDate),
+      );
+      if (pickedTime != null) {
+        final newDateTime = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+
+        if (newDateTime.isBefore(startTime)) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.endTimeMustBeAfterStartTime ?? '結束時間必須晚於開始時間'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        setState(() {
+          endTime = newDateTime;
         });
       }
     }
@@ -145,14 +202,141 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     );
 
     if (result != null && result is Map) {
+      final lat = result['latitude'] as double;
+      final lon = result['longitude'] as double;
+      final pickedName = result['name'] as String?;
+
       setState(() {
-        latitude = result['latitude'];
-        longitude = result['longitude'];
-        // If location text is empty, maybe set a placeholder?
-        if (_locationController.text.isEmpty) {
-          _locationController.text = "Pinned Location";
-        }
+        latitude = lat;
+        longitude = lon;
+        _locationController.text = pickedName ?? "Loading...";
       });
+
+      try {
+        // 1. Get Address
+        final addressFuture = apiService.reverseGeocode(lat, lon);
+        
+        // 2. Get Nearby POIs
+        final poisFuture = apiService.getNearbyPlaces(lat, lon);
+
+        final results = await Future.wait([
+            addressFuture,
+            poisFuture.catchError((e) => <Map<String, dynamic>>[])
+        ]);
+        
+        final address = results[0] as String;
+        final pois = results[1] as List<Map<String, dynamic>>;
+
+        if (!mounted) return;
+
+        // Show selection sheet
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          shape: RoundedRectangleBorder(
+             borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          builder: (context) {
+             return DraggableScrollableSheet(
+               initialChildSize: 0.5,
+               minChildSize: 0.3,
+               maxChildSize: 0.9,
+               expand: false,
+               builder: (context, scrollController) {
+                 return Column(
+                   children: [
+                     Padding(
+                       padding: const EdgeInsets.all(16.0),
+                       child: Text(
+                         'Select Location',
+                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                       ),
+                     ),
+                     Expanded(
+                       child: ListView(
+                         controller: scrollController,
+                         children: [
+                            // Option 0: Selected POI (if available)
+                            if (pickedName != null) ...[
+                               ListTile(
+                                 leading: Icon(Icons.star, color: Colors.orange),
+                                 title: Text(pickedName),
+                                 subtitle: Text('Selected on Map'),
+                                 onTap: () {
+                                   Navigator.pop(context, pickedName);
+                                 },
+                               ),
+                               Divider(),
+                            ],
+
+                            // Option 1: The precise address
+                            ListTile(
+                              leading: Icon(Icons.location_on, color: Colors.red),
+                              title: Text(address),
+                              subtitle: Text('Precise Address'),
+                              onTap: () {
+                                Navigator.pop(context, address);
+                              },
+                            ),
+                            Divider(),
+                            if (pois.isEmpty)
+                               Padding(
+                                 padding: const EdgeInsets.all(16.0),
+                                 child: Text('No nearby places found', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                               ),
+                            // Option 2...N: POIs
+                            ...pois.map((poi) {
+                               IconData icon = Icons.place;
+                               String category = poi['category'] ?? 'Unknown';
+                               if (category == 'amenity' || category == 'restaurant' || category == 'cafe') icon = Icons.restaurant;
+                               else if (category.contains('shop')) icon = Icons.shopping_bag;
+                               else if (category.contains('transport')) icon = Icons.train;
+                               
+                               return ListTile(
+                                 leading: Icon(icon, color: Colors.blue),
+                                 title: Text(poi['name'] ?? 'Unknown Place'),
+                                 subtitle: Text('${poi['category']} • ${poi['distance']}m'),
+                                 onTap: () {
+                                   Navigator.pop(context, poi['name']);
+                                 },
+                               );
+                            }).toList(),
+                         ],
+                       ),
+                     ),
+                   ],
+                 );
+               }
+             );
+          }
+        ).then((selectedName) {
+           if (selectedName != null && selectedName is String) {
+              setState(() {
+                 _locationController.text = selectedName;
+              });
+           } else {
+              // If dismissed without selection:
+              // - If we had a pickedName, _locationController.text is already pickedName.
+              // - If we didn't, it was "Loading...". We should fallback to address.
+              if (_locationController.text == "Loading...") {
+                  setState(() {
+                      _locationController.text = address;
+                  });
+              }
+           }
+        });
+
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _locationController.text =
+                "Pinned Location (${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)})";
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed to get location info: $e')));
+        }
+      }
     }
   }
 
@@ -185,7 +369,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
 
       if (selectedContacts.isNotEmpty) {
         final first = selectedContacts.first;
-        contactName = first['name'] ?? first['full_name'] ?? first['user_id'];
+        contactName = first['name'] ?? first['nick_name'] ?? first['user_id'];
         contactEmail = first['email'];
         contactPhone = first['phone'];
         contactLineId = first['line_id'];
@@ -200,12 +384,23 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               title: _titleController.text,
               description: _descriptionController.text,
               startTime: startTime,
+              endTime: endTime,
               location: location,
               latitude: latitude,
               longitude: longitude,
               status: ScheduleStatus.pending, // Use constant
               transportMode: transportMode,
-              attends: selectedContacts, // Send full list including guests
+              attends: selectedContacts.map((c) {
+                return {
+                  'user_id': c['contact_user_id'] ?? c['user_id'],
+                  'contact_id': c['id'],
+                  'name': c['nick_name'] ?? c['name'] ?? c['full_name'],
+                  'email': c['email'],
+                  'phone': c['phone'],
+                  'line_id': c['line_id'],
+                  'status': 'P',
+                };
+              }).toList(),
               attendIds: selectedContacts
                   .where((c) => c['id'] != null)
                   .map((c) => c['id'].toString())
@@ -227,24 +422,22 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             'title': _titleController.text,
             'description': _descriptionController.text,
             'start_time': startTime.toIso8601String(),
+            'end_time': endTime?.toIso8601String(),
             'location': _locationController.text,
             'transport_mode': transportMode,
             'latitude': latitude,
             'longitude': longitude,
-            'attends': selectedContacts
-                .map(
-                  (c) => {
-                    'contact_id': c['id'], // Ensure contact_id is sent
-                    'contact_user_id':
-                        c['contact_user_id'], // Keep for backward compatibility or linking
-                    'nick_name': c['nick_name'] ?? c['name'],
-                    'name': c['name'] ?? c['nick_name'], // Fallback
-                    'email': c['email'],
-                    'phone': c['phone'],
-                    'line_id': c['line_id'],
-                  },
-                )
-                .toList(),
+            'attends': selectedContacts.map((c) {
+              return {
+                'user_id': c['contact_user_id'] ?? c['user_id'],
+                'contact_id': c['id'],
+                'name': c['nick_name'] ?? c['name'] ?? c['full_name'],
+                'email': c['email'],
+                'phone': c['phone'],
+                'line_id': c['line_id'],
+                'status': c['status'] ?? 'P',
+              };
+            }).toList(),
             'contact_name': contactName,
             'contact_email': contactEmail,
             'contact_phone': contactPhone,
@@ -317,6 +510,31 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 ),
                 trailing: Icon(Icons.calendar_today),
                 onTap: () => _selectDateTime(context),
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              SizedBox(height: 16),
+              ListTile(
+                title: Text(AppLocalizations.of(context)!.endTime ?? 'End Time'),
+                subtitle: Text(
+                  endTime != null
+                      ? DateFormat('yyyy-MM-dd HH:mm').format(endTime!)
+                      : AppLocalizations.of(context)!.notSet ?? 'Not Set',
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (endTime != null)
+                      IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () => setState(() => endTime = null),
+                      ),
+                    Icon(Icons.calendar_today),
+                  ],
+                ),
+                onTap: () => _selectEndTime(context),
                 shape: RoundedRectangleBorder(
                   side: BorderSide(color: Colors.grey),
                   borderRadius: BorderRadius.circular(4),

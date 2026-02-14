@@ -4,17 +4,29 @@ from typing import List
 from ...db.database import get_session
 from ...models.contact import Contact
 from ...models.user import User
+from ...models.contact import Contact
+from ...models.user import User
 from ...repositories.contact_repository import ContactRepository
-from ...schemas.contact import ContactCreate, ContactUpdate
+from ...repositories.schedule_repository import ScheduleRepository
+from ...schemas.contact import ContactCreate, ContactUpdate, ContactRead
 from .auth import get_current_user
 
 router = APIRouter()
 
-@router.get("/", response_model=List[Contact])
-@router.get("", response_model=List[Contact], include_in_schema=False)
+@router.get("/", response_model=List[ContactRead])
+@router.get("", response_model=List[ContactRead], include_in_schema=False)
 def get_contacts(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = ContactRepository(session)
     return repo.get_all_by_user(current_user.user_id)
+
+@router.get("/{contact_id}/schedules", response_model=List[dict])
+def get_contact_schedules(contact_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """
+    Get all schedules where this contact (or their linked user) is a participant.
+    """
+    repo = ScheduleRepository(session)
+    schedules = repo.get_schedules_with_contact(current_user.user_id, contact_id)
+    return [s.dict() for s in schedules]
 
 @router.post("/", response_model=Contact)
 @router.post("", response_model=Contact, include_in_schema=False)

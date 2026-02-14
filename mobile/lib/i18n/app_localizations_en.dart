@@ -235,4 +235,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get selectLocation => 'Select Location';
+
+  @override
+  String get statusComingSoon => 'Coming Soon';
+
+  @override
+  String get pleaseEnterFutureTime => 'Please enter a future time';
+
+  @override
+  String get endTime => 'End Time';
+
+  @override
+  String get notSet => 'Not Set';
+
+  @override
+  String get endTimeMustBeAfterStartTime => 'End Time must be after Start Time';
 }

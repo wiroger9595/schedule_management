@@ -50,7 +50,7 @@ class Schedule {
       location: json['location'] as String?,
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
-      status: json['status'] as String? ?? 'P',
+      status: _normalizeStatus(json['status'] as String?),
       transportMode: json['transport_mode'] as String? ?? json['transportMode'] as String? ?? 'car',
       cancelReason: json['cancel_reason'] as String?,
       contactName: json['contact_name'] as String?,
@@ -72,6 +72,7 @@ class Schedule {
       'title': title,
       'description': description,
       'start_time': startTime.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
       'location': location,
       'latitude': latitude,
       'longitude': longitude,
@@ -84,5 +85,10 @@ class Schedule {
       'contact_phone': contactPhone,
       'contact_line_id': contactLineId,
     };
+  }
+
+  static String _normalizeStatus(String? status) {
+    if (status == null || status == 'P') return 'PD';
+    return status;
   }
 }

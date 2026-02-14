@@ -1,5 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
 
 
 class ContactCreate(BaseModel):
@@ -19,3 +20,13 @@ class ContactUpdate(BaseModel):
     line_id: Optional[str] = None
     comment: Optional[str] = None
     contact_user_id: Optional[str] = None
+
+
+class ContactRead(ContactCreate):
+    id: int
+    user_id: str
+    created_at: Optional[datetime] = None
+    profile_image_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True
