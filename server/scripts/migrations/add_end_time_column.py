@@ -5,6 +5,7 @@ import os
 sys.path.append(os.getcwd())
 
 from sqlmodel import create_engine, text
+from sqlalchemy import event
 # Try importing config, if fails, define settings manually or read env
 try:
     from app.core.config import settings
@@ -18,6 +19,13 @@ except ImportError:
 
 print(f"Using Database URL: {DATABASE_URL}")
 engine = create_engine(DATABASE_URL)
+
+@event.listens_for(engine, "connect")
+def set_search_path(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute(f"SET search_path TO {postgres_schema}")
+    cursor.close()
+
 
 def add_meeting_end_time_column():
     print("Attempting to add 'meeting_end_time' column to 'schedule' table...")

@@ -7,6 +7,7 @@ class User {
   final String? language;
   final String? profileImagePath;
   final String? status;
+  final String? defaultSending;
 
   User({
     this.userId,
@@ -17,6 +18,7 @@ class User {
     this.language,
     this.profileImagePath,
     this.status,
+    this.defaultSending,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class User {
       language: json['language'] as String?,
       profileImagePath: json['profile_image_path'] as String?,
       status: json['status'] as String?,
+      defaultSending: json['default_sending'] as String?,
     );
   }
 
@@ -42,6 +45,7 @@ class User {
       'language': language,
       'profile_image_path': profileImagePath,
       'status': status,
+      'default_sending': defaultSending,
     };
   }
 
@@ -54,6 +58,7 @@ class User {
     String? language,
     String? profileImagePath,
     String? status,
+    String? defaultSending,
   }) {
     return User(
       userId: userId ?? this.userId,
@@ -64,6 +69,7 @@ class User {
       language: language ?? this.language,
       profileImagePath: profileImagePath ?? this.profileImagePath,
       status: status ?? this.status,
+      defaultSending: defaultSending ?? this.defaultSending,
     );
   }
 }

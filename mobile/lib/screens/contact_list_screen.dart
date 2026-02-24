@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 import '../services/api_service.dart';
 import '../utils/form_validators.dart';
 import 'contact_history_screen.dart';
@@ -206,73 +207,134 @@ class _ContactListScreenState extends State<ContactListScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('編輯聯絡人'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  decoration: InputDecoration(labelText: '姓名/暱稱 *'),
-                  validator: (v) => v?.trim().isEmpty == true ? '請輸入姓名' : null,
+      builder: (context) {
+        Timer? debounceTimer;
+        String? phoneError;
+        String? emailError;
+        String? lineError;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            void validateRealTime() {
+              setState(() {
+                phoneError = null;
+                emailError = null;
+                lineError = null;
+              });
+
+              if (debounceTimer?.isActive ?? false) debounceTimer!.cancel();
+              debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+                final phone = phoneController.text.trim();
+                final email = emailController.text.trim();
+                final lineId = lineIdController.text.trim();
+                
+                if (phone.isEmpty && email.isEmpty && lineId.isEmpty) return;
+                
+                try {
+                  final result = await apiService.validateContact(
+                    phone, email, lineId, 
+                    excludeContactId: contact['id']
+                  );
+                  
+                  if (context.mounted && result['is_valid'] == false) {
+                     setState(() {
+                        final dup = result['duplicate_field'];
+                        if (dup == 'phone') phoneError = '此號碼已存在';
+                        else if (dup == 'email') emailError = '此Email已存在';
+                        else if (dup == 'line') lineError = '此Line ID已存在';
+                     });
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: Text('編輯聯絡人'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration: InputDecoration(labelText: '姓名/暱稱 *'),
+                        validator: (v) => v?.trim().isEmpty == true ? '請輸入姓名' : null,
+                      ),
+                      SizedBox(height: 24),
+                      TextFormField(
+                        controller: phoneController,
+                        decoration: InputDecoration(
+                          labelText: '電話',
+                          errorText: phoneError,
+                        ),
+                        keyboardType: TextInputType.phone,
+                        validator: validateContactMethod,
+                        onChanged: (_) => validateRealTime(),
+                      ),
+                      SizedBox(height: 24),
+                      TextFormField(
+                        controller: emailController,
+                        decoration: InputDecoration(
+                          labelText: 'Email (選填)',
+                          errorText: emailError,
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) {
+                          final emailErrorStr = FormValidators.validateEmail(v);
+                          if (emailErrorStr != null) return emailErrorStr;
+                          return validateContactMethod(v);
+                        },
+                        onChanged: (_) => validateRealTime(),
+                      ),
+                      SizedBox(height: 24),
+                      TextFormField(
+                        controller: lineIdController,
+                        decoration: InputDecoration(
+                          labelText: 'Line ID (選填)',
+                          errorText: lineError,
+                        ),
+                        validator: validateContactMethod,
+                        onChanged: (_) => validateRealTime(),
+                      ),
+                    ],
+                  ),
                 ),
-                SizedBox(height: 24),
-                TextFormField(
-                  controller: phoneController,
-                  decoration: InputDecoration(labelText: '電話'),
-                  keyboardType: TextInputType.phone,
-                  validator: validateContactMethod,
-                  onChanged: (_) => setState((){}),
-                ),
-                SizedBox(height: 24),
-                TextFormField(
-                  controller: emailController,
-                  decoration: InputDecoration(labelText: 'Email (選填)'),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (v) {
-                    final emailError = FormValidators.validateEmail(v);
-                    if (emailError != null) return emailError;
-                    return validateContactMethod(v);
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    debounceTimer?.cancel();
+                    Navigator.pop(context);
                   },
-                  onChanged: (_) => setState((){}),
+                  child: Text('取消'),
                 ),
-                SizedBox(height: 24),
-                TextFormField(
-                  controller: lineIdController,
-                  decoration: InputDecoration(labelText: 'Line ID (選填)'),
-                  validator: validateContactMethod,
-                  onChanged: (_) => setState((){}),
+                ElevatedButton(
+                  onPressed: () {
+                    if (phoneError != null || emailError != null || lineError != null) return;
+                    if (formKey.currentState!.validate()) {
+                      debounceTimer?.cancel();
+                      updateContact(
+                        contact['id'].toString(),
+                        nameController.text.trim(),
+                        phoneController.text.trim(),
+                        emailController.text.trim(),
+                        lineIdController.text.trim(),
+                      );
+                      Navigator.pop(context);
+                    }
+                  },
+                  child: Text('儲存'),
                 ),
               ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                updateContact(
-                  contact['id'].toString(),
-                  nameController.text.trim(),
-                  phoneController.text.trim(),
-                  emailController.text.trim(),
-                  lineIdController.text.trim(),
-                );
-                Navigator.pop(context);
-              }
-            },
-            child: Text('儲存'),
-          ),
-        ],
-      ),
+            );
+          }
+        );
+      },
     );
+
   }
 
   void _showAddDialog() {
@@ -295,6 +357,43 @@ class _ContactListScreenState extends State<ContactListScreen> {
               List<dynamic> searchResults = [];
               bool isSearching = false;
               final formKey = GlobalKey<FormState>();
+
+              Timer? debounceTimer;
+              String? phoneError;
+              String? emailError;
+              String? lineError;
+
+              void validateRealTime() {
+                setState(() {
+                  phoneError = null;
+                  emailError = null;
+                  lineError = null;
+                });
+
+                if (debounceTimer?.isActive ?? false) debounceTimer!.cancel();
+                debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+                  final phone = phoneController.text.trim();
+                  final email = emailController.text.trim();
+                  final lineId = lineIdController.text.trim();
+                  
+                  if (phone.isEmpty && email.isEmpty && lineId.isEmpty) return;
+                  
+                  try {
+                    final result = await apiService.validateContact(phone, email, lineId);
+                    
+                    if (context.mounted && result['is_valid'] == false) {
+                       setState(() {
+                          final dup = result['duplicate_field'];
+                          if (dup == 'phone') phoneError = '此號碼已存在';
+                          else if (dup == 'email') emailError = '此Email已存在';
+                          else if (dup == 'line') lineError = '此Line ID已存在';
+                       });
+                    }
+                  } catch (e) {
+                    // ignore
+                  }
+                });
+              }
 
               // Helper for cross-field validation (reused logic)
               String? validateContactMethod(String? value) {
@@ -365,33 +464,36 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                       controller: phoneController,
                                       decoration: InputDecoration(
                                         labelText: 'Phone',
+                                        errorText: phoneError,
                                       ),
                                       keyboardType: TextInputType.phone,
                                       validator: validateContactMethod,
-                                      onChanged: (_) => setState((){}),
+                                      onChanged: (_) => validateRealTime(),
                                     ),
                                     SizedBox(height: 24),
                                     TextFormField(
                                       controller: emailController,
                                       decoration: InputDecoration(
                                         labelText: 'Email (Optional)',
+                                        errorText: emailError,
                                       ),
                                       keyboardType: TextInputType.emailAddress,
                                       validator: (v) {
-                                        final emailError = FormValidators.validateEmail(v);
-                                        if (emailError != null) return emailError;
+                                        final emailErrorStr = FormValidators.validateEmail(v);
+                                        if (emailErrorStr != null) return emailErrorStr;
                                         return validateContactMethod(v);
                                       },
-                                      onChanged: (_) => setState((){}),
+                                      onChanged: (_) => validateRealTime(),
                                     ),
                                     SizedBox(height: 24),
                                     TextFormField(
                                       controller: lineIdController,
                                       decoration: InputDecoration(
                                         labelText: 'Line ID (Optional)',
+                                        errorText: lineError,
                                       ),
                                       validator: validateContactMethod,
-                                      onChanged: (_) => setState((){}),
+                                      onChanged: (_) => validateRealTime(),
                                     ),
                                   ],
                                 ),
@@ -519,11 +621,16 @@ class _ContactListScreenState extends State<ContactListScreen> {
                 ),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () {
+                      debounceTimer?.cancel();
+                      Navigator.pop(context);
+                    },
                     child: Text('Cancel'),
                   ),
                   ElevatedButton(
                     onPressed: () {
+                      if (phoneError != null || emailError != null || lineError != null) return;
+
                       // If form is mounted (Manual tab), validate it
                       if (formKey.currentState != null) {
                          if (formKey.currentState!.validate()) {
@@ -559,6 +666,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                         lineIdController.text.trim(),
                         contactUserId: selectedContactUserId,
                       );
+                      debounceTimer?.cancel();
                       Navigator.pop(context);
                     },
                     child: Text('Add'),
@@ -599,7 +707,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('刪除聯絡人'),
-        content: Text('確定要刪除這 ${selectedContactIds.length} 位聯絡人嗎？此動作無法復原。'),
+        content: Text('確定要刪除這 ${selectedContactIds.length} 位聯絡人嗎？\n注意：這些聯絡人參與的行程記錄也會一併被刪除，此動作無法復原。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -662,6 +770,27 @@ class _ContactListScreenState extends State<ContactListScreen> {
   }
 
   void _deleteContact(String friendId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('刪除聯絡人'),
+        content: Text('確定要刪除這位聯絡人嗎？\n注意：此聯絡人參與的行程記錄也會一併被刪除，此動作無法復原。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('刪除', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
       final headers = await apiService.getHeaders();
       final response = await http.delete(

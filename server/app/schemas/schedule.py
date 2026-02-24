@@ -66,6 +66,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     current_data: Optional[dict] = None
+    force_create: bool = False
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class ChatResponse(BaseModel):
@@ -73,4 +76,5 @@ class ChatResponse(BaseModel):
     updated_data: dict
     is_complete: bool
     schedule: Optional[dict] = None
+    conflict: Optional[dict] = None
 

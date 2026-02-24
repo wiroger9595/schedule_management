@@ -23,15 +23,23 @@ class Schedule(SQLModel, table=True):
         sa_column=Column(String(255), unique=True, nullable=False)
     )
     
-    # meeting_time VARCHAR(255) NULL
-    # App uses this as start_time. We'll map start_time property to this?
-    # Or just use meeting_time. The user request specificed meeting_time.
-    # To avoid breaking app fully right now, I will use meeting_time but add a property or alias?
-    # Actually I should use the schema names.
-    meeting_time: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
-    meeting_end_time: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
+    # meeting_time merged into start_time
+    # meeting_end_time merged into end_time
+    
+    # meeting_start_time TIMESTAMPTZ
+    meeting_start_time: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    
+    # meeting_end_time TIMESTAMPTZ - Mandatory
+    meeting_end_time: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False)
+    )
     
     # meeting_location VARCHAR(255) NULL
+    # Keeping meeting_location column name for compatibility if needed, or alias?
+    # User only asked for start/end time. I will keep meeting_location but alias it to location property?
+    # Actually, let's keep meeting_location column but expose 'location' as alias or just use meeting_location
     meeting_location: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     
     # status VARCHAR(2) DEFAULT 'P'
@@ -91,26 +99,6 @@ class Schedule(SQLModel, table=True):
     
     # Mappings
     @property
-    def start_time(self) -> datetime:
-        if self.meeting_time:
-            return datetime.fromisoformat(self.meeting_time)
-        return datetime.now()
-        
-    @start_time.setter
-    def start_time(self, value: datetime):
-        self.meeting_time = value.isoformat()
-
-    @property
-    def end_time(self) -> Optional[datetime]:
-        if self.meeting_end_time:
-            return datetime.fromisoformat(self.meeting_end_time)
-        return None
-        
-    @end_time.setter
-    def end_time(self, value: Optional[datetime]):
-        self.meeting_end_time = value.isoformat() if value else None
-    
-    @property
     def location(self) -> Optional[str]:
         """Alias for meeting_location for app compatibility"""
         return self.meeting_location
@@ -124,8 +112,8 @@ class Schedule(SQLModel, table=True):
         """Override dict to include @property fields for API serialization"""
         data = super().dict(*args, **kwargs)
         # Add computed properties that the frontend expects
-        data['start_time'] = self.start_time.isoformat() if hasattr(self, 'meeting_time') and self.meeting_time else None
-        data['end_time'] = self.end_time.isoformat() if hasattr(self, 'meeting_end_time') and self.meeting_end_time else None
+        data['start_time'] = self.meeting_start_time.isoformat() if isinstance(self.meeting_start_time, datetime) else self.meeting_start_time
+        data['end_time'] = self.meeting_end_time.isoformat() if isinstance(self.meeting_end_time, datetime) else self.meeting_end_time
         data['location'] = self.meeting_location
         data['latitude'] = self.latitude
         data['longitude'] = self.longitude

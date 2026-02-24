@@ -90,21 +90,21 @@ class GeminiService:
         else:
              time_display = "未指定時間"
         
-        msg = f"✅ 已為您建立行程：\n\n"
-        msg += f"📅 **{schedule_data.get('title', '未命名行程')}**\n"
-        msg += f"⏰ {time_display}\n"
+        msg = f"✅ 已為您建立行程：\\n\\n"
+        msg += f"📅 **{schedule_data.get('title', '未命名行程')}**\\n"
+        msg += f"⏰ {time_display}\\n"
         
         if schedule_data.get('location'):
-            msg += f"📍 {schedule_data['location']}\n"
+            msg += f"📍 {schedule_data['location']}\\n"
         
         if schedule_data.get('description'):
-            msg += f"📝 {schedule_data['description']}\n"
+            msg += f"📝 {schedule_data['description']}\\n"
             
         if schedule_data.get('type') == 'meeting' and schedule_data.get('attends'):
-            msg += f"👥 與會者: {schedule_data['attends']}\n"
+            msg += f"👥 與會者: {schedule_data['attends']}\\n"
             
         if schedule_data.get('is_reminder'):
-            msg += f"🔔 已設定提醒\n"
+            msg += f"🔔 已設定提醒\\n"
         
         return msg
     
@@ -146,13 +146,18 @@ class GeminiService:
 2. 時間處理：
    - 如果用戶說「下星期一」、「明天」，請計算實際日期
    - 如果只說時間（早上10點）沒說日期，如果已有日期就用已知日期，否則假設是今天
-3. 如果使用者修改了之前的資訊（例如改時間、改地點），請覆蓋舊資訊
-4. 檢查「必要資訊」是否都齊全
-5. 如果不齊全：
+3. 地點處理 (location)：
+   - 仔細尋找表示地點的關鍵字，如「在」、「去」、「到」後面的名詞
+   - 例如：「去台北101吃飯」-> location: "台北101"
+   - 例如：「約在星巴克」-> location: "星巴克"
+   - 例如：「明天台中出差」-> location: "台中"
+4. 如果使用者修改了之前的資訊（例如改時間、改地點），請覆蓋舊資訊
+5. 檢查「必要資訊」是否都齊全
+6. 如果不齊全：
    - reply 中用親切的語氣詢問缺少的資訊
    - 一次最多問 1-2 個最重要的缺少項目
    - 例如：「請問哪一天，什麼時間？」或「請問在哪裡？」
-6. 如果齊全：
+7. 如果齊全：
    - reply 請回傳確認訊息，格式如下：
      「已確認行程：
      目的：[title]

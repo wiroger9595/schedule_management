@@ -176,17 +176,18 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         // If time passed and not there...
         // Updated logic: Check every minute.
-        // If > 60 mins past start time and still not there -> Not Going.
-        final minutesLate = now.difference(schedule.startTime).inMinutes;
+        // If > 60 mins past **end time** (or start time if end time is null) and still not there -> Not Attended.
+        final referenceTime = schedule.endTime ?? schedule.startTime;
+        final minutesLate = now.difference(referenceTime).inMinutes;
         print(
-          'Schedule ${schedule.title}: $minutesLate mins late, distance ${distance.toStringAsFixed(2)}m',
+          'Schedule ${schedule.title}: $minutesLate mins late from reference time, distance ${distance.toStringAsFixed(2)}m',
         );
 
         if (minutesLate > 60) {
           newStatus = ScheduleStatus.notAttended;
         } else {
           print(
-            'Not updating ${schedule.title}: Only $minutesLate mins late (threshold > 60)',
+            'Not updating ${schedule.title}: Only $minutesLate mins late (threshold > 60 after end time)',
           );
           continue; // Still give them time
         }
@@ -238,6 +239,17 @@ class _HomeScreenState extends State<HomeScreen> {
           title: '行程準備: ${schedule.title}',
           body: '您的行程將在 3 小時後開始',
           scheduledTime: reminder3h,
+        );
+      }
+
+      // 2 hours before - Attend / Cancel Prompt
+      final reminder2h = startTime.subtract(Duration(hours: 2));
+      if (reminder2h.isAfter(now)) {
+        await notificationService.scheduleNotification(
+          id: schedule.id.hashCode + 3, // Unique ID offset
+          title: '行程即將開始: ${schedule.title}',
+          body: '您的行程將在 2 小時後開始，請問是否確定出席？請開啟 App 確認或取消。',
+          scheduledTime: reminder2h,
         );
       }
 
@@ -588,62 +600,128 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showReschedulePicker(Schedule schedule) async {
     final now = DateTime.now();
-    final firstDate = now; 
+    final firstDate = now;
     
-    final pickedDate = await showDatePicker(
+    // 1. Pick Start Date
+    final DateTime? pickedStartDate = await showDatePicker(
       context: context,
       initialDate: now.add(Duration(minutes: 5)),
       firstDate: firstDate,
       lastDate: DateTime(2101),
+      helpText: '選擇開始日期',
     );
 
-    if (pickedDate != null) {
-      final pickedTime = await showTimePicker(
+    if (pickedStartDate != null) {
+      // 2. Pick Start Time
+      final TimeOfDay? pickedStartTime = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(now.add(Duration(minutes: 30))),
+        helpText: '選擇開始時間',
       );
 
-      if (pickedTime != null) {
-        final newDateTime = DateTime(
-          pickedDate.year,
-          pickedDate.month,
-          pickedDate.day,
-          pickedTime.hour,
-          pickedTime.minute,
+      if (pickedStartTime != null) {
+        final newStartDateTime = DateTime(
+          pickedStartDate.year,
+          pickedStartDate.month,
+          pickedStartDate.day,
+          pickedStartTime.hour,
+          pickedStartTime.minute,
         );
 
-        if (newDateTime.isBefore(now)) {
+        if (newStartDateTime.isBefore(now)) {
            if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('請選擇未來的時間')),
+              SnackBar(content: Text('請選擇未來的開始時間')),
             );
           }
           return;
         }
 
-        await _handleReschedule(schedule, newDateTime);
+        // Calculate initial end time based on original duration
+        Duration originalDuration = Duration(hours: 1); // Default
+        if (schedule.endTime != null) {
+           originalDuration = schedule.endTime!.difference(schedule.startTime);
+        }
+        DateTime initialEndDateTime = newStartDateTime.add(originalDuration);
+
+        // 3. Pick End Date (Default to Start Date or calculated End Date)
+        final DateTime? pickedEndDate = await showDatePicker(
+          context: context,
+          initialDate: initialEndDateTime,
+          firstDate: newStartDateTime, // End date cannot be before start date
+          lastDate: DateTime(2101),
+          helpText: '選擇結束日期',
+        );
+
+        if (pickedEndDate != null) {
+           // 4. Pick End Time
+           final TimeOfDay? pickedEndTime = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.fromDateTime(initialEndDateTime),
+              helpText: '選擇結束時間',
+           );
+
+           if (pickedEndTime != null) {
+              final newEndDateTime = DateTime(
+                  pickedEndDate.year,
+                  pickedEndDate.month,
+                  pickedEndDate.day,
+                  pickedEndTime.hour,
+                  pickedEndTime.minute,
+              );
+
+              if (newEndDateTime.isBefore(newStartDateTime)) {
+                 if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('結束時間必須晚於開始時間')),
+                    );
+                 }
+                 return;
+              }
+
+              await _handleReschedule(schedule, newStartDateTime, newEndDateTime);
+           }
+        }
       }
     }
   }
 
-  Future<void> _handleReschedule(Schedule schedule, DateTime newTime) async {
+  Future<void> _handleReschedule(Schedule schedule, DateTime newStartTime, DateTime newEndTime) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(child: CircularProgressIndicator()),
+    );
+    
     try {
       final apiService = ApiService();
       await apiService.updateSchedule(schedule.id, {
-        'start_time': newTime.toIso8601String(),
+        'start_time': newStartTime.toIso8601String(),
+        'end_time': newEndTime.toIso8601String(),
         'status': ScheduleStatus.pending
       });
 
       if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('行程時間已更新')),
+          SnackBar(
+            content: Text('✅ 行程時間已更新'),
+            duration: Duration(seconds: 3),
+            backgroundColor: Colors.green,
+          ),
         );
         _refreshSchedules();
       }
     } catch (e) {
       if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('更新失敗: $e')),
+          SnackBar(
+            content: Text('❌ 更新失敗: $e'),
+            duration: Duration(seconds: 4),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

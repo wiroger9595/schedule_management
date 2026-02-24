@@ -571,6 +571,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'End Time must be after Start Time'**
   String get endTimeMustBeAfterStartTime;
+
+  /// No description provided for @defaultNotificationMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'Default Notification Method'**
+  String get defaultNotificationMethod;
 }
 
 class _AppLocalizationsDelegate

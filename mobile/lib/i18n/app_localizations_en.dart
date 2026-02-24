@@ -250,4 +250,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get endTimeMustBeAfterStartTime => 'End Time must be after Start Time';
+
+  @override
+  String get defaultNotificationMethod => 'Default Notification Method';
 }

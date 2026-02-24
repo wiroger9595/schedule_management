@@ -46,7 +46,12 @@ class ApiService {
       await _authService.logout();
       throw Exception('Unauthorized');
     } else {
-      throw Exception('Failed to create schedule');
+      try {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['detail'] ?? 'Failed to create schedule');
+      } catch (_) {
+        throw Exception('Failed to create schedule');
+      }
     }
   }
 
@@ -62,7 +67,12 @@ class ApiService {
       await _authService.logout();
       throw Exception('Unauthorized');
     } else {
-      throw Exception('Failed to update schedule: ${response.body}');
+      try {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['detail'] ?? 'Failed to update schedule');
+      } catch (_) {
+        throw Exception('Failed to update schedule: ${response.body}');
+      }
     }
   }
 
@@ -111,11 +121,19 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> chatWithAI(String message) async {
+  Future<Map<String, dynamic>> chatWithAI(String message, {Map<String, dynamic>? currentContext, bool forceCreate = false, double? latitude, double? longitude}) async {
+    final body = {
+      'message': message,
+      if (currentContext != null) 'current_data': currentContext,
+      'force_create': forceCreate,
+      'latitude': latitude,
+      'longitude': longitude
+    };
+
     final response = await http.post(
       Uri.parse('$baseUrl/schedules/chat'),
       headers: await getHeaders(),
-      body: jsonEncode({'message': message}),
+      body: jsonEncode(body),
     );
     
     if (response.statusCode == 200) {
@@ -207,6 +225,50 @@ class ApiService {
       return data.cast<Map<String, dynamic>>();
     } else {
       throw Exception('Failed to load nearby places');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> searchPlaces(String query, double? lat, double? lon, {double? zoom}) async {
+    final headers = await getHeaders();
+    String url = '$baseUrl/estimate/search?q=$query';
+    if (lat != null && lon != null) {
+      url += '&lat=$lat&lon=$lon';
+    }
+    if (zoom != null) {
+      url += '&zoom=$zoom';
+    }
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: headers,
+    );
+    
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Failed to search places');
+    }
+  }
+
+  Future<Map<String, dynamic>> validateContact(String? phone, String? email, String? lineId, {int? excludeContactId}) async {
+    final body = {
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+      if (email != null && email.isNotEmpty) 'email': email,
+      if (lineId != null && lineId.isNotEmpty) 'line_id': lineId,
+      if (excludeContactId != null) 'exclude_contact_id': excludeContactId,
+    };
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/contacts/validate'),
+      headers: await getHeaders(),
+      body: jsonEncode(body),
+    );
+    
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to validate contact');
     }
   }
 }

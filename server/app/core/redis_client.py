@@ -12,6 +12,8 @@ class RedisClient:
             host=os.getenv("REDIS_HOST", "localhost"),
             port=int(os.getenv("REDIS_PORT", 6379)),
             db=int(os.getenv("REDIS_DB", 0)),
+            password=os.getenv("REDIS_PASSWORD"),
+            ssl=os.getenv("REDIS_TLS", "false").lower() == "true",
             decode_responses=True
         )
     

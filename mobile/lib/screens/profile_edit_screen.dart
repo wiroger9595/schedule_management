@@ -26,6 +26,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late TextEditingController _phoneController;
   late TextEditingController _lineIdController;
   String _selectedLanguage = 'zh-TW';
+  String _defaultSending = 'line';
   File? _imageFile;
   bool _isLoading = false;
 
@@ -36,6 +37,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _phoneController = TextEditingController(text: widget.user['phone']);
     _lineIdController = TextEditingController(text: widget.user['line_id']);
     _selectedLanguage = widget.user['language'] ?? 'zh-TW';
+    _defaultSending = widget.user['default_sending'] ?? 'line';
   }
 
   @override
@@ -113,6 +115,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             ? _lineIdController.text
             : null,
         'language': _selectedLanguage,
+        'default_sending': _defaultSending,
       });
 
       if (mounted) {
@@ -268,6 +271,25 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ],
               onChanged: (value) {
                 setState(() => _selectedLanguage = value!);
+              },
+            ),
+            SizedBox(height: 16),
+
+            // 預設通知方式
+            DropdownButtonFormField<String>(
+              value: _defaultSending,
+              decoration: InputDecoration(
+                labelText: AppLocalizations.of(context)!.defaultNotificationMethod ?? '預設通知方式',
+                prefixIcon: Icon(Icons.notifications),
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                DropdownMenuItem(value: 'line', child: Text('Line')),
+                DropdownMenuItem(value: 'sms', child: Text('SMS/簡訊')), // Localized 'Phone'
+                DropdownMenuItem(value: 'email', child: Text('Email')),
+              ],
+              onChanged: (value) {
+                setState(() => _defaultSending = value!);
               },
             ),
             SizedBox(height: 32),

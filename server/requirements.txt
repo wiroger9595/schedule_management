@@ -19,3 +19,5 @@ email-validator
 google-genai
 cloudinary
 psycopg2-binary
+arrow
+line-bot-sdk

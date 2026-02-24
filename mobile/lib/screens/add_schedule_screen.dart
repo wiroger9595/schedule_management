@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/schedule.dart';
@@ -27,9 +28,13 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   DateTime startTime = DateTime.now().add(Duration(hours: 1));
   DateTime? endTime;
   String? location;
-  String transportMode = 'car';
+  String transportMode = 'walk';
   double? latitude;
   double? longitude;
+  bool _isLoadingLocation = false;
+  bool _isSearchingLocation = false;
+  List<Map<String, dynamic>> _locationSearchResults = [];
+  Timer? _debounceTimer;
 
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
@@ -68,7 +73,12 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
       _contactLineIdController.text = s.contactLineId ?? '';
 
       if (s.attends != null) {
-        selectedContacts = List<Map<String, dynamic>>.from(s.attends!);
+        selectedContacts = s.attends!.map((att) {
+          final mapped = Map<String, dynamic>.from(att);
+          mapped['attend_id'] = mapped['id']; // preserve attend primary key
+          mapped['id'] = mapped['contact_id']; // frontend UI relies on 'id' being the contact_id
+          return mapped;
+        }).toList();
       } else if (s.contactName != null) {
         // Backward compatibility: create a guest/contact from legacy fields
         selectedContacts = [
@@ -87,6 +97,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _locationController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -134,17 +145,27 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
 
         setState(() {
           startTime = newDateTime;
+          // 自動將 endTime 調整為 startTime 之後，避免 end time 在 start time 之前
+          if (endTime != null && endTime!.isBefore(startTime)) {
+            endTime = startTime.add(Duration(hours: 1));
+          }
         });
       }
     }
   }
 
   Future<void> _selectEndTime(BuildContext context) async {
-    final initialDate = endTime ?? startTime.add(Duration(hours: 1));
+    DateTime initialDate = endTime ?? startTime.add(Duration(hours: 1));
+    
+    // 確保 initialDate 不會早於 firstDate (startTime)，避免 Flutter DatePicker 拋出 Assertion Error (crash)
+    if (initialDate.isBefore(startTime)) {
+      initialDate = startTime.add(Duration(hours: 1));
+    }
+
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: startTime, // End time must be after start time
+      firstDate: DateTime(startTime.year, startTime.month, startTime.day), // 以天為單位，確保不會被時間差異影響 assertion
       lastDate: DateTime(2101),
     );
     if (pickedDate != null) {
@@ -206,10 +227,20 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
       final lon = result['longitude'] as double;
       final pickedName = result['name'] as String?;
 
+      if (pickedName != null && pickedName.isNotEmpty && pickedName != 'Selected Location') {
+        setState(() {
+          latitude = lat;
+          longitude = lon;
+          _locationController.text = pickedName;
+        });
+        return;
+      }
+
       setState(() {
         latitude = lat;
         longitude = lon;
-        _locationController.text = pickedName ?? "Loading...";
+        _isLoadingLocation = true;
+        _locationController.text = "載入地點選項中...";
       });
 
       try {
@@ -228,6 +259,10 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
         final pois = results[1] as List<Map<String, dynamic>>;
 
         if (!mounted) return;
+        
+        setState(() {
+           _isLoadingLocation = false;
+        });
 
         // Show selection sheet
         showModalBottomSheet(
@@ -248,7 +283,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                      Padding(
                        padding: const EdgeInsets.all(16.0),
                        child: Text(
-                         'Select Location',
+                         AppLocalizations.of(context)!.selectLocation ?? 'Select Location',
                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                        ),
                      ),
@@ -318,7 +353,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               // If dismissed without selection:
               // - If we had a pickedName, _locationController.text is already pickedName.
               // - If we didn't, it was "Loading...". We should fallback to address.
-              if (_locationController.text == "Loading...") {
+              if (_locationController.text == "載入地點選項中...") {
                   setState(() {
                       _locationController.text = address;
                   });
@@ -329,6 +364,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
       } catch (e) {
         if (mounted) {
           setState(() {
+            _isLoadingLocation = false;
             _locationController.text =
                 "Pinned Location (${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)})";
           });
@@ -338,6 +374,59 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
         }
       }
     }
+  }
+
+  void _onLocationTextChanged(String text) {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    
+    // Clear results if text is empty or too short
+    if (text.isEmpty || text.length < 2) {
+      if (_locationSearchResults.isNotEmpty || _isSearchingLocation) {
+        if (mounted) {
+          setState(() {
+            _locationSearchResults.clear();
+            _isSearchingLocation = false;
+          });
+        }
+      }
+      return;
+    }
+
+    // Only start the visual searching spinner AFTER the user stops typing
+    _debounceTimer = Timer(const Duration(seconds: 3), () async {
+      if (mounted) {
+        setState(() {
+          _isSearchingLocation = true;
+        });
+      }
+      try {
+        final results = await apiService.searchPlaces(text, latitude, longitude);
+        if (mounted) {
+          setState(() {
+            _locationSearchResults = results;
+            _isSearchingLocation = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _locationSearchResults = [];
+            _isSearchingLocation = false;
+          });
+        }
+      }
+    });
+  }
+
+  void _selectSearchResult(Map<String, dynamic> place) {
+    setState(() {
+      _locationController.text = place['name'] ?? '';
+      latitude = place['latitude'];
+      longitude = place['longitude'];
+      _locationSearchResults.clear(); // Hide the list after selection
+      // Clear focus to close the keyboard
+      FocusScope.of(context).unfocus();
+    });
   }
 
   void _showAttendeeSelector() {
@@ -430,7 +519,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             'attends': selectedContacts.map((c) {
               return {
                 'user_id': c['contact_user_id'] ?? c['user_id'],
-                'contact_id': c['id'],
+                'contact_id': c['id'] ?? c['contact_id'], // 'id' is now the contact_id due to normalization
                 'name': c['nick_name'] ?? c['name'] ?? c['full_name'],
                 'email': c['email'],
                 'phone': c['phone'],
@@ -457,9 +546,17 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
           Navigator.pop(context, updatedSchedule);
         }
       } catch (e) {
+        String errorMsg = e.toString();
+        // Remove "Exception: " prefix if present from dart exceptions
+        if (errorMsg.startsWith('Exception: ')) {
+          errorMsg = errorMsg.substring(11);
+        }
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to save schedule: $e')));
+        ).showSnackBar(SnackBar(
+          content: Text(errorMsg),
+          backgroundColor: Colors.red,
+        ));
       }
     }
   }
@@ -561,9 +658,21 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _locationController,
+                      onChanged: _onLocationTextChanged,
                       decoration: InputDecoration(
                         labelText: AppLocalizations.of(context)!.location,
                         border: OutlineInputBorder(),
+                        suffixIcon: (_isLoadingLocation || _isSearchingLocation)
+                            ? Container(
+                                width: 24,
+                                height: 24,
+                                padding: EdgeInsets.all(12),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.grey,
+                                ),
+                              )
+                            : null,
                       ),
                       onSaved: (value) => location = value,
                     ),
@@ -574,7 +683,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                       Icons.map,
                       color: latitude != null ? Colors.blue : Colors.grey,
                     ),
-                    onPressed: _pickLocation,
+                    onPressed: _isLoadingLocation ? null : _pickLocation,
                     tooltip: 'Select on Map',
                   ),
                 ],
@@ -585,6 +694,48 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                   child: Text(
                     '📍 Coordinate selected',
                     style: TextStyle(color: Colors.blue, fontSize: 12),
+                  ),
+                ),
+              if (_locationSearchResults.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 8.0),
+                  constraints: BoxConstraints(maxHeight: 250),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _locationSearchResults.length,
+                    separatorBuilder: (context, index) => Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final place = _locationSearchResults[index];
+                      // Determine the icon based on category, if available
+                      IconData icon = Icons.place;
+                      String category = place['category'] ?? 'Location';
+                      if (category == 'amenity' || category == 'restaurant' || category == 'cafe') icon = Icons.restaurant;
+                      else if (category.contains('shop')) icon = Icons.shopping_bag;
+                      else if (category.contains('transport')) icon = Icons.train;
+
+                      return ListTile(
+                        leading: Icon(icon, color: Colors.blue),
+                        title: Text(place['name'] ?? 'Unknown Place'),
+                        subtitle: Text(
+                          place['distance'] != null 
+                            ? '$category • ${place['distance']}m'
+                            : category,
+                        ),
+                        onTap: () => _selectSearchResult(place),
+                      );
+                    },
                   ),
                 ),
               SizedBox(height: 24),

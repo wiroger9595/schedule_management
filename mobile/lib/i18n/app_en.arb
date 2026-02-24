@@ -77,5 +77,6 @@
   "pleaseEnterFutureTime": "Please enter a future time",
   "endTime": "End Time",
   "notSet": "Not Set",
-  "endTimeMustBeAfterStartTime": "End Time must be after Start Time"
+  "endTimeMustBeAfterStartTime": "End Time must be after Start Time",
+  "defaultNotificationMethod": "Default Notification Method"
 }

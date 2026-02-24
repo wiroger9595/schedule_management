@@ -8,16 +8,16 @@ import 'dart:io';
 
 class AuthService {
   final storage = FlutterSecureStorage();
-  
+
   // Configure GoogleSignIn with explicit parameters
   // IMPORTANT: Use different client IDs for different platforms
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
     // iOS Client ID - only works for native iOS app
     // For web/Android, you need to create a separate OAuth client in Google Cloud Console
-    clientId: Platform.isIOS 
-      ? '644901002244-soa2s80jbm0l9ne9jgdf7ifrq5rl7rac.apps.googleusercontent.com' 
-      : null, // For Android, client ID comes from google-services.json
+    clientId: Platform.isIOS
+        ? '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com'
+        : null, // For Android, client ID comes from google-services.json
     // If testing on web, create a Web Application client ID and uncomment below:
     // serverClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
   );
@@ -29,15 +29,15 @@ class AuthService {
         print('Google sign-in cancelled by user');
         return false;
       }
-      
+
       final GoogleSignInAuthentication auth = await account.authentication;
-      
+
       // Validate required fields
       if (account.email.isEmpty) {
         print('Google account email is required');
         return false;
       }
-      
+
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/google'),
         headers: {'Content-Type': 'application/json'},
@@ -48,7 +48,7 @@ class AuthService {
           'id_token': auth.idToken ?? '',
         }),
       );
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['access_token'] != null) {
@@ -77,7 +77,7 @@ class AuthService {
           AppleIDAuthorizationScopes.fullName,
         ],
       );
-      
+
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/apple'),
         headers: {'Content-Type': 'application/json'},
@@ -88,7 +88,7 @@ class AuthService {
           'identityToken': credential.identityToken,
         }),
       );
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         await storage.write(key: 'jwt_token', value: data['access_token']);
@@ -118,12 +118,9 @@ class AuthService {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/auth/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-        }),
+        body: jsonEncode({'email': email, 'password': password}),
       );
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['access_token'] != null) {
@@ -140,16 +137,14 @@ class AuthService {
   Future<void> logout() async {
     String? token = await getToken();
     if (token != null) {
-       try {
-         await http.post(
+      try {
+        await http.post(
           Uri.parse('${ApiService.baseUrl}/auth/logout'),
-          headers: {
-              'Authorization': 'Bearer $token',
-          }
+          headers: {'Authorization': 'Bearer $token'},
         );
-       } catch (e) {
-         print("Logout error: $e");
-       }
+      } catch (e) {
+        print("Logout error: $e");
+      }
     }
     await storage.delete(key: 'jwt_token');
   }
@@ -157,7 +152,7 @@ class AuthService {
   Future<String?> getToken() async {
     return await storage.read(key: 'jwt_token');
   }
-  
+
   Future<bool> isLoggedIn() async {
     String? token = await getToken();
     return token != null;

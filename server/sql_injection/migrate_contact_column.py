@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, text
 import os
+from sqlalchemy import event
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path="server/.env")
@@ -16,6 +17,13 @@ print(f"Connecting to: {DATABASE_URL}")
 
 try:
     engine = create_engine(DATABASE_URL)
+
+@event.listens_for(engine, "connect")
+def set_search_path(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute(f"SET search_path TO {postgres_schema}")
+    cursor.close()
+
     with engine.connect() as connection:
         # Check if column exists first to avoid error
         check_sql = text("SELECT column_name FROM information_schema.columns WHERE table_name='contact' AND column_name='owner_id';")

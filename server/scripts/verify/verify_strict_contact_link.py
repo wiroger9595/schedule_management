@@ -1,4 +1,5 @@
 from sqlmodel import Session, select, create_engine
+from sqlalchemy import event
 from app.models.user import User
 from app.models.contact import Contact
 from app.models.schedule import Schedule
@@ -17,6 +18,9 @@ postgres_password = os.getenv("POSTGRES_PASSWORD", "password")
 postgres_server = os.getenv("POSTGRES_SERVER", "localhost")
 postgres_port = os.getenv("POSTGRES_PORT", "5432")
 postgres_db = os.getenv("POSTGRES_DB", "schedule_management")
+postgres_schema = os.getenv("POSTGRES_SCHEMA")
+if not postgres_schema:
+    postgres_schema = "public"
 
 # Use psycopg2 as per app usage
 DATABASE_URL = os.getenv("DATABASE_URL") or f"postgresql+psycopg2://{postgres_user}:{postgres_password}@{postgres_server}:{postgres_port}/{postgres_db}"
@@ -24,6 +28,13 @@ DATABASE_URL = os.getenv("DATABASE_URL") or f"postgresql+psycopg2://{postgres_us
 def verify():
     print(f"Connecting to {DATABASE_URL}...")
     engine = create_engine(DATABASE_URL)
+
+@event.listens_for(engine, "connect")
+def set_search_path(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute(f"SET search_path TO {postgres_schema}")
+    cursor.close()
+
 
     with Session(engine) as session:
         # 1. Get a user

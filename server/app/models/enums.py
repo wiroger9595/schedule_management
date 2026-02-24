@@ -14,6 +14,6 @@ class Type(str, Enum):
     PERSONAL = "PL"
     BUSINESS = "BS"
 
-
+# 下禮拜跟阿明去故宮
 
 # Mapping for legacy data migration (Optional, logic will be in migration script)

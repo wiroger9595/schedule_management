@@ -57,6 +57,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  String _getDefaultSendingName(String? code) {
+    switch (code) {
+      case 'line':
+        return 'Line';
+      case 'sms':
+        return 'SMS/簡訊';
+      case 'email':
+        return 'Email';
+      default:
+        return code ?? 'Line'; // Default fallback
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -160,6 +173,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildInfoCard(
                       AppLocalizations.of(context)!.language,
                       _getLanguageName(_user!['language']),
+                    ),
+                    _buildInfoCard(
+                      AppLocalizations.of(context)!.defaultNotificationMethod ?? '預設通知方式',
+                      _getDefaultSendingName(_user!['default_sending']),
                     ),
                   ],
                 ),

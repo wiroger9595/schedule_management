@@ -77,5 +77,6 @@
   "pleaseEnterFutureTime": "請選擇未來的時間",
   "endTime": "結束時間",
   "notSet": "未設定",
-  "endTimeMustBeAfterStartTime": "結束時間必須晚於開始時間"
+  "endTimeMustBeAfterStartTime": "結束時間必須晚於開始時間",
+  "defaultNotificationMethod": "預設通知方式"
 }

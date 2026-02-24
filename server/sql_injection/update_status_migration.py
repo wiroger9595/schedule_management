@@ -1,4 +1,5 @@
 from sqlmodel import Session, select, create_engine
+from sqlalchemy import event
 from app.models.schedule import Schedule
 from app.models.attend import attend
 from app.models.enums import Status
@@ -13,6 +14,13 @@ except Exception as e:
     print(f"Could not load settings, using default localhost: {e}")
 
 engine = create_engine(DATABASE_URL)
+
+@event.listens_for(engine, "connect")
+def set_search_path(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute(f"SET search_path TO {postgres_schema}")
+    cursor.close()
+
 
 def migrate_status():
     with Session(engine) as session:

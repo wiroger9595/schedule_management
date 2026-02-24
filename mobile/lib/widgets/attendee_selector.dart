@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 import '../services/api_service.dart';
 import '../utils/form_validators.dart';
 
@@ -35,6 +36,12 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
   final TextEditingController _lineIdController = TextEditingController();
   bool _isCreating = false;
 
+  // Validation
+  Timer? _debounceTimer;
+  String? _phoneError;
+  String? _emailError;
+  String? _lineError;
+
   String? _validateContactMethod(String? value) {
     if (_phoneController.text.trim().isEmpty &&
         _emailController.text.trim().isEmpty &&
@@ -42,6 +49,39 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
       return '請至少填寫一項';
     }
     return null;
+  }
+
+  void _validateRealTime() {
+    setState(() {
+      _phoneError = null;
+      _emailError = null;
+      _lineError = null;
+    });
+
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      final phone = _phoneController.text.trim();
+      final email = _emailController.text.trim();
+      final lineId = _lineIdController.text.trim();
+      
+      if (phone.isEmpty && email.isEmpty && lineId.isEmpty) return;
+      
+      try {
+        final result = await apiService.validateContact(phone, email, lineId);
+        
+        if (mounted && result['is_valid'] == false) {
+           setState(() {
+              final dup = result['duplicate_field'];
+              if (dup == 'phone') _phoneError = '此號碼已存在';
+              else if (dup == 'email') _emailError = '此Email已存在';
+              else if (dup == 'line') _lineError = '此Line ID已存在';
+           });
+        }
+      } catch (e) {
+        // ignore
+      }
+    });
   }
 
   @override
@@ -54,6 +94,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
   
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _tabController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
@@ -300,10 +341,11 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
                 labelText: '電話',
                 prefixIcon: Icon(Icons.phone),
                 border: OutlineInputBorder(),
+                errorText: _phoneError,
               ),
               keyboardType: TextInputType.phone,
               validator: _validateContactMethod,
-              onChanged: (_) => setState(() {}), // Trigger rebuild to update other fields' validation state logic if needed
+              onChanged: (_) => _validateRealTime(),
             ),
             SizedBox(height: 16),
             TextFormField(
@@ -312,6 +354,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
                 labelText: 'Email',
                 prefixIcon: Icon(Icons.email),
                 border: OutlineInputBorder(),
+                errorText: _emailError,
               ),
               keyboardType: TextInputType.emailAddress,
               validator: (value) {
@@ -319,7 +362,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
                  if (emailError != null) return emailError;
                  return _validateContactMethod(value);
               },
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) => _validateRealTime(),
             ),
             SizedBox(height: 16),
             TextFormField(
@@ -328,9 +371,10 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
                 labelText: 'Line ID',
                 prefixIcon: Icon(Icons.chat),
                 border: OutlineInputBorder(),
+                errorText: _lineError,
               ),
               validator: _validateContactMethod,
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) => _validateRealTime(),
             ),
             SizedBox(height: 24),
             SizedBox(

@@ -24,6 +24,7 @@ class ScheduleListTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       elevation: 4,
+      color: schedule.status == ScheduleStatus.cancel ? Colors.grey[200] : null,
       child: ListTile(
         contentPadding: EdgeInsets.all(16),
         title: Text(

@@ -37,6 +37,25 @@ class ContactRepository:
         return contact
         
     def delete(self, contact: Contact) -> None:
+        from sqlmodel import select, or_, delete as sql_delete
+        from ..models.schedule import Schedule
+        from ..models.attend import attend
+        
+        # 尋找所有該聯絡人有參與的行程 (不論是主聯絡人還是參與者)
+        stmt = select(Schedule).outerjoin(attend, Schedule.schedule_id == attend.schedule_id).where(
+            or_(
+                Schedule.contact_id == contact.id,
+                attend.contact_id == contact.id
+            )
+        ).distinct()
+        
+        schedules_to_delete = self.session.exec(stmt).all()
+        for schedule in schedules_to_delete:
+            self.session.delete(schedule)
+            
+        # 清除所有殘存的 attend 記錄 (保險起見)
+        self.session.exec(sql_delete(attend).where(attend.contact_id == contact.id))
+        
         self.session.delete(contact)
         self.session.commit()
 
@@ -45,3 +64,24 @@ class ContactRepository:
         self.session.commit()
         self.session.refresh(contact)
         return contact
+
+    def check_duplicate(self, user_id: str, phone: Optional[str] = None, email: Optional[str] = None, line_id: Optional[str] = None, exclude_contact_id: Optional[int] = None) -> Optional[str]:
+        if phone:
+            stmt = select(Contact).where(Contact.user_id == user_id, Contact.phone == phone)
+            if exclude_contact_id:
+                stmt = stmt.where(Contact.id != exclude_contact_id)
+            if self.session.exec(stmt).first():
+                return "phone"
+        if email:
+            stmt = select(Contact).where(Contact.user_id == user_id, Contact.email == email)
+            if exclude_contact_id:
+                stmt = stmt.where(Contact.id != exclude_contact_id)
+            if self.session.exec(stmt).first():
+                return "email"
+        if line_id:
+            stmt = select(Contact).where(Contact.user_id == user_id, Contact.line_id == line_id)
+            if exclude_contact_id:
+                stmt = stmt.where(Contact.id != exclude_contact_id)
+            if self.session.exec(stmt).first():
+                return "line"
+        return None

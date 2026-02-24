@@ -23,8 +23,7 @@ samples, guidance on mobile development, and a full API reference.
 flutter run -d macos
 
 # apple oauth
-644901002244-soa2s80jbm0l9ne9jgdf7ifrq5rl7rac.apps.googleusercontent.com
-
+200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com
 
 
 map api 

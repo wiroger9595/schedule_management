@@ -192,24 +192,49 @@ class OSMnxService:
         return results
 
     @staticmethod
-    def get_coordinates(location_name: str):
-        """Geocode a location name to (lat, lon) with prioritization for Taiwan"""
+    def get_coordinates(location_name: str, lat: float = None, lon: float = None) -> tuple:
+        """
+        Geocode a location name to (lat, lon) with prioritization for Taiwan and local proximity.
+        Uses search_places logic to benefit from existing bias/fallback mechanisms.
+        """
         # Prioritize local search to avoid ambiguity (e.g. "象山" resolving to China)
-        queries = [
-            f"{location_name}, Taipei",
-            f"{location_name}, Taiwan",
-            location_name
-        ]
-        
-        for query in queries:
-            try:
-                # diff log: Attempting geocode for {query}
-                return ox.geocode(query)
-            except Exception:
-                continue
-                
-        print(f"Geocoding failed for '{location_name}' after trying variations.")
-        return None
+        try:
+            # We use an instance to call search_places
+            service = OSMnxService()
+            
+            # 1. Try exact search with bias
+            results = service.search_places(location_name, lat, lon, zoom=14.0) # Zoom 14 is roughly district/city level
+            if results:
+                return (results[0]['lat'], results[0]['lon'])
+
+            # 2. If valid lat/lon provided, maybe we don't need "Taipei" suffix as much, 
+            # but if it failed, maybe it's because the name is too generic.
+            # Let's try appending city/country if not found, but only if we didn't have a strong local bias.
+            
+            # If we are in Taiwan (rough box), try appending Taiwan
+            if lat and lon and 21 <= lat <= 26 and 119 <= lon <= 123:
+                 # Already handled by search_places with countrycodes='tw'
+                 pass
+            
+            # Fallback variations if the first search yielded nothing (e.g. strict name match failed)
+            queries = []
+            if "捷運" in location_name and not location_name.endswith("站"):
+                 queries.append(f"{location_name}站")
+            
+            if not lat: # Only add these generic suffixes if we DON'T have a location bias (otherwise search_places handles it)
+                queries.append(f"{location_name}, Taipei")
+                queries.append(f"{location_name}, Taiwan")
+
+            for q in queries:
+                results = service.search_places(q, lat, lon)
+                if results:
+                    return (results[0]['lat'], results[0]['lon'])
+
+            return None
+
+        except Exception as e:
+            print(f"Geocoding failed for '{location_name}': {e}")
+            return None
 
     @staticmethod
     def reverse_geocode(lat: float, lon: float):
@@ -276,6 +301,7 @@ class OSMnxService:
             print(f"Reverse geocode failed: {e}")
             return None
 
+
     @staticmethod
     def get_nearby_pois(lat: float, lon: float, radius: int = 300):
         """Get nearby Points of Interest (POIs) using OSMnx"""
@@ -341,3 +367,273 @@ class OSMnxService:
         except Exception as e:
             print(f"Error fetching POIs: {e}")
             return []
+
+    @staticmethod
+    def search_places(query: str, lat: float = None, lon: float = None, zoom: float = None):
+        """Search for places using Overpass API (nearby POIs) + Nominatim (general places)
+        
+        Args:
+            query: Search query string
+            lat: Latitude of map center
+            lon: Longitude of map center  
+            zoom: Map zoom level (higher = more zoomed in)
+        """
+        import requests
+        import math
+        
+        headers = {
+            "User-Agent": "ScheduleManagementApp/1.0"
+        }
+        
+        places = []
+        
+        # Step 1: Try Overpass API for nearby POI search (best for chain stores)
+        if lat and lon:
+            try:
+                places = OSMnxService._search_overpass(query, lat, lon, zoom, headers)
+            except Exception as e:
+                print(f"Overpass search failed: {e}")
+        
+        # Step 2: If Overpass returned few results, supplement with Nominatim
+        if len(places) < 3:
+            try:
+                # Primary search
+                nominatim_places = OSMnxService._search_nominatim(query, lat, lon, zoom, headers)
+                
+                # Retry with variations if few results
+                if len(nominatim_places) == 0:
+                    variations = []
+                    if "捷運" not in query and ("站" in query or "Station" in query):
+                         variations.append(f"捷運{query}")
+                    if "捷運" in query and "站" not in query:
+                         variations.append(f"{query}站")
+                    
+                    for v in variations:
+                        print(f"Retrying search with variation: {v}")
+                        more_places = OSMnxService._search_nominatim(v, lat, lon, zoom, headers)
+                        for mp in more_places:
+                             # dedup
+                             is_duplicate = False
+                             for np in nominatim_places:
+                                 if mp['name'] == np['name']:
+                                     is_duplicate = True
+                                     break
+                             if not is_duplicate:
+                                 nominatim_places.append(mp)
+                
+                for np in nominatim_places:
+                    is_duplicate = False
+                    for ep in places:
+                        dist = math.sqrt((np['lat'] - ep['lat'])**2 + (np['lon'] - ep['lon'])**2)
+                        if dist < 0.0001:  # ~10m
+                            is_duplicate = True
+                            break
+                    if not is_duplicate:
+                        places.append(np)
+            except Exception as e:
+                print(f"Nominatim search failed: {e}")
+        
+        # Sort by distance from map center
+        if lat and lon and places:
+            places.sort(key=lambda p: math.sqrt((p['lat'] - lat)**2 + (p['lon'] - lon)**2))
+        
+        return places[:15]
+    
+    @staticmethod
+    def _search_overpass(query: str, lat: float, lon: float, zoom: float, headers: dict):
+        """Search for POIs using Overpass API (OpenStreetMap data)"""
+        import requests
+        import time
+        
+        # Calculate search radius based on zoom level
+        if zoom is not None and zoom > 0:
+            # zoom 13 ~ 2000m, zoom 15 ~ 500m, zoom 17 ~ 150m
+            radius = max(200, min(5000, int(50000 / (2 ** (zoom - 10)))))
+        else:
+            radius = 1000  # Default 1km
+        
+        # Overpass QL query: search for nodes/ways with name matching the query
+        overpass_url = "https://overpass-api.de/api/interpreter"
+        # Increased timeout to 25s
+        overpass_query = f"""
+        [out:json][timeout:25];
+        (
+          node["name"~"{query}",i](around:{radius},{lat},{lon});
+          way["name"~"{query}",i](around:{radius},{lat},{lon});
+        );
+        out center body;
+        """
+        
+        places = []
+        try:
+            # increased timeout to 30s
+            response = requests.post(overpass_url, data={"data": overpass_query}, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                for element in data.get('elements', []):
+                    tags = element.get('tags', {})
+                    name = tags.get('name', '')
+                    if not name:
+                        continue
+                    
+                    # Get coordinates
+                    if element['type'] == 'node':
+                        p_lat = element['lat']
+                        p_lon = element['lon']
+                    elif element['type'] == 'way' and 'center' in element:
+                        p_lat = element['center']['lat']
+                        p_lon = element['center']['lon']
+                    else:
+                        continue
+                    
+                    # Build address from tags
+                    addr_parts = []
+                    if tags.get('addr:city'):
+                        addr_parts.append(tags['addr:city'])
+                    if tags.get('addr:district'):
+                        addr_parts.append(tags['addr:district'])
+                    if tags.get('addr:street'):
+                        addr_parts.append(tags['addr:street'])
+                    if tags.get('addr:housenumber'):
+                        addr_parts.append(tags['addr:housenumber'])
+                    address = " ".join(addr_parts) if addr_parts else tags.get('addr:full', '')
+                    
+                    # Add branch info to name if available
+                    branch = tags.get('branch', '')
+                    if branch and branch not in name:
+                        name = f"{name} ({branch})"
+                    
+                    places.append({
+                        "name": name,
+                        "address": address,
+                        "lat": float(p_lat),
+                        "lon": float(p_lon),
+                        "type": tags.get('amenity', tags.get('shop', 'place'))
+                    })
+        except Exception as e:
+            print(f"Overpass search failed: {e}")
+            
+        return places
+    
+    @staticmethod
+    def _search_nominatim(query: str, lat: float = None, lon: float = None, zoom: float = None, headers: dict = None):
+        """Search for places using Nominatim API (geocoding fallback)"""
+        import requests
+        import time
+        
+        if headers is None:
+            headers = {"User-Agent": "ScheduleManagementApp/1.0"}
+        
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": query,
+            "format": "json",
+            "limit": 50,
+            "addressdetails": 1,
+            "namedetails": 1, # Request name details to find alt_names
+            "accept-language": "zh-TW,zh;q=0.9,en;q=0.8",
+        }
+        
+        if lat and lon:
+            # Check if in Taiwan (Lat 21-26, Lon 119-123)
+            # If in Taiwan, strictly prioritize Taiwan results
+            is_in_taiwan = 21 <= lat <= 26 and 119 <= lon <= 123
+            if is_in_taiwan:
+                params["countrycodes"] = "tw"
+
+            if zoom is not None and zoom > 0:
+                delta = 360.0 / (2 ** zoom) * 2.0 # Increased multiplier for broader local search
+                delta = max(0.005, min(0.2, delta))
+            else:
+                delta = 0.05  # ~5km
+
+            params["viewbox"] = f"{lon-delta},{lat+delta},{lon+delta},{lat-delta}"
+            params["bounded"] = 1
+        
+        # Retry mechanism (up to 2 times)
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                # Increased timeout to 20s
+                response = requests.get(url, params=params, headers=headers, timeout=20)
+                places = []
+                
+                if response.status_code == 200:
+                    results = response.json()
+                    places = OSMnxService._parse_nominatim_results(results, query)
+                    
+                    # If bounded search returned nothing, try again without bounds immediately
+                    if not places and lat and lon and params.get("bounded") == 1:
+                         # Create a copy of params to avoid issues with viewbox
+                        retry_params = params.copy()
+                        retry_params["bounded"] = 0
+                        # viewbox is still sent as bias, but bounded=0 allows outside results
+                        
+                        try:
+                            print(f"[OSMnx] Local search empty, retrying global search for: {query}")
+                            response = requests.get(url, params=retry_params, headers=headers, timeout=20)
+                            if response.status_code == 200:
+                                results = response.json()
+                                places = OSMnxService._parse_nominatim_results(results, query)
+                        except Exception as e:
+                            print(f"[OSMnx] Global fallback failed: {e}")
+
+                    return places
+                
+                # If non-200, maybe retry
+                if response.status_code in [429, 502, 503, 504]:
+                     print(f"Nominatim returned {response.status_code}, retrying ({attempt+1}/{max_retries})...")
+                     time.sleep(1) # wait briefly
+                     continue
+                
+                break # Don't retry other errors
+                
+            except Exception as e:
+                print(f"Nominatim search error (attempt {attempt}): {e}")
+                if attempt < max_retries:
+                    time.sleep(1)
+                else:
+                    return []
+        return []
+
+    @staticmethod
+    def _parse_nominatim_results(results, query):
+        """Helper to parse Nominatim results with smart name selection"""
+        places = []
+        for item in results:
+            display_name = item.get('display_name', '')
+            parts = display_name.split(', ')
+            
+            # Default name from display_name
+            name = parts[0]
+            address = ", ".join(parts[1:]) if len(parts) > 1 else ""
+            
+            # Check namedetails for a better match
+            namedetails = item.get('namedetails', {})
+            query_lower = query.lower()
+            
+            best_name = name
+            
+            # If the default name doesn't contain the query, look for one that does in namedetails
+            if query_lower not in name.lower():
+                for key, val in namedetails.items():
+                    if val and query_lower in val.lower():
+                        best_name = val
+                        # If we found an exact match, stop
+                        if val.lower() == query_lower:
+                            break
+            
+            # If we changed the name, maybe append the original name to address for context
+            if best_name != name:
+                address = f"{name}, {address}"
+                name = best_name
+            
+            places.append({
+                "name": name,
+                "address": address,
+                "lat": float(item['lat']),
+                "lon": float(item['lon']),
+                "type": item.get('type', 'unknown')
+            })
+        return places

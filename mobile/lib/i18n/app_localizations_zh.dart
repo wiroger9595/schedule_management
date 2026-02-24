@@ -248,4 +248,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get endTimeMustBeAfterStartTime => '結束時間必須晚於開始時間';
+
+  @override
+  String get defaultNotificationMethod => '預設通知方式';
 }

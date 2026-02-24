@@ -60,3 +60,13 @@ def get_nearby_pois(lat: float, lon: float, radius: int = 300):
     except Exception as e:
         print(f"Error in nearby endpoint: {e}")
         return []
+
+@router.get("/search")
+def search_places(q: str, lat: Optional[float] = None, lon: Optional[float] = None, zoom: Optional[float] = None):
+    """Search for places by name"""
+    try:
+        places = OSMnxService.search_places(q, lat, lon, zoom)
+        return places
+    except Exception as e:
+        print(f"Error in search endpoint: {e}")
+        return []

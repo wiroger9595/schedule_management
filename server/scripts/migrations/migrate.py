@@ -10,13 +10,16 @@ postgres_password = os.getenv("POSTGRES_PASSWORD", "password")
 postgres_server = os.getenv("POSTGRES_SERVER", "localhost")
 postgres_port = os.getenv("POSTGRES_PORT", "5432")
 postgres_db = os.getenv("POSTGRES_DB", "schedule_management")
+postgres_schema = os.getenv("POSTGRES_SCHEMA")
+if not postgres_schema:
+    postgres_schema = "public"
 
 DATABASE_URL = f"postgresql://{postgres_user}:{postgres_password}@{postgres_server}:{postgres_port}/{postgres_db}"
 
 async def migrate():
     print(f"Connecting to {postgres_server}...")
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await asyncpg.connect(DATABASE_URL, server_settings={'search_path': postgres_schema})
         
         print("Adding cancel_reason column to schedule table...")
         try:

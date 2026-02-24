@@ -1,4 +1,5 @@
 from typing import Generic, TypeVar, Type, List, Optional
+from datetime import datetime
 from sqlmodel import Session, select, or_
 from ..models.schedule import Schedule
 from ..models.attend import attend
@@ -56,18 +57,46 @@ class ScheduleRepository:
         #   OR via user_id
         # )
         
+        # 2. Build Query
+        conditions = [
+            Schedule.contact_id == contact_id,
+            attend.contact_id == contact_id
+        ]
+        
+        if contact_user_id:
+            conditions.append(attend.user_id == contact_user_id)
+            
         statement = (
             select(Schedule)
             .outerjoin(attend, Schedule.schedule_id == attend.schedule_id)
             .where(Schedule.user_id == user_id)
-            .where(
-                or_(
-                    Schedule.contact_id == contact_id,
-                    attend.contact_id == contact_id,
-                    (attend.user_id == contact_user_id) if contact_user_id else (attend.contact_id == contact_id)
-                )
-            )
+            .where(or_(*conditions))
             .distinct()
         )
         
+        return self.session.exec(statement).all()
+
+    def find_overlapping(self, user_id: str, start_time: datetime, end_time: datetime, exclude_schedule_id: Optional[str] = None) -> List[Schedule]:
+        """
+        Find schedules that overlap with the given time range for the user.
+        Overlapping logic: (StartA < EndB) and (EndA > StartB)
+        
+        NOTE: The database columns meeting_start_time and meeting_end_time seem to be VARCHAR
+        in some environments, causing comparison errors. We cast them to TIMESTAMP here.
+        """
+        from sqlalchemy import func, TIMESTAMP
+        
+        # Ensure we are comparing 'like with like'. 
+        # If DB is varchar, we cast DB col to timestamp.
+        statement = (
+            select(Schedule)
+            .where(Schedule.user_id == user_id)
+            .where(Schedule.status != "cancelled") # Ignore cancelled
+            .where(func.cast(Schedule.meeting_start_time, TIMESTAMP) < end_time)
+            .where(func.cast(Schedule.meeting_end_time, TIMESTAMP) > start_time)
+        )
+        
+        if exclude_schedule_id:
+            statement = statement.where(Schedule.schedule_id != exclude_schedule_id)
+            
         return self.session.exec(statement).all()

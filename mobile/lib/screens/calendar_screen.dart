@@ -176,10 +176,27 @@ class _CalendarScreenState extends State<CalendarScreen>
                   color: Colors.blue,
                   shape: BoxShape.circle,
                 ),
-                markerDecoration: BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
+
+              ),
+              calendarBuilders: CalendarBuilders(
+                markerBuilder: (context, date, events) {
+                  if (events.isEmpty) return SizedBox();
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: events.map((event) {
+                      Schedule schedule = event as Schedule;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                        width: 7.0,
+                        height: 7.0,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _getStatusColor(schedule.status),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
               headerStyle: HeaderStyle(
                 formatButtonVisible: true,
@@ -518,15 +535,21 @@ class _CalendarScreenState extends State<CalendarScreen>
   Color _getStatusColor(String status) {
     switch (status) {
       case ScheduleStatus.pending:
-        return Colors.orange;
+        return const Color.fromARGB(255, 66, 233, 0); // Green
+      case ScheduleStatus.attend:
+        return const Color.fromARGB(255, 39, 45, 39);
+      case ScheduleStatus.notAttended:
+        return const Color.fromARGB(255, 213, 145, 43);
       case ScheduleStatus.active:
-        return Colors.green;
+        return const Color.fromARGB(255, 41, 69, 80);
       case ScheduleStatus.notGoing:
-        return Colors.grey;
+        return const Color.fromARGB(255, 189, 203, 131);
       case ScheduleStatus.cancel:
         return Colors.red;
+      case ScheduleStatus.comingSoon:
+        return Colors.amber[800]!;
       default:
-        return const Color.fromARGB(255, 240, 77, 6);
+        return Colors.grey;
     }
   }
 

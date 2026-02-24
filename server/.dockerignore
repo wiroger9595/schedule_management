@@ -1,0 +1,35 @@
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment configs
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Cloud functions or deployment specific
+deploy.sh
+
+# Temporary databases
+*.sqlite
+*.db
+
+# Logs
+*.log

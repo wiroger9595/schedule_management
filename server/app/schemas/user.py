@@ -8,6 +8,8 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     line_id: Optional[str] = None
     language: Optional[str] = None
+    default_sending: Optional[str] = None
+    line_user_id: Optional[str] = None
 
 
 class ProfilePictureUpdate(BaseModel):

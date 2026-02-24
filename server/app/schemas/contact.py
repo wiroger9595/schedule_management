@@ -30,3 +30,13 @@ class ContactRead(ContactCreate):
 
     class Config:
         from_attributes = True
+
+class ContactValidateRequest(BaseModel):
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    line_id: Optional[str] = None
+    exclude_contact_id: Optional[int] = None
+
+class ContactValidateResponse(BaseModel):
+    is_valid: bool
+    duplicate_field: Optional[str] = None

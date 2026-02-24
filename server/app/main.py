@@ -23,13 +23,18 @@ async def log_requests(request: Request, call_next):
 
 @app.on_event("startup")
 def on_startup():
-    from sqlmodel import SQLModel
+    from sqlmodel import SQLModel, text
     # Import models so metadata is populated
     from .models.user import User
     from .models.schedule import Schedule
     from .models.contact import Contact
     from .models.attend import attend
+    from .db.database import postgres_schema
     
+    # Ensure the schema exists before creating tables
+    with engine.begin() as conn:
+        conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{postgres_schema}";'))
+        
     SQLModel.metadata.create_all(engine)
 
 app.include_router(api_router, prefix="/api")

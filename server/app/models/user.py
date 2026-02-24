@@ -46,7 +46,13 @@ class User(SQLModel, table=True):
     
     # status VARCHAR(2) DEFAULT 'Y'
     status: str = Field(default="Y", sa_column=Column(String(2), nullable=True, server_default="Y"))
+
+    # default_sending VARCHAR(20) DEFAULT 'line'
+    default_sending: Optional[str] = Field(default="line", sa_column=Column(String(20), nullable=True, server_default="line"))
     
+    # line_user_id VARCHAR(255) NULL (Unique ID from Line Platform)
+    line_user_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True, unique=True))
+
     # created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     created_at: datetime = Field(
         default_factory=datetime.now,

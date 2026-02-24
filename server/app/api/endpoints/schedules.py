@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from typing import List, Optional
 from datetime import datetime
+import arrow
 
 from app.models.enums import Status
 from ...db.database import get_session
@@ -46,11 +47,14 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             except (ValueError, TypeError):
                 contact_id = None
         
+        
         schedule = Schedule(
             user_id=current_user.user_id,
             title=data.title,
             description=data.description,
-            meeting_time=start_time.isoformat(), # Map to meeting_time as per model
+            meeting_start_time=start_time,
+            meeting_end_time=meeting_end_time,
+            # meeting_time removed
             meeting_location=data.location or data.meeting_location,
             transport_mode=data.transport_mode,
             status=Status.PENDING.value,
@@ -62,23 +66,34 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             # Legacy fields removed
         )
 
+
         # If contact_id is missing but manual contact details are present, auto-create Contact
         if not contact_id and (data.contact_name or data.contact_phone or data.contact_email or data.contact_line_id):
-            print("DEBUG: Auto-creating contact for schedule...")
+            print("DEBUG: Auto-creating or linking contact for schedule...")
             from ...models.contact import Contact
-            # Create new contact
-            new_contact = Contact(
-                user_id=current_user.user_id,
-                nick_name=data.contact_name or "New Contact", # fallback
-                phone=data.contact_phone,
-                email=data.contact_email,
-                line_id=data.contact_line_id
-            )
-            session.add(new_contact)
-            session.commit()
-            session.refresh(new_contact)
-            print(f"DEBUG: Auto-created Contact ID: {new_contact.id}")
-            schedule.contact_id = new_contact.id
+            from sqlmodel import select
+            
+            existing_contact = None
+            if data.contact_phone: existing_contact = session.exec(select(Contact).where(Contact.user_id == current_user.user_id, Contact.phone == data.contact_phone)).first()
+            if not existing_contact and data.contact_email: existing_contact = session.exec(select(Contact).where(Contact.user_id == current_user.user_id, Contact.email == data.contact_email)).first()
+            if not existing_contact and data.contact_line_id: existing_contact = session.exec(select(Contact).where(Contact.user_id == current_user.user_id, Contact.line_id == data.contact_line_id)).first()
+
+            if existing_contact:
+                schedule.contact_id = existing_contact.id
+                print(f"DEBUG: Linked to existing Contact ID: {existing_contact.id}")
+            else:
+                new_contact = Contact(
+                    user_id=current_user.user_id,
+                    nick_name=data.contact_name or "New Contact", # fallback
+                    phone=data.contact_phone,
+                    email=data.contact_email,
+                    line_id=data.contact_line_id
+                )
+                session.add(new_contact)
+                session.commit()
+                session.refresh(new_contact)
+                print(f"DEBUG: Auto-created Contact ID: {new_contact.id}")
+                schedule.contact_id = new_contact.id
     else:
         # AI Creation
         message = data.message
@@ -118,6 +133,17 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             
     # Save via repository
     repo = ScheduleRepository(session)
+    
+    # Conflict check specifically for manual creations. AI check is already handled.
+    if data.title and data.title != "No Title":
+         conflicts = repo.find_overlapping(
+             user_id=current_user.user_id,
+             start_time=schedule.meeting_start_time,
+             end_time=schedule.meeting_end_time
+         )
+         if conflicts:
+             raise HTTPException(status_code=409, detail="該時間已經有計劃了，請修改時間")
+
     created_schedule = repo.create(schedule)
     
     # Process attends
@@ -202,12 +228,31 @@ def update_schedule(
     if not schedule or schedule.user_id != current_user.user_id:
         raise HTTPException(status_code=404, detail="Schedule not found")
 
+    print(f"DEBUG: update_schedule received data: {data.dict(exclude_unset=True)}")
+    
     # Update fields
     if data.title is not None: schedule.title = data.title
     if data.description is not None: schedule.description = data.description
-    if data.start_time is not None: schedule.start_time = datetime.fromisoformat(data.start_time)
-    if data.meeting_time is not None: schedule.start_time = datetime.fromisoformat(data.meeting_time)
-    if data.end_time is not None: schedule.end_time = datetime.fromisoformat(data.end_time)
+    if data.start_time is not None: 
+        print(f"DEBUG: Updating start_time to {data.start_time}")
+        schedule.meeting_start_time = datetime.fromisoformat(data.start_time)
+    if data.meeting_time is not None: schedule.meeting_start_time = datetime.fromisoformat(data.meeting_time) # Legacy support
+    if data.end_time is not None: 
+        print(f"DEBUG: Updating end_time to {data.end_time}")
+        schedule.meeting_end_time = datetime.fromisoformat(data.end_time)
+    else:
+        print("DEBUG: end_time is None in update data")
+        
+    # Check for conflicts after updating times
+    if data.start_time is not None or data.end_time is not None:
+         conflicts = repo.find_overlapping(
+             user_id=current_user.user_id,
+             start_time=schedule.meeting_start_time,
+             end_time=schedule.meeting_end_time,
+             exclude_schedule_id=schedule.schedule_id
+         )
+         if conflicts:
+             raise HTTPException(status_code=409, detail="該時間已經有計劃了，請修改時間")
     
 
     
@@ -222,23 +267,34 @@ def update_schedule(
     # Usually update sends what's changed.
     # If user edits "Contact Name" text field manually without picking a contact, we should create one.
     # But usually UI should handle "Add to Contacts".
-    # Assuming strict logic: If data has contact_name etc, we create a contract.
+    # Assuming strict logic: If data has contact_name etc, we create or link a contract.
     
-    if data.contact_name or data.contact_phone or data.contact_email or data.contact_line_id:
-         print("DEBUG: Auto-creating contact for schedule update...")
+    if data.contact_id is None and (data.contact_name or data.contact_phone or data.contact_email or data.contact_line_id):
+         print("DEBUG: Auto-creating/linking contact for schedule update...")
          from ...models.contact import Contact
-         new_contact = Contact(
-            user_id=current_user.user_id,
-            nick_name=data.contact_name or "New Contact",
-            phone=data.contact_phone,
-            email=data.contact_email,
-            line_id=data.contact_line_id
-         )
-         session.add(new_contact)
-         session.commit()
-         session.refresh(new_contact)
-         schedule.contact_id = new_contact.id
-         print(f"DEBUG: Auto-created Contact ID: {new_contact.id} and linked to schedule")
+         from sqlmodel import select
+         
+         existing_contact = None
+         if data.contact_phone: existing_contact = session.exec(select(Contact).where(Contact.user_id == current_user.user_id, Contact.phone == data.contact_phone)).first()
+         if not existing_contact and data.contact_email: existing_contact = session.exec(select(Contact).where(Contact.user_id == current_user.user_id, Contact.email == data.contact_email)).first()
+         if not existing_contact and data.contact_line_id: existing_contact = session.exec(select(Contact).where(Contact.user_id == current_user.user_id, Contact.line_id == data.contact_line_id)).first()
+
+         if existing_contact:
+             schedule.contact_id = existing_contact.id
+             print(f"DEBUG: Linked to existing Contact ID: {existing_contact.id} during update")
+         else:
+             new_contact = Contact(
+                user_id=current_user.user_id,
+                nick_name=data.contact_name or "New Contact",
+                phone=data.contact_phone,
+                email=data.contact_email,
+                line_id=data.contact_line_id
+             )
+             session.add(new_contact)
+             session.commit()
+             session.refresh(new_contact)
+             schedule.contact_id = new_contact.id
+             print(f"DEBUG: Auto-created Contact ID: {new_contact.id} and linked to schedule")
     
     print(f"DEBUG: update_schedule received data: {data}")
     # If lat/lon explicit, use them (Manual Pick)
@@ -260,6 +316,17 @@ def update_schedule(
         except:
             pass # Keep old coords or none if geocode fails
             
+    # Auto-revert status from COMING_SOON to PENDING if rescheduled > 3 hours away
+    # Status.COMING_SOON is "CS"
+    if schedule.status == Status.COMING_SOON.value and schedule.meeting_start_time:
+        try:
+            st = arrow.get(schedule.meeting_start_time)
+            # If start time is more than 3 hours from now
+            if st > arrow.now().shift(hours=3):
+                schedule.status = Status.PENDING.value
+                print(f"DEBUG: Auto-reverted status to PENDING (Time > 3h away)")
+        except Exception as e:
+            print(f"DEBUG: Error checking time for status revert: {e}")
             
     updated_schedule = repo.update(schedule)
     
@@ -343,37 +410,96 @@ def chat_schedule(
     # 2. 如果資訊完整，直接寫入資料庫
     if is_complete:
         try:
+            print(f"DEBUG [chat]: is_complete=True, updated_data={updated_data}")
+            
             # 轉換時間字串為 datetime 物件
             start_time_str = updated_data.get("start_time")
-            # 這裡建議加一個防呆，如果 AI 給的時間格式不對，要在 Prompt 裡嚴格要求或這裡做 try-except
+            print(f"DEBUG [chat]: start_time_str={start_time_str}")
             
+            if not start_time_str:
+                print("DEBUG [chat]: ERROR - start_time is missing from AI response!")
+                return ChatResponse(
+                    ai_reply=ai_reply + "\n\n(系統提示：AI 未回傳開始時間，行程未建立)",
+                    updated_data=updated_data,
+                    is_complete=False
+                )
+            
+            start_time = datetime.fromisoformat(start_time_str)
+            
+            # 預設結束時間為 1 小時後，如果沒有指定
+            end_time_str = updated_data.get("end_time")
+            if end_time_str:
+                end_time = datetime.fromisoformat(end_time_str)
+            else:
+                end_time = start_time.replace(hour=start_time.hour + 1) # Default 1 hour
+
+            repo = ScheduleRepository(session)
+
+            # 3. 檢查衝突 (Conflict Detection)
+            if not request.force_create:
+                conflicts = repo.find_overlapping(current_user.user_id, start_time, end_time)
+                if conflicts:
+                    # Found conflicts (could be multiple)
+                    conflict_details = []
+                    for c in conflicts:
+                        p_start = arrow.get(c.meeting_start_time).format('HH:mm')
+                        p_end = arrow.get(c.meeting_end_time).format('HH:mm') if c.meeting_end_time else "??"
+                        conflict_details.append(f"{p_start}-{p_end}「{c.title}」")
+                    
+                    conflict_msg = "、".join(conflict_details)
+                    
+                    # Store the first conflict for the structured return (frontend might use it for navigation)
+                    # But the message should list all.
+                    base_conflict = conflicts[0]
+                    
+                    return ChatResponse(
+                        ai_reply=f"時間衝突！您在該時段已有：{conflict_msg}。您確定這個時間正確嗎？",
+                        updated_data=updated_data,
+                        is_complete=True, # Logic complete, but blocked by conflict
+                        conflict={
+                            "title": base_conflict.title,
+                            "start_time": base_conflict.meeting_start_time.isoformat(),
+                            "end_time": base_conflict.meeting_end_time.isoformat() if base_conflict.meeting_end_time else None
+                        }
+                    )
+
             # 建立 Schedule 物件
             new_schedule = Schedule(
                 user_id=current_user.user_id,
                 title=updated_data.get("title", "未命名行程"),
-                description=f"參與者: {', '.join(updated_data.get('participants', []))}",
-                meeting_time=start_time_str,
+                description=updated_data.get('description', ''),
+                meeting_start_time=start_time,
+                meeting_end_time=end_time,
+                # meeting_time removed
                 meeting_location=updated_data.get("location"),
+                location=updated_data.get("location"),
                 status=Status.PENDING.value
             )
             
             # 地理編碼 (Optional)
             if new_schedule.meeting_location:
-                 coords = OSMnxService.get_coordinates(new_schedule.meeting_location)
+                 # Pass user's current location to bias the search (e.g. find nearest 7-11)
+                 coords = OSMnxService.get_coordinates(
+                     new_schedule.meeting_location, 
+                     lat=request.latitude, 
+                     lon=request.longitude
+                 )
                  if coords:
                      new_schedule.latitude = coords[0]
                      new_schedule.longitude = coords[1]
 
-            repo = ScheduleRepository(session)
             saved_schedule_obj = repo.create(new_schedule)
             saved_schedule = saved_schedule_obj.dict()
+            print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
             
             # 如果有參與者，這邊也可以處理 attend 表 (略)
             
         except Exception as e:
             print(f"Error creating schedule: {e}")
+            import traceback
+            traceback.print_exc()
             return ChatResponse(
-                ai_reply="資訊已收集完成，但在建立行程時發生錯誤。",
+                ai_reply=f"資訊已收集完成，但在建立行程時發生錯誤：{str(e)}",
                 updated_data=updated_data,
                 is_complete=True # 雖然失敗但邏輯上是對話結束
             )

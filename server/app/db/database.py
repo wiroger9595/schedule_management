@@ -9,10 +9,16 @@ postgres_password = os.getenv("POSTGRES_PASSWORD", "password")
 postgres_server = os.getenv("POSTGRES_SERVER", "localhost")
 postgres_port = os.getenv("POSTGRES_PORT", "5432")
 postgres_db = os.getenv("POSTGRES_DB", "schedule_management")
+postgres_schema = os.getenv("POSTGRES_SCHEMA")
+if not postgres_schema:
+    postgres_schema = "public"
 
 DATABASE_URL = f"postgresql+psycopg2://{postgres_user}:{postgres_password}@{postgres_server}:{postgres_port}/{postgres_db}"
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    execution_options={"schema_translate_map": {None: postgres_schema}}
+)
 
 def get_session():
     with Session(engine) as session:
