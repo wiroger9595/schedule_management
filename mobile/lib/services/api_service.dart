@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/schedule.dart';
+import '../models/todo_comment.dart';
 import '../config/app_config.dart';
 
 import 'auth_service.dart';
@@ -156,6 +157,37 @@ class ApiService {
     }
   }
 
+  Future<List<dynamic>> getContacts() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/contacts/'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load contacts');
+    }
+  }
+
+  Future<Map<String, dynamic>> createContact(String name, String phone, String email, String lineId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/contacts/'),
+      headers: await getHeaders(),
+      body: jsonEncode({
+        'nick_name': name,
+        'phone': phone,
+        'email': email,
+        'line_id': lineId,
+      }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to create contact');
+    }
+  }
+
   Future<String> reverseGeocode(double lat, double lon) async {
     final response = await http.get(
       Uri.parse('$baseUrl/estimate/reverse?lat=$lat&lon=$lon'),
@@ -271,5 +303,69 @@ class ApiService {
       throw Exception('Failed to validate contact');
     }
   }
+
+  // --- Todo List / Comments ---
+
+  Future<List<TodoComment>> getComments() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/comments'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 200) {
+      List<dynamic> body = jsonDecode(response.body);
+      return body.map((dynamic item) => TodoComment.fromJson(item)).toList();
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      throw Exception('Unauthorized');
+    } else {
+      throw Exception('Failed to load comments');
+    }
+  }
+
+  Future<TodoComment> createComment(String description) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/comments'),
+      headers: await getHeaders(),
+      body: jsonEncode({'comment_description': description, 'status': 'P'}),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return TodoComment.fromJson(jsonDecode(response.body));
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      throw Exception('Unauthorized');
+    } else {
+      throw Exception('Failed to create comment');
+    }
+  }
+
+  Future<TodoComment> updateComment(int id, String description, String status) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/comments/$id'),
+      headers: await getHeaders(),
+      body: jsonEncode({'comment_description': description, 'status': status}),
+    );
+    if (response.statusCode == 200) {
+      return TodoComment.fromJson(jsonDecode(response.body));
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      throw Exception('Unauthorized');
+    } else {
+      throw Exception('Failed to update comment');
+    }
+  }
+
+  Future<void> deleteComment(int id) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/comments/$id'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      throw Exception('Unauthorized');
+    } else if (response.statusCode != 200) {
+      throw Exception('Failed to delete comment');
+    }
+  }
 }
+
 

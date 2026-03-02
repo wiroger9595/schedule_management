@@ -10,18 +10,234 @@ import 'package:geolocator/geolocator.dart';
 class ChatWidget extends StatefulWidget {
   final Function() onScheduleCreated;
 
-  ChatWidget({required this.onScheduleCreated});
+  const ChatWidget({Key? key, required this.onScheduleCreated}) : super(key: key);
 
   @override
-  _ChatWidgetState createState() => _ChatWidgetState();
+  ChatWidgetState createState() => ChatWidgetState();
 }
 
-class _ChatWidgetState extends State<ChatWidget> {
+class ChatWidgetState extends State<ChatWidget> {
   final TextEditingController _controller = TextEditingController();
-  final List<Widget> _messages = []; // Changed to Widget to support different message types
+  final List<Widget> _messages =
+      []; // Changed to Widget to support different message types
   bool _isLoading = false;
   final ScrollController _scrollController = ScrollController();
   Map<String, dynamic>? _currentContext; // Persist context
+
+  void clearChat() {
+    setState(() {
+      _controller.clear();
+      _messages.clear();
+      _currentContext = null;
+      _showMentionList = false;
+    });
+  }
+
+  List<dynamic> _contacts = [];
+  bool _showMentionList = false;
+  String _mentionQuery = '';
+  int _mentionStartIndex = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadContacts();
+  }
+
+  Future<void> _loadContacts() async {
+    try {
+      final apiService = ApiService();
+      final contacts = await apiService.getContacts();
+      print("Loaded contacts for mention: $contacts");
+      if (mounted) {
+        setState(() {
+          _contacts = contacts;
+        });
+      }
+    } catch (e) {
+      print("Failed to load contacts for mention: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('讀取失敗: $e')));
+      }
+    }
+  }
+
+  void _onTextChanged(String text) {
+    final cursorPosition = _controller.selection.baseOffset;
+    if (cursorPosition >= 0) {
+      final textBeforeCursor = text.substring(0, cursorPosition);
+      // Find the last occurrence of '@' or '＠' before the cursor
+      int lastAtPos = textBeforeCursor.lastIndexOf('@');
+      final lastFullPos = textBeforeCursor.lastIndexOf('＠'); // Full-width
+      if (lastFullPos > lastAtPos) {
+        lastAtPos = lastFullPos;
+      }
+
+      if (lastAtPos >= 0) {
+        // A mention is valid if it's on the same line.
+        final textAfterAt = textBeforeCursor.substring(lastAtPos + 1);
+        if (!textAfterAt.contains('\n')) {
+          setState(() {
+            _showMentionList = true;
+            _mentionQuery = textAfterAt; // Keep exact case, lowercase it during search
+            _mentionStartIndex = lastAtPos;
+          });
+          return;
+        }
+      }
+
+      setState(() {
+        _showMentionList = false;
+      });
+    } else {
+      setState(() {
+        _showMentionList = false;
+      });
+    }
+  }
+
+  void _insertMention(String name) {
+    if (_mentionStartIndex >= 0) {
+      final text = _controller.text;
+      final cursorPosition = _controller.selection.baseOffset;
+
+      final newText =
+          text.substring(0, _mentionStartIndex) +
+          '@$name ' +
+          text.substring(cursorPosition);
+
+      _controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(
+          offset: _mentionStartIndex + name.length + 2,
+        ),
+      );
+    }
+    setState(() {
+      _showMentionList = false;
+    });
+  }
+
+  void _showAddContactDialog() {
+    final nameController = TextEditingController(text: _mentionQuery);
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    final lineIdController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('新增聯絡人'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(labelText: '姓名*'),
+              ),
+              SizedBox(height: 10),
+              TextField(
+                controller: phoneController,
+                decoration: InputDecoration(labelText: '電話'),
+              ),
+              SizedBox(height: 10),
+              TextField(
+                controller: emailController,
+                decoration: InputDecoration(labelText: 'Email'),
+              ),
+              SizedBox(height: 10),
+              TextField(
+                controller: lineIdController,
+                decoration: InputDecoration(labelText: 'Line ID (選填)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) return;
+                try {
+                  final apiService = ApiService();
+                  await apiService.createContact(
+                    nameController.text.trim(),
+                    phoneController.text.trim(),
+                    emailController.text.trim(),
+                    lineIdController.text.trim(),
+                  );
+                  Navigator.pop(context); // Close dialog
+                  await _loadContacts(); // Refresh
+                  _insertMention(
+                    nameController.text.trim(),
+                  ); // Insert into text
+                } catch (e) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('新增失敗: $e')));
+                }
+              },
+              child: Text('儲存'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMentionList() {
+    final query = _mentionQuery.trim().toLowerCase();
+    final filteredContacts = _contacts.where((c) {
+      final name = (c['nick_name'] ?? c['name'] ?? '').toString().toLowerCase();
+      return name.contains(query);
+    }).toList();
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: 180),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.purple[100]!, width: 2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 4,
+            offset: Offset(0, -2),
+          ),
+        ],
+      ),
+      child: ListView.builder(
+        shrinkWrap: true,
+        itemCount: filteredContacts.length + 1,
+        itemBuilder: (context, index) {
+          if (index == filteredContacts.length) {
+            return ListTile(
+              leading: Icon(Icons.person_add, color: Colors.blue),
+              title: Text('➕ 新增聯絡人', style: TextStyle(color: Colors.blue)),
+              onTap: _showAddContactDialog,
+            );
+          }
+          final contact = filteredContacts[index];
+          final nickName = (contact['nick_name'] ?? '').toString();
+          final displayInitial = nickName.isNotEmpty ? nickName[0] : '?';
+
+          return ListTile(
+            leading: CircleAvatar(
+              child: Text(displayInitial),
+              backgroundColor: Colors.purple[100],
+            ),
+            title: Text(contact['nick_name'] ?? 'Unknown'),
+            subtitle: Text(contact['phone'] ?? contact['email'] ?? ''),
+            onTap: () => _insertMention(contact['nick_name']),
+          );
+        },
+      ),
+    );
+  }
 
   Future<void> _sendMessage({String? text, bool forceCreate = false}) async {
     final messageText = text ?? _controller.text.trim();
@@ -35,69 +251,78 @@ class _ChatWidgetState extends State<ChatWidget> {
       _controller.clear();
       _scrollToBottom();
     } else {
-       setState(() {
+      setState(() {
         _isLoading = true;
       });
     }
 
     try {
       final apiService = ApiService();
-      
+
       // Get current location (best effort)
       Position? position;
       try {
         bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
         if (serviceEnabled) {
-           LocationPermission permission = await Geolocator.checkPermission();
-           if (permission == LocationPermission.denied) {
-             permission = await Geolocator.requestPermission();
-           }
-           if (permission != LocationPermission.denied && permission != LocationPermission.deniedForever) {
-             position = await Geolocator.getCurrentPosition(timeLimit: Duration(seconds: 5));
-           }
+          LocationPermission permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+          }
+          if (permission != LocationPermission.denied &&
+              permission != LocationPermission.deniedForever) {
+            position = await Geolocator.getCurrentPosition(
+              timeLimit: Duration(seconds: 5),
+            );
+          }
         }
       } catch (e) {
         print("Error getting location for chat: $e");
       }
 
       final data = await apiService.chatWithAI(
-        forceCreate ? "Confirm" : messageText, 
-        currentContext: _currentContext, 
+        forceCreate ? "Confirm" : messageText,
+        currentContext: _currentContext,
         forceCreate: forceCreate,
         latitude: position?.latitude,
-        longitude: position?.longitude
+        longitude: position?.longitude,
       );
 
       if (mounted) {
         setState(() {
           _currentContext = data['updated_data']; // Update context
-          
+
           if (data['conflict'] != null) {
             // Conflict Detected
-            _messages.add(ChatMessage(text: data['ai_reply'] ?? '時間衝突', isUser: false));
-            _messages.add(ConflictMessage(
-              onConfirm: () => _sendMessage(forceCreate: true),
-              onChange: () {
-                setState(() {
-                  _messages.add(ChatMessage(text: "我要更改時間", isUser: true));
-                  // Let AI know
-                  _sendMessage(text: "我要更改時間"); 
-                });
-              },
-            ));
+            _messages.add(
+              ChatMessage(text: data['ai_reply'] ?? '時間衝突', isUser: false),
+            );
+            _messages.add(
+              ConflictMessage(
+                onConfirm: () => _sendMessage(forceCreate: true),
+                onChange: () {
+                  setState(() {
+                    _messages.add(ChatMessage(text: "我要更改時間", isUser: true));
+                    // Let AI know
+                    _sendMessage(text: "我要更改時間");
+                  });
+                },
+              ),
+            );
           } else {
             // Normal reply
-            _messages.add(ChatMessage(text: data['ai_reply'] ?? '', isUser: false));
+            _messages.add(
+              ChatMessage(text: data['ai_reply'] ?? '', isUser: false),
+            );
           }
-          
+
           _isLoading = false;
         });
 
         if (data['is_complete'] == true && data['conflict'] == null) {
-             widget.onScheduleCreated();
+          widget.onScheduleCreated();
         }
-        
-       _scrollToBottom();
+
+        _scrollToBottom();
       }
     } catch (e) {
       setState(() {
@@ -122,48 +347,9 @@ class _ChatWidgetState extends State<ChatWidget> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 10,
-            offset: Offset(0, -2),
-          ),
-        ],
-      ),
+      color: Colors.transparent, // Let the parent control the background
       child: Column(
         children: [
-          // 標題欄
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.purple[700],
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.assistant, color: Colors.white),
-                SizedBox(width: 8),
-                Text(
-                  AppLocalizations.of(context)!.aiChat,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                Spacer(),
-                IconButton(
-                  icon: Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-
           // 訊息列表
           Expanded(
             child: _messages.isEmpty
@@ -216,6 +402,9 @@ class _ChatWidgetState extends State<ChatWidget> {
               ),
             ),
 
+          // Mention List Overlay
+          if (_showMentionList) _buildMentionList(),
+
           // 輸入框
           Container(
             padding: EdgeInsets.all(16),
@@ -241,9 +430,24 @@ class _ChatWidgetState extends State<ChatWidget> {
                         vertical: 12,
                       ),
                     ),
+                    onChanged: _onTextChanged,
                     onSubmitted: (_) => _sendMessage(),
                     enabled: !_isLoading,
                   ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.refresh),
+                  onPressed: () async {
+                    await _loadContacts();
+                    if (_contacts.isNotEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('成功載入 ${_contacts.length} 位聯絡人！'),
+                        ),
+                      );
+                    }
+                  },
                 ),
                 SizedBox(width: 8),
                 FloatingActionButton(

@@ -16,8 +16,9 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 email-validator
-google-genai
+openai
 cloudinary
 psycopg2-binary
 arrow
 line-bot-sdk
+shortuuid

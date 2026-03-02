@@ -577,6 +577,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Default Notification Method'**
   String get defaultNotificationMethod;
+
+  /// No description provided for @todoList.
+  ///
+  /// In en, this message translates to:
+  /// **'Todo List'**
+  String get todoList;
+
+  /// No description provided for @addTodo.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Todo'**
+  String get addTodo;
+
+  /// No description provided for @editTodo.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Todo'**
+  String get editTodo;
+
+  /// No description provided for @enterTodo.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter todo item...'**
+  String get enterTodo;
+
+  /// No description provided for @noTodos.
+  ///
+  /// In en, this message translates to:
+  /// **'No todo items'**
+  String get noTodos;
+
+  /// No description provided for @createdAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Created at'**
+  String get createdAt;
+
+  /// No description provided for @updatedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated at'**
+  String get updatedAt;
+
+  /// No description provided for @completed.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get completed;
+
+  /// No description provided for @cancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get cancelled;
+
+  /// No description provided for @voided.
+  ///
+  /// In en, this message translates to:
+  /// **'Void'**
+  String get voided;
+
+  /// No description provided for @confirmTaskStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm Task Status'**
+  String get confirmTaskStatus;
+
+  /// No description provided for @isTaskCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Is this task completed?'**
+  String get isTaskCompleted;
+
+  /// No description provided for @changeStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Change Status'**
+  String get changeStatus;
+
+  /// No description provided for @completeAndRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete and Remove'**
+  String get completeAndRemove;
+
+  /// No description provided for @addFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Add failed'**
+  String get addFailed;
+
+  /// No description provided for @updateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Update failed'**
+  String get updateFailed;
+
+  /// No description provided for @loadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Load failed'**
+  String get loadFailed;
+
+  /// No description provided for @deleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete failed'**
+  String get deleteFailed;
+
+  /// No description provided for @scheduleAndTasks.
+  ///
+  /// In en, this message translates to:
+  /// **'Schedule & Tasks'**
+  String get scheduleAndTasks;
 }
 
 class _AppLocalizationsDelegate

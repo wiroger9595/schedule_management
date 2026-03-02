@@ -11,6 +11,10 @@ import '../utils/constants.dart';
 import 'map_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
+  final bool isEmbedded;
+
+  const CalendarScreen({Key? key, this.isEmbedded = false}) : super(key: key);
+
   @override
   _CalendarScreenState createState() => _CalendarScreenState();
 }
@@ -93,44 +97,55 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   @override
   Widget build(BuildContext context) {
+    final innerTabBar = TabBar(
+      controller: _tabController,
+      labelColor: Colors.blue[700],
+      unselectedLabelColor: Colors.grey,
+      indicatorColor: Colors.blue[700],
+      tabs: [
+        Tab(icon: Icon(Icons.calendar_month), text: AppLocalizations.of(context)!.month),
+        Tab(icon: Icon(Icons.view_week), text: AppLocalizations.of(context)!.week),
+        Tab(icon: Icon(Icons.view_day), text: AppLocalizations.of(context)!.day),
+      ],
+    );
+
+    final innerTabBarView = TabBarView(
+      controller: _tabController,
+      children: [_buildMonthView(), _buildWeekView(), _buildDayView()],
+    );
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.calendar),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(
-              icon: Icon(Icons.calendar_month),
-              text: AppLocalizations.of(context)!.month,
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: Text(AppLocalizations.of(context)!.calendar),
+              bottom: innerTabBar,
+              actions: [
+                IconButton(
+                  icon: Icon(Icons.today),
+                  onPressed: () {
+                    setState(() {
+                      _focusedDay = DateTime.now();
+                      _selectedDay = DateTime.now();
+                    });
+                  },
+                ),
+              ],
             ),
-            Tab(
-              icon: Icon(Icons.view_week),
-              text: AppLocalizations.of(context)!.week,
-            ),
-            Tab(
-              icon: Icon(Icons.view_day),
-              text: AppLocalizations.of(context)!.day,
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.today),
-            onPressed: () {
-              setState(() {
-                _focusedDay = DateTime.now();
-                _selectedDay = DateTime.now();
-              });
-            },
-          ),
-        ],
-      ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [_buildMonthView(), _buildWeekView(), _buildDayView()],
-            ),
+          : widget.isEmbedded
+              ? Column(
+                  children: [
+                    // Provide a slight background to the inner tab bar when embedded
+                    Container(
+                      color: Colors.white,
+                      child: innerTabBar,
+                    ),
+                    Expanded(child: innerTabBarView),
+                  ],
+                )
+              : innerTabBarView,
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.pushNamed(context, '/add').then((_) => _loadSchedules());
@@ -150,6 +165,7 @@ class _CalendarScreenState extends State<CalendarScreen>
               firstDay: DateTime.utc(2020, 1, 1),
               lastDay: DateTime.utc(2030, 12, 31),
               focusedDay: _focusedDay,
+              availableGestures: AvailableGestures.none, // Disable swipe so TabBarView can swipe
               selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
               calendarFormat: _calendarFormat,
               eventLoader: _getSchedulesForDay,

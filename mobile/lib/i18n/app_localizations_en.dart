@@ -253,4 +253,61 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get defaultNotificationMethod => 'Default Notification Method';
+
+  @override
+  String get todoList => 'Todo List';
+
+  @override
+  String get addTodo => 'Add Todo';
+
+  @override
+  String get editTodo => 'Edit Todo';
+
+  @override
+  String get enterTodo => 'Enter todo item...';
+
+  @override
+  String get noTodos => 'No todo items';
+
+  @override
+  String get createdAt => 'Created at';
+
+  @override
+  String get updatedAt => 'Updated at';
+
+  @override
+  String get completed => 'Completed';
+
+  @override
+  String get cancelled => 'Cancelled';
+
+  @override
+  String get voided => 'Void';
+
+  @override
+  String get confirmTaskStatus => 'Confirm Task Status';
+
+  @override
+  String get isTaskCompleted => 'Is this task completed?';
+
+  @override
+  String get changeStatus => 'Change Status';
+
+  @override
+  String get completeAndRemove => 'Complete and Remove';
+
+  @override
+  String get addFailed => 'Add failed';
+
+  @override
+  String get updateFailed => 'Update failed';
+
+  @override
+  String get loadFailed => 'Load failed';
+
+  @override
+  String get deleteFailed => 'Delete failed';
+
+  @override
+  String get scheduleAndTasks => 'Schedule & Tasks';
 }

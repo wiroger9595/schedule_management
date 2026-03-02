@@ -3,8 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../screens/profile_screen.dart';
 import '../screens/call_log_screen.dart';
-import '../screens/calendar_screen.dart';
 import '../screens/contact_list_screen.dart';
+import '../screens/home_screen.dart';
+import '../screens/tabbed_dashboard_screen.dart';
 import '../i18n/app_localizations.dart';
 import 'user_avatar.dart';
 
@@ -30,57 +31,58 @@ class AppDrawer extends StatelessWidget {
             child: Consumer<AuthProvider>(
               builder: (context, auth, _) {
                 final user = auth.user;
-                if (user != null) {
-                  return Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () async {
-                          final result = await Navigator.pushNamed(
-                            context,
-                            '/profile',
-                          );
-                          if (result == true) {
-                            auth.fetchUserProfile();
-                          }
-                        },
-                        child: UserAvatar(
-                          radius: 35,
-                          imageUrl: user['profile_image_path'],
-                        ),
+                final displayUser = user ?? {
+                  'full_name': AppLocalizations.of(context)?.user ?? 'User',
+                  'user_id': '',
+                  'profile_image_path': null,
+                };
+
+                return Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () async {
+                        final result = await Navigator.pushNamed(
+                          context,
+                          '/profile',
+                        );
+                        if (result == true) {
+                          auth.fetchUserProfile();
+                        }
+                      },
+                      child: UserAvatar(
+                        radius: 35,
+                        imageUrl: displayUser['profile_image_path'],
                       ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              user['full_name'] ??
-                                  AppLocalizations.of(context)!.user,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            displayUser['full_name'] ??
+                                AppLocalizations.of(context)?.user ?? 'User',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
-                            SizedBox(height: 4),
-                            Text(
-                              user['user_id'] ?? '',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            displayUser['user_id'] ?? '',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  );
-                }
-                return Center(
-                  child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  ],
                 );
               },
             ),
@@ -108,13 +110,24 @@ class AppDrawer extends StatelessWidget {
             },
           ),
           ListTile(
+            leading: Icon(Icons.checklist, color: Colors.teal),
+            title: Text(AppLocalizations.of(context)?.todoList ?? 'Todo List'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 1)),
+              );
+            },
+          ),
+          ListTile(
             leading: Icon(Icons.calendar_month, color: Colors.orange),
             title: Text(AppLocalizations.of(context)!.calendar),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => CalendarScreen()),
+                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 0)),
               );
             },
           ),
@@ -126,6 +139,17 @@ class AppDrawer extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => ContactListScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.list_alt, color: Colors.blue),
+            title: Text(AppLocalizations.of(context)?.mySchedules ?? 'My Schedules'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => HomeScreen()),
               );
             },
           ),

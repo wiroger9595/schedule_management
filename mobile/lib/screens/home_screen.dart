@@ -25,6 +25,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final NotificationService notificationService = NotificationService();
   Timer? _statusCheckTimer; // Added timer
+  final Set<String> _alertedScheduleIds = {}; // Track which schedules we've shown in-app alerts for
 
   // Filter State
   String? _filterStatus;
@@ -66,11 +67,70 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Start periodic check if not running
     _statusCheckTimer?.cancel();
-    _statusCheckTimer = Timer.periodic(Duration(minutes: 5), (timer) {
-      print('--- Timer Tick: Checking Schedules ---');
+    _statusCheckTimer = Timer.periodic(Duration(minutes: 1), (timer) {
+      print('--- Timer Tick: Checking Schedules (Every 1 Min) ---');
       _checkScheduleArrivals(scheduleProvider.schedules);
       _checkComingSoon(scheduleProvider.schedules);
+      _checkUpcomingReminders(scheduleProvider.schedules);
     });
+    
+    // Check initially as well
+    _checkUpcomingReminders(scheduleProvider.schedules);
+  }
+
+  void _checkUpcomingReminders(List<Schedule> schedules) {
+    if (!mounted) return;
+    final now = DateTime.now();
+
+    for (var schedule in schedules) {
+      if (schedule.status == ScheduleStatus.cancel || schedule.status == ScheduleStatus.notGoing) continue;
+
+      final diff = schedule.startTime.difference(now);
+      final minutesUntilStart = diff.inMinutes;
+
+      // If the schedule is upcoming within 30 minutes and we haven't alerted yet
+      if (minutesUntilStart <= 30 && minutesUntilStart >= 0) {
+        if (!_alertedScheduleIds.contains(schedule.id)) {
+          _alertedScheduleIds.add(schedule.id);
+          _showUpcomingReminderDialog(schedule, minutesUntilStart);
+        }
+      }
+    }
+  }
+
+  void _showUpcomingReminderDialog(Schedule schedule, int minutesUntilStart) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.notifications_active, color: Colors.amber, size: 28),
+            SizedBox(width: 8),
+            Text('活動快到囉！'),
+          ],
+        ),
+        content: Text(
+          '您的行程「${schedule.title}」將在 $minutesUntilStart 分鐘後開始！',
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => MapScreen(schedule: schedule)),
+              );
+            },
+            child: Text('查看地圖'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkComingSoon(List<Schedule> schedules) async {
@@ -176,8 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         // If time passed and not there...
         // Updated logic: Check every minute.
-        // If > 60 mins past **end time** (or start time if end time is null) and still not there -> Not Attended.
-        final referenceTime = schedule.endTime ?? schedule.startTime;
+        // If > 60 mins past **start time** and still not there -> Not Attended.
+        final referenceTime = schedule.startTime;
         final minutesLate = now.difference(referenceTime).inMinutes;
         print(
           'Schedule ${schedule.title}: $minutesLate mins late from reference time, distance ${distance.toStringAsFixed(2)}m',
@@ -187,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
           newStatus = ScheduleStatus.notAttended;
         } else {
           print(
-            'Not updating ${schedule.title}: Only $minutesLate mins late (threshold > 60 after end time)',
+            'Not updating ${schedule.title}: Only $minutesLate mins late (threshold > 60 after start time)',
           );
           continue; // Still give them time
         }
@@ -505,39 +565,17 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          // AI 助手按鈕
-          FloatingActionButton(
-            heroTag: 'ai_chat',
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (context) =>
-                    ChatWidget(onScheduleCreated: _refreshSchedules),
-              );
-            },
-            child: Icon(Icons.assistant),
-            backgroundColor: Colors.purple[700],
-          ),
-          SizedBox(height: 16),
-          // 原有的新增按鈕
-          FloatingActionButton(
-            heroTag: 'add_schedule',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => AddScheduleScreen()),
-              );
-              _refreshSchedules();
-            },
-            child: Icon(Icons.add),
-            backgroundColor: Colors.blue,
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'add_schedule',
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => AddScheduleScreen()),
+          );
+          _refreshSchedules();
+        },
+        child: Icon(Icons.add),
+        backgroundColor: Colors.blue,
       ),
     );
   }

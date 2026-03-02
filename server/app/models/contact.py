@@ -42,3 +42,8 @@ class Contact(SQLModel, table=True):
         default_factory=datetime.now,
         sa_column=Column(DateTime(timezone=False), nullable=True)
     )
+
+    default_notification_method: Optional[str] = Field(
+        default="mobile",
+        sa_column=Column(String(255), nullable=True)
+    )

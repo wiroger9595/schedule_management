@@ -32,13 +32,17 @@ class AuthProvider with ChangeNotifier {
       );
       
       if (response.statusCode == 200) {
-        _user = jsonDecode(response.body); // Use UTF8 decoder if needed in API service
+        _user = jsonDecode(utf8.decode(response.bodyBytes)); // Properly parse UTF-8 characters like Chinese
         notifyListeners();
+      } else if (response.statusCode == 401) {
+        // Token is invalid or expired
+        await logout();
+      } else {
+        print('Error fetching profile: ${response.statusCode}');
       }
     } catch (e) {
       print('Error fetching profile: $e');
     }
-
   }
 
   Future<bool> updateProfile(Map<String, dynamic> data) async {

@@ -10,8 +10,9 @@ from ...models.schedule import Schedule
 from ...models.attend import attend
 from ...models.user import User
 from ...repositories.schedule_repository import ScheduleRepository
-from ...services.gemini_service import gemini_service
-from ...services.osmnx_service import OSMnxService
+from ...services.ai_service import ai_service
+from ...services.here_service import HereService
+from ...services.notification_service import notification_service
 from ...utils.text_validator import validate_schedule_message
 from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse
 from .auth import get_current_user
@@ -38,6 +39,9 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
         print(f"DEBUG: Manual creation with data: {data}")
         start_time_str = data.start_time or data.meeting_time
         start_time = datetime.fromisoformat(start_time_str) if start_time_str else datetime.now()
+        
+        end_time_str = data.end_time
+        meeting_end_time = datetime.fromisoformat(end_time_str) if end_time_str else None
         
         # Extract contact_id if present
         contact_id = data.contact_id
@@ -104,9 +108,9 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
         if not validate_schedule_message(message):
             raise HTTPException(status_code=400, detail="Invalid input content")
             
-        # Gemini processing
+        # AI processing
         try:
-            schedule_data = gemini_service.extract_schedule_from_text(message)
+            schedule_data = ai_service.extract_schedule_info(message)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
             
@@ -124,7 +128,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
     # Geocoding if needed (Unified logic)
     if schedule.meeting_location and (not schedule.latitude or not schedule.longitude):
         try:
-            coords = OSMnxService.get_coordinates(schedule.meeting_location)
+            coords = HereService.get_coordinates(schedule.meeting_location)
             if coords:
                 schedule.latitude = coords[0]
                 schedule.longitude = coords[1]
@@ -163,12 +167,14 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
         
         # 2. Fetch Contacts map
         contact_user_map = {}
+        contact_models_map = {}
         if contact_ids_to_fetch:
             from ...models.contact import Contact
             from sqlmodel import select
             statement = select(Contact).where(Contact.id.in_(contact_ids_to_fetch))
             contacts = session.exec(statement).all()
             for c in contacts:
+                contact_models_map[c.id] = c
                 if c.contact_user_id:
                     contact_user_map[c.id] = c.contact_user_id
         
@@ -198,6 +204,10 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             )
             session.add(new_attend)
         session.commit()
+        
+        # Dispatch notifications
+        created_attends = session.exec(select(attend).where(attend.schedule_id == created_schedule.schedule_id)).all()
+        notification_service.notify_attendees(created_schedule.title, created_attends, contact_models_map)
     
     return created_schedule.dict()
 
@@ -309,7 +319,7 @@ def update_schedule(
     elif data.location is not None and data.location != schedule.location:
         schedule.location = data.location
         try:
-            coords = OSMnxService.get_coordinates(schedule.location)
+            coords = HereService.get_coordinates(schedule.location)
             if coords:
                 schedule.latitude = coords[0]
                 schedule.longitude = coords[1]
@@ -351,12 +361,14 @@ def update_schedule(
         
         # 2. Fetch Contacts map
         contact_user_map = {}
+        contact_models_map = {}
         if contact_ids_to_fetch:
             from ...models.contact import Contact
             from sqlmodel import select
             statement = select(Contact).where(Contact.id.in_(contact_ids_to_fetch))
             contacts = session.exec(statement).all()
             for c in contacts:
+                contact_models_map[c.id] = c
                 if c.contact_user_id:
                     contact_user_map[c.id] = c.contact_user_id
 
@@ -382,8 +394,13 @@ def update_schedule(
                 status="P"
             )
             session.add(new_attend)
+            
         session.commit()
-    
+        
+        # Dispatch notifications for updates
+        updated_attends = session.exec(select(attend).where(attend.schedule_id == updated_schedule.schedule_id)).all()
+        notification_service.notify_attendees(updated_schedule.title, updated_attends, contact_models_map)
+
     updated_schedule = repo.get_by_schedule_id(schedule_id) # Refresh to get latest state if needed
     result = updated_schedule.dict()
     print(f"DEBUG: update_schedule returning: {result}")
@@ -398,8 +415,8 @@ def chat_schedule(
     user_message = request.message.strip()
     current_context = request.current_data
     
-    # 1. 呼叫 Gemini 進行多輪對話處理
-    ai_result = gemini_service.process_conversation(user_message, current_context)
+    # 1. 呼叫 AI 進行多輪對話處理
+    ai_result = ai_service.process_conversation(user_message, current_context)
     
     updated_data = ai_result.get("updated_data", {})
     is_complete = ai_result.get("is_complete", False)
@@ -420,6 +437,15 @@ def chat_schedule(
                 print("DEBUG [chat]: ERROR - start_time is missing from AI response!")
                 return ChatResponse(
                     ai_reply=ai_reply + "\n\n(系統提示：AI 未回傳開始時間，行程未建立)",
+                    updated_data=updated_data,
+                    is_complete=False
+                )
+                
+            participants = updated_data.get("participants", [])
+            if not participants or (isinstance(participants, list) and len(participants) == 0) or (isinstance(participants, str) and not participants.strip()):
+                print("DEBUG [chat]: ERROR - participants is missing from AI response!")
+                return ChatResponse(
+                    ai_reply=ai_reply + "\n\n(系統提示：您尚未指定聯絡人，請使用 @ 標記指定您的聯絡人，例如：和 @小明 開會)",
                     updated_data=updated_data,
                     is_complete=False
                 )
@@ -479,7 +505,7 @@ def chat_schedule(
             # 地理編碼 (Optional)
             if new_schedule.meeting_location:
                  # Pass user's current location to bias the search (e.g. find nearest 7-11)
-                 coords = OSMnxService.get_coordinates(
+                 coords = HereService.get_coordinates(
                      new_schedule.meeting_location, 
                      lat=request.latitude, 
                      lon=request.longitude
@@ -492,7 +518,54 @@ def chat_schedule(
             saved_schedule = saved_schedule_obj.dict()
             print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
             
-            # 如果有參與者，這邊也可以處理 attend 表 (略)
+            # 如果有參與者，這邊處理 attend 表
+            participants = updated_data.get("participants", [])
+            # Handle cases where participants might be a string
+            if isinstance(participants, str):
+                 participants = [p.strip() for p in participants.split(",")]
+                 
+            if participants and isinstance(participants, list):
+                from ...models.contact import Contact
+                from ...models.attend import attend
+                from sqlmodel import select
+                
+                for p_name in participants:
+                    if not p_name.strip(): continue
+                    # Clean up random characters like '@'
+                    clean_name = p_name.strip().lstrip('@')
+                    
+                    # 1. 尋找現有聯絡人
+                    existing_contact = session.exec(
+                        select(Contact).where(
+                            Contact.user_id == current_user.user_id,
+                            Contact.nick_name == clean_name
+                        )
+                    ).first()
+                    
+                    contact_id = None
+                    if existing_contact:
+                        contact_id = existing_contact.id
+                        print(f"DEBUG [chat]: Found existing contact for '{clean_name}': {contact_id}")
+                    else:
+                        # 2. 自動建立聯絡人
+                        new_contact = Contact(
+                            user_id=current_user.user_id,
+                            nick_name=clean_name
+                        )
+                        session.add(new_contact)
+                        session.commit()
+                        session.refresh(new_contact)
+                        contact_id = new_contact.id
+                        print(f"DEBUG [chat]: Auto-created contact for '{clean_name}': {contact_id}")
+                    
+                    # 3. 綁定 attend
+                    new_attend = attend(
+                        schedule_id=saved_schedule_obj.schedule_id,
+                        contact_id=contact_id,
+                        status="P"
+                    )
+                    session.add(new_attend)
+                session.commit()
             
         except Exception as e:
             print(f"Error creating schedule: {e}")

@@ -250,5 +250,62 @@ class AppLocalizationsZh extends AppLocalizations {
   String get endTimeMustBeAfterStartTime => '結束時間必須晚於開始時間';
 
   @override
-  String get defaultNotificationMethod => '預設通知方式';
+  String get defaultNotificationMethod => '預設提醒方式';
+
+  @override
+  String get todoList => '待辦清單';
+
+  @override
+  String get addTodo => '新增待辦';
+
+  @override
+  String get editTodo => '編輯待辦';
+
+  @override
+  String get enterTodo => '輸入待辦事項...';
+
+  @override
+  String get noTodos => '目前沒有待辦事項';
+
+  @override
+  String get createdAt => '建立於';
+
+  @override
+  String get updatedAt => '更新於';
+
+  @override
+  String get completed => '已完成';
+
+  @override
+  String get cancelled => '已取消';
+
+  @override
+  String get voided => '作廢';
+
+  @override
+  String get confirmTaskStatus => '確認任務狀態';
+
+  @override
+  String get isTaskCompleted => '這項待辦事項已經處理完成了嗎？';
+
+  @override
+  String get changeStatus => '變更狀態';
+
+  @override
+  String get completeAndRemove => '完成並移除';
+
+  @override
+  String get addFailed => '新增失敗';
+
+  @override
+  String get updateFailed => '狀態更新失敗';
+
+  @override
+  String get loadFailed => '讀取待辦清單失敗';
+
+  @override
+  String get deleteFailed => '刪除失敗';
+
+  @override
+  String get scheduleAndTasks => '行程與待辦';
 }

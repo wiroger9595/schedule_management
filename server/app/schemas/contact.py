@@ -11,6 +11,7 @@ class ContactCreate(BaseModel):
     line_id: Optional[str] = None
     contact_user_id: Optional[str] = None
     comment: Optional[str] = None
+    default_notification_method: Optional[str] = "mobile"
 
 
 class ContactUpdate(BaseModel):
@@ -20,6 +21,7 @@ class ContactUpdate(BaseModel):
     line_id: Optional[str] = None
     comment: Optional[str] = None
     contact_user_id: Optional[str] = None
+    default_notification_method: Optional[str] = None
 
 
 class ContactRead(ContactCreate):
@@ -27,6 +29,7 @@ class ContactRead(ContactCreate):
     user_id: str
     created_at: Optional[datetime] = None
     profile_image_path: Optional[str] = None
+    default_notification_method: Optional[str] = "mobile"
 
     class Config:
         from_attributes = True

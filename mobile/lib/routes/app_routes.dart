@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../screens/ai_chat_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/add_schedule_screen.dart';
 import '../screens/login_screen.dart';
@@ -25,7 +26,7 @@ class AppRoutes {
   static Map<String, WidgetBuilder> get routes {
     return {
       // Note: '/startup' is handled separately via initialRoute + _StartupWrapper in main.dart
-      home: (context) => HomeScreen(),
+      home: (context) => AiChatScreen(),
       login: (context) => LoginScreen(),
       register: (context) => RegisterScreen(),
       profileCompletion: (context) => ProfileCompletionScreen(),

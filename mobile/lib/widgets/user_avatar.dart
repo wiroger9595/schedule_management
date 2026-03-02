@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'dart:io';
 
 class UserAvatar extends StatelessWidget {
@@ -26,12 +25,13 @@ class UserAvatar extends StatelessWidget {
           width: radius * 2,
           height: radius * 2,
           child: _buildImage(),
-          ),
+        ),
       ),
     );
   }
 
   Widget _buildImage() {
+    debugPrint('UserAvatar: imageUrl=\$imageUrl, imageFile=\$imageFile');
     if (imageFile != null) {
       return Image.file(
         imageFile!,
@@ -44,17 +44,21 @@ class UserAvatar extends StatelessWidget {
       );
     }
     
-    if (imageUrl != null && imageUrl!.isNotEmpty) {
+    if (imageUrl != null && imageUrl!.trim().isNotEmpty && imageUrl!.trim().toLowerCase() != 'null') {
+      String finalUrl = imageUrl!.trim();
+      
       return Image.network(
-        imageUrl!,
+        finalUrl,
         fit: BoxFit.cover,
         width: radius * 2,
         height: radius * 2,
         errorBuilder: (context, error, stackTrace) {
+          debugPrint('Error loading avatar image: $error');
           return _buildFallbackDetails();
         },
         loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
+          if (loadingProgress == null) return child; // Image finished loading
+          
           return Center(
             child: CircularProgressIndicator(
               value: loadingProgress.expectedTotalBytes != null

@@ -8,6 +8,7 @@ class Contact {
   final String? email;
   final String? lineId;
   final String? comment;
+  final String? defaultNotificationMethod;
   final DateTime? createdAt;
 
   Contact({
@@ -20,6 +21,7 @@ class Contact {
     this.email,
     this.lineId,
     this.comment,
+    this.defaultNotificationMethod,
     this.createdAt,
   });
 
@@ -34,6 +36,7 @@ class Contact {
       email: json['email'] as String?,
       lineId: json['line_id'] as String?,
       comment: json['comment'] as String?,
+      defaultNotificationMethod: json['default_notification_method'] as String? ?? 'mobile',
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
@@ -51,6 +54,7 @@ class Contact {
       if (email != null) 'email': email,
       if (lineId != null) 'line_id': lineId,
       if (comment != null) 'comment': comment,
+      if (defaultNotificationMethod != null) 'default_notification_method': defaultNotificationMethod,
     };
   }
 
@@ -64,6 +68,7 @@ class Contact {
     String? email,
     String? lineId,
     String? comment,
+    String? defaultNotificationMethod,
     DateTime? createdAt,
   }) {
     return Contact(
@@ -76,6 +81,7 @@ class Contact {
       email: email ?? this.email,
       lineId: lineId ?? this.lineId,
       comment: comment ?? this.comment,
+      defaultNotificationMethod: defaultNotificationMethod ?? this.defaultNotificationMethod,
       createdAt: createdAt ?? this.createdAt,
     );
   }

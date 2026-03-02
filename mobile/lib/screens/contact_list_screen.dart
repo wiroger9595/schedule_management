@@ -108,6 +108,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
     String email,
     String lineId, {
     String? contactUserId,
+    String? defaultNotificationMethod,
   }) async {
     try {
       final headers = await apiService.getHeaders();
@@ -117,6 +118,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
         'email': email,
         'line_id': lineId,
         'contact_user_id': contactUserId,
+        'default_notification_method': defaultNotificationMethod ?? 'mobile',
       };
 
       final response = await http.post(
@@ -151,6 +153,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
     String phone,
     String email,
     String lineId,
+    String? defaultNotificationMethod,
   ) async {
     try {
       final headers = await apiService.getHeaders();
@@ -159,6 +162,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
         'phone': phone,
         'email': email,
         'line_id': lineId,
+        'default_notification_method': defaultNotificationMethod ?? 'mobile',
       };
 
       final response = await http.put(
@@ -192,6 +196,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
     final phoneController = TextEditingController(text: contact['phone']);
     final emailController = TextEditingController(text: contact['email']);
     final lineIdController = TextEditingController(text: contact['line_id']);
+    String selectedNotificationMethod = contact['default_notification_method'] ?? 'mobile';
 
     final formKey = GlobalKey<FormState>();
 
@@ -299,6 +304,21 @@ class _ContactListScreenState extends State<ContactListScreen> {
                         validator: validateContactMethod,
                         onChanged: (_) => validateRealTime(),
                       ),
+                      SizedBox(height: 24),
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(labelText: '預設通知方式'),
+                        value: selectedNotificationMethod,
+                        items: const [
+                          DropdownMenuItem(value: 'mobile', child: Text('手機簡訊')),
+                          DropdownMenuItem(value: 'email', child: Text('Email')),
+                          DropdownMenuItem(value: 'line', child: Text('LINE')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => selectedNotificationMethod = val);
+                          }
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -322,6 +342,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                         phoneController.text.trim(),
                         emailController.text.trim(),
                         lineIdController.text.trim(),
+                        selectedNotificationMethod,
                       );
                       Navigator.pop(context);
                     }
@@ -346,6 +367,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
 
     // Store selected user ID from search
     String? selectedContactUserId;
+    String selectedNotificationMethod = 'mobile';
 
     showDialog(
       context: context,
@@ -486,17 +508,32 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                       onChanged: (_) => validateRealTime(),
                                     ),
                                     SizedBox(height: 24),
-                                    TextFormField(
-                                      controller: lineIdController,
-                                      decoration: InputDecoration(
-                                        labelText: 'Line ID (Optional)',
-                                        errorText: lineError,
+                                      TextFormField(
+                                        controller: lineIdController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Line ID (Optional)',
+                                          errorText: lineError,
+                                        ),
+                                        validator: validateContactMethod,
+                                        onChanged: (_) => validateRealTime(),
                                       ),
-                                      validator: validateContactMethod,
-                                      onChanged: (_) => validateRealTime(),
-                                    ),
-                                  ],
-                                ),
+                                      SizedBox(height: 24),
+                                      DropdownButtonFormField<String>(
+                                        decoration: InputDecoration(labelText: 'Default Notification Method'),
+                                        value: selectedNotificationMethod,
+                                        items: const [
+                                          DropdownMenuItem(value: 'mobile', child: Text('SMS Message')),
+                                          DropdownMenuItem(value: 'email', child: Text('Email')),
+                                          DropdownMenuItem(value: 'line', child: Text('LINE')),
+                                        ],
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            setState(() => selectedNotificationMethod = val);
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
                               ),
                             ),
 
@@ -665,6 +702,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                         emailController.text.trim(),
                         lineIdController.text.trim(),
                         contactUserId: selectedContactUserId,
+                        defaultNotificationMethod: selectedNotificationMethod,
                       );
                       debounceTimer?.cancel();
                       Navigator.pop(context);
@@ -893,12 +931,15 @@ class _ContactListScreenState extends State<ContactListScreen> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (contact['phone'] != null &&
-                          contact['phone'].isNotEmpty)
+                      if (contact['phone'] != null && contact['phone'].isNotEmpty)
                         Text(contact['phone']),
-                      if (contact['email'] != null &&
-                          contact['email'].isNotEmpty)
+                      if (contact['email'] != null && contact['email'].isNotEmpty)
                         Text(contact['email']),
+                      SizedBox(height: 4),
+                      Text(
+                        '預設通知: ${_getNotificationMethodLabel(contact['default_notification_method'])}', 
+                        style: TextStyle(color: Colors.blueGrey, fontSize: 12)
+                      ),
                     ],
                   ),
                   trailing: isSelectionMode
@@ -928,5 +969,11 @@ class _ContactListScreenState extends State<ContactListScreen> {
               child: Icon(Icons.person_add),
             ),
     );
+  }
+
+  String _getNotificationMethodLabel(String? method) {
+    if (method == 'email') return 'Email';
+    if (method == 'line') return 'LINE';
+    return '手機簡訊';
   }
 }

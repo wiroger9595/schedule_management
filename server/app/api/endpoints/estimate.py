@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from ...services.osmnx_service import OSMnxService
+from ...services.here_service import HereService
 
 router = APIRouter()
 
@@ -42,7 +43,7 @@ def get_all_travel_estimates(
 @router.get("/reverse")
 def reverse_geocode(lat: float, lon: float):
     try:
-        address = OSMnxService.reverse_geocode(lat, lon)
+        address = HereService.reverse_geocode(lat, lon)
         if not address:
             raise HTTPException(status_code=404, detail="Address not found")
         return {"address": address}
@@ -55,7 +56,7 @@ def reverse_geocode(lat: float, lon: float):
 def get_nearby_pois(lat: float, lon: float, radius: int = 300):
     """Get nearby places of interest"""
     try:
-        pois = OSMnxService.get_nearby_pois(lat, lon, radius)
+        pois = HereService.get_nearby_pois(lat, lon, radius)
         return pois
     except Exception as e:
         print(f"Error in nearby endpoint: {e}")
@@ -65,7 +66,7 @@ def get_nearby_pois(lat: float, lon: float, radius: int = 300):
 def search_places(q: str, lat: Optional[float] = None, lon: Optional[float] = None, zoom: Optional[float] = None):
     """Search for places by name"""
     try:
-        places = OSMnxService.search_places(q, lat, lon, zoom)
+        places = HereService.search_places(q, lat, lon, zoom)
         return places
     except Exception as e:
         print(f"Error in search endpoint: {e}")

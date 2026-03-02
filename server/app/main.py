@@ -29,6 +29,7 @@ def on_startup():
     from .models.schedule import Schedule
     from .models.contact import Contact
     from .models.attend import attend
+    from .models.comment import Comment
     from .db.database import postgres_schema
     
     # Ensure the schema exists before creating tables
