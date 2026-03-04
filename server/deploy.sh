@@ -48,18 +48,13 @@ else
     echo "⚠️ .env file not found at $ENV_FILE. Proceeding without env vars."
 fi
 
-# Build Docker image explicitly
-IMAGE_TAG="gcr.io/$PROJECT_ID/$SERVICE_NAME"
+# Deploying source code directly to Cloud Run
 echo "========================================="
-echo "Building Docker Image: $IMAGE_TAG"
-gcloud builds submit --tag "$IMAGE_TAG" .
+echo "Deploying to Cloud Run (This will build the image automatically)..."
 
-# Deploying image to Cloud Run
-echo "========================================="
-echo "Deploying to Cloud Run..."
 if [ -f "$YAML_FILE" ]; then
     gcloud run deploy "$SERVICE_NAME" \
-      --image "$IMAGE_TAG" \
+      --source . \
       --region "$REGION" \
       --allow-unauthenticated \
       --project "$PROJECT_ID" \
@@ -69,7 +64,7 @@ if [ -f "$YAML_FILE" ]; then
     rm -f "$YAML_FILE"
 else
     gcloud run deploy "$SERVICE_NAME" \
-      --image "$IMAGE_TAG" \
+      --source . \
       --region "$REGION" \
       --allow-unauthenticated \
       --project "$PROJECT_ID"

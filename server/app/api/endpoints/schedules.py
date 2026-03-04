@@ -313,13 +313,15 @@ def update_schedule(
         schedule.latitude = data.latitude
         schedule.longitude = data.longitude
         if data.location is not None:
+            schedule.meeting_location = data.location
             schedule.location = data.location
     
     # If only location string changed (Text Edit), try geocode
-    elif data.location is not None and data.location != schedule.location:
+    elif data.location is not None and data.location != schedule.meeting_location:
+        schedule.meeting_location = data.location
         schedule.location = data.location
         try:
-            coords = HereService.get_coordinates(schedule.location)
+            coords = HereService.get_coordinates(schedule.meeting_location)
             if coords:
                 schedule.latitude = coords[0]
                 schedule.longitude = coords[1]
@@ -398,6 +400,7 @@ def update_schedule(
         session.commit()
         
         # Dispatch notifications for updates
+        from sqlmodel import select
         updated_attends = session.exec(select(attend).where(attend.schedule_id == updated_schedule.schedule_id)).all()
         notification_service.notify_attendees(updated_schedule.title, updated_attends, contact_models_map)
 

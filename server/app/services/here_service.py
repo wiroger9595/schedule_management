@@ -159,9 +159,14 @@ class HereService:
                     if cat_list:
                         category = cat_list[0].get("name", "Unknown")
                         
+                    address = item.get("address", {}).get("label", category)
+                    if address.startswith(name + ", "):
+                        address = address[len(name) + 2:]
+                        
                     pois.append({
                         "name": name,
                         "category": category,
+                        "address": address,
                         "distance": dist,
                         "lat": item.get("position", {}).get("lat"),
                         "lon": item.get("position", {}).get("lng")
