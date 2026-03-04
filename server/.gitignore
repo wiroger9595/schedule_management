@@ -37,3 +37,4 @@ server.log
 
 # Cache
 cache/
+.env*

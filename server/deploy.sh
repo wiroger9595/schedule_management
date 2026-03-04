@@ -11,7 +11,8 @@ echo "========================================="
 PROJECT_ID=$(gcloud config get-value project)
 SERVICE_NAME="schedule-backend"
 REGION="asia-east1" # Change region if needed (e.g. us-central1)
-ENV_FILE=".env"
+# Accept environment file as an argument (e.g., ./deploy.sh .env-stage)
+ENV_FILE="${1:-.env}"
 
 if [ -z "$PROJECT_ID" ]; then
     echo "❌ Error: No Google Cloud project selected."
