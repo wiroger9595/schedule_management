@@ -36,10 +36,15 @@ echo ">> 清理並安裝 packages..."
 flutter clean
 flutter pub get
 
-# 5. 編譯 Flutter Web (使用 stage 環境配置)
-# Vercel 預設是在根目錄 `/` 運行，所以 `--base-href "/"`
-echo ">> 正在編譯 Flutter Web 版本 (設定 base-href 為 '/', 環境變數 ENV=stage)..."
 echo ">> Injecting environment variables into index.html..."
+if [ ! -f ".env-stage" ]; then
+  echo ">> .env-stage not found! Creating from Vercel system environment variables..."
+  echo "WEB_CLIENT_ID=$WEB_CLIENT_ID" > .env-stage
+  echo "APPLE_SERVICE_ID=$APPLE_SERVICE_ID" >> .env-stage
+  echo "GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY" >> .env-stage
+fi
+
+# Apply to web/index.html (so placeholders get swapped before build)
 if [ -f ".env-stage" ]; then
   export $(grep -v '^#' .env-stage | xargs)
   sed -i "s|YOUR_WEB_CLIENT_ID.apps.googleusercontent.com|$WEB_CLIENT_ID|g" web/index.html
