@@ -1,7 +1,7 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../models/todo_comment.dart';
 import '../services/api_service.dart';
-import '../i18n/app_localizations.dart';
 
 class TodoListScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -36,7 +36,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${AppLocalizations.of(context)?.loadFailed ?? "Load failed"}: $e')),
+          SnackBar(content: Text('${'loadFailed'.tr()}: $e')),
         );
       }
     }
@@ -48,11 +48,11 @@ class _TodoListScreenState extends State<TodoListScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(AppLocalizations.of(context)?.addTodo ?? 'Add Todo'),
+          title: Text('addTodo'.tr()),
           content: TextField(
             controller: _textController,
             decoration: InputDecoration(
-              hintText: AppLocalizations.of(context)?.enterTodo ?? 'Enter todo item...',
+              hintText: 'enterTodo'.tr(),
               border: OutlineInputBorder(),
             ),
             maxLines: 2,
@@ -60,7 +60,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(AppLocalizations.of(context)?.cancel ?? 'Cancel'),
+              child: Text('cancel'.tr()),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -71,11 +71,11 @@ class _TodoListScreenState extends State<TodoListScreen> {
                   _loadComments();
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${AppLocalizations.of(context)?.addFailed ?? "Add failed"}: $e')),
+                    SnackBar(content: Text('${'addFailed'.tr()}: $e')),
                   );
                 }
               },
-              child: Text(AppLocalizations.of(context)?.save ?? 'Save'),
+              child: Text('save'.tr()),
             ),
           ],
         );
@@ -89,11 +89,11 @@ class _TodoListScreenState extends State<TodoListScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(AppLocalizations.of(context)?.editTodo ?? 'Edit Todo'),
+          title: Text('editTodo'.tr()),
           content: TextField(
             controller: _textController,
             decoration: InputDecoration(
-              hintText: AppLocalizations.of(context)?.enterTodo ?? 'Enter todo item...',
+              hintText: 'enterTodo'.tr(),
               border: OutlineInputBorder(),
             ),
             maxLines: 2,
@@ -101,7 +101,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(AppLocalizations.of(context)?.cancel ?? 'Cancel'),
+              child: Text('cancel'.tr()),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -112,11 +112,11 @@ class _TodoListScreenState extends State<TodoListScreen> {
                   _loadComments();
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${AppLocalizations.of(context)?.updateFailed ?? "Update failed"}: $e')),
+                    SnackBar(content: Text('${'updateFailed'.tr()}: $e')),
                   );
                 }
               },
-              child: Text(AppLocalizations.of(context)?.save ?? 'Save'),
+              child: Text('save'.tr()),
             ),
           ],
         );
@@ -130,7 +130,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
       _loadComments();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${AppLocalizations.of(context)?.updateFailed ?? "Update failed"}: $e')),
+        SnackBar(content: Text('${'updateFailed'.tr()}: $e')),
       );
     }
   }
@@ -140,19 +140,19 @@ class _TodoListScreenState extends State<TodoListScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(AppLocalizations.of(context)?.confirmTaskStatus ?? 'Confirm Task Status'),
-          content: Text(AppLocalizations.of(context)?.isTaskCompleted ?? 'Is this task completed?'),
+          title: Text('confirmTaskStatus'.tr()),
+          content: Text('isTaskCompleted'.tr()),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(AppLocalizations.of(context)?.cancel ?? 'Cancel', style: TextStyle(color: Colors.grey)),
+              child: Text('cancel'.tr(), style: TextStyle(color: Colors.grey)),
             ),
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
                 _updateStatus(comment, 'N'); // 'N' for cancelled/invalid
               },
-              child: Text(AppLocalizations.of(context)?.voided ?? 'Void', style: TextStyle(color: Colors.red)),
+              child: Text('voided'.tr(), style: TextStyle(color: Colors.red)),
             ),
             ElevatedButton(
               onPressed: () {
@@ -160,7 +160,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                 _updateStatus(comment, 'Y'); // 'Y' for completed
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green[50]),
-              child: Text(AppLocalizations.of(context)?.completed ?? 'Completed', style: TextStyle(color: Colors.green[800])),
+              child: Text('completed'.tr(), style: TextStyle(color: Colors.green[800])),
             ),
           ],
         );
@@ -175,7 +175,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
       _loadComments();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${AppLocalizations.of(context)?.deleteFailed ?? "Delete failed"}: $e')),
+        SnackBar(content: Text('${'deleteFailed'.tr()}: $e')),
       );
     }
   }
@@ -184,7 +184,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: widget.isEmbedded ? null : AppBar(
-        title: Text(AppLocalizations.of(context)?.todoList ?? 'Todo List'),
+        title: Text('todoList'.tr()),
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -204,7 +204,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                     children: [
                       Icon(Icons.checklist, size: 64, color: Colors.grey[400]),
                       SizedBox(height: 16),
-                      Text(AppLocalizations.of(context)?.noTodos ?? 'No todo items', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+                      Text('noTodos'.tr(), style: TextStyle(color: Colors.grey[600], fontSize: 16)),
                     ],
                   ),
                 )
@@ -240,7 +240,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          '${AppLocalizations.of(context)?.updatedAt ?? "Updated at"}: ${comment.updatedAt.toLocal().toString().split('.')[0]}',
+                          '${'updatedAt'.tr()}: ${comment.updatedAt.toLocal().toString().split('.')[0]}',
                           style: TextStyle(color: Colors.grey[500], fontSize: 12),
                         ),
                         trailing: isActive
@@ -250,17 +250,17 @@ class _TodoListScreenState extends State<TodoListScreen> {
                                   IconButton(
                                     icon: Icon(Icons.edit, color: Colors.blue),
                                     onPressed: () => _showEditDialog(comment),
-                                    tooltip: AppLocalizations.of(context)?.edit ?? 'Edit',
+                                    tooltip: 'edit'.tr(),
                                   ),
                                   IconButton(
                                     icon: Icon(Icons.check_circle_outline, color: Colors.green),
                                     onPressed: () => _showStatusDialog(comment),
-                                    tooltip: AppLocalizations.of(context)?.changeStatus ?? 'Change Status',
+                                    tooltip: 'changeStatus'.tr(),
                                   ),
                                 ],
                               )
                             : Chip(
-                                label: Text(isCompleted ? (AppLocalizations.of(context)?.completed ?? 'Completed') : (AppLocalizations.of(context)?.voided ?? 'Void')),
+                                label: Text(isCompleted ? ('completed'.tr()) : ('voided'.tr())),
                                 backgroundColor: isCompleted ? Colors.green[100] : Colors.red[50],
                                 labelStyle: TextStyle(
                                   color: isCompleted ? Colors.green[800] : Colors.red[800],
@@ -275,7 +275,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddDialog,
         icon: Icon(Icons.add),
-        label: Text(AppLocalizations.of(context)?.addTodo ?? 'Add Todo'),
+        label: Text('addTodo'.tr()),
         backgroundColor: Colors.purple[700],
       ),
     );

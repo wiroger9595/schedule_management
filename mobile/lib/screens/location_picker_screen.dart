@@ -1,7 +1,7 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import '../i18n/app_localizations.dart';
 import 'dart:async';
 import '../services/api_service.dart';
 
@@ -177,7 +177,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                  final lon = place['lon'] as double;
                  final pos = LatLng(lat, lon);
                  _selectLocation(pos, place['name'], place['address'] ?? '');
-                 Navigator.pop(context); // Close the sheet
+                 
+                 // Close the search bottom sheet
+                 Navigator.pop(context);
+                 
+                 // Immediately return the result to AddScheduleScreen
+                 Navigator.pop(context, {
+                    'latitude': lat,
+                    'longitude': lon,
+                    'name': place['name'],
+                    'address': place['address'] ?? '',
+                 });
               }
            },
         ),
@@ -193,7 +203,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          AppLocalizations.of(context)!.selectLocation ?? 'Select Location',
+          'selectLocation'.tr() ?? 'Select Location',
         ),
         actions: [
           IconButton(
@@ -235,7 +245,43 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             },
           ),
           
-
+          // Top Search Bar
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 16,
+            child: GestureDetector(
+              onTap: _showSearchOverlay,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.search, color: Colors.grey[600]),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _pickedPlaceName ?? 'Search for a place...',
+                        style: TextStyle(
+                          color: _pickedPlaceName != null ? Colors.black87 : Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          
 
           // Bottom Info Sheet (if location selected)
           if (_pickedLocation != null)
@@ -392,9 +438,35 @@ class __SearchOverlayState extends State<_SearchOverlay> {
     if (query.isEmpty) {
       if (mounted) {
         setState(() {
-          _searchResults = [];
-          _isLoading = false;
+          _isLoading = true;
         });
+      }
+      try {
+        final lat = widget.currentCameraPosition?.latitude;
+        final lon = widget.currentCameraPosition?.longitude;
+        if (lat != null && lon != null) {
+          final results = await _apiService.getNearbyPlaces(lat, lon);
+          if (mounted) {
+            setState(() {
+              _searchResults = results;
+              _isLoading = false;
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _searchResults = [];
+              _isLoading = false;
+            });
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _searchResults = [];
+            _isLoading = false;
+          });
+        }
       }
       return;
     }

@@ -14,7 +14,7 @@
   "phone": "Phone",
   "email": "Email",
   "lineId": "Line ID",
-  "accountNumber": "Account Number",
+  "accountNumber": "User ID",
   "schedules": "Schedules",
   "calendar": "Calendar",
   "callLog": "Call Log",
@@ -97,5 +97,17 @@
   "updateFailed": "Update failed",
   "loadFailed": "Load failed",
   "deleteFailed": "Delete failed",
-  "scheduleAndTasks": "Schedule & Tasks"
+  "scheduleAndTasks": "Schedule & Tasks",
+  "editSchedule": "Edit Schedule",
+  "filterSchedules": "Filter Schedules",
+  "all": "All",
+  "dateRange": "Date Range",
+  "clearDateFilter": "Clear Date Filter",
+  "reset": "Reset",
+  "apply": "Apply",
+  "selectParticipants": "Select Participants",
+  "coordinateSelected": "Coordinate selected",
+  "tapToSelectOnMap": "Tap to select on map",
+  "searchLocation": "Search Location",
+  "eventsCount": "{} events"
 }

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'i18n/app_localizations.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'theme/app_theme.dart';
 import 'routes/app_routes.dart';
 import 'providers/auth_provider.dart';
@@ -19,13 +18,20 @@ void main() async {
   // Initialize Notifications
   await NotificationService().init();
   
+  await EasyLocalization.ensureInitialized();
+  
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => ScheduleProvider()),
-      ],
-      child: ScheduleApp(),
+    EasyLocalization(
+      supportedLocales: [Locale('en'), Locale('zh', 'TW')],
+      path: 'assets/i18n',
+      fallbackLocale: Locale('en'),
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider(create: (_) => ScheduleProvider()),
+        ],
+        child: ScheduleApp(),
+      ),
     ),
   );
 }
@@ -34,15 +40,11 @@ class ScheduleApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Schedule Management',
+      title: 'Schedule Management'.tr(),
       theme: AppTheme.lightTheme,
-      localizationsDelegates: [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: [Locale('en'), Locale('zh', 'TW')],
+      localizationsDelegates: context.localizationDelegates,
+      supportedLocales: context.supportedLocales,
+      locale: context.locale,
       initialRoute: '/startup',
       routes: {
         '/startup': (context) => _StartupWrapper(),

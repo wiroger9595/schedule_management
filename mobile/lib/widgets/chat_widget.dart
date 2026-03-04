@@ -1,9 +1,9 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'dart:convert';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../i18n/app_localizations.dart';
 
 import 'package:geolocator/geolocator.dart';
 
@@ -364,7 +364,7 @@ class ChatWidgetState extends State<ChatWidget> {
                         ),
                         SizedBox(height: 16),
                         Text(
-                          AppLocalizations.of(context)!.aiChatHint,
+                          'aiChatHint'.tr(),
                           style: TextStyle(color: Colors.grey[600]),
                           textAlign: TextAlign.center,
                         ),
@@ -395,7 +395,7 @@ class ChatWidgetState extends State<ChatWidget> {
                   ),
                   SizedBox(width: 8),
                   Text(
-                    AppLocalizations.of(context)!.loading,
+                    'loading'.tr(),
                     style: TextStyle(color: Colors.grey[600]),
                   ),
                 ],
@@ -418,7 +418,7 @@ class ChatWidgetState extends State<ChatWidget> {
                   child: TextField(
                     controller: _controller,
                     decoration: InputDecoration(
-                      hintText: AppLocalizations.of(context)!.aiChatHint,
+                      hintText: 'aiChatHint'.tr(),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(

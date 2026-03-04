@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -7,7 +8,6 @@ import '../utils/constants.dart'; // Import constants
 import 'package:home_widget/home_widget.dart';
 import '../widgets/contact_picker.dart';
 import '../widgets/attendee_selector.dart';
-import '../i18n/app_localizations.dart';
 import 'location_picker_screen.dart';
 
 class AddScheduleScreen extends StatefulWidget {
@@ -136,7 +136,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
         if (newDateTime.isBefore(DateTime.now())) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(AppLocalizations.of(context)!.pleaseEnterFutureTime ?? '請選擇未來的時間'),
+              content: Text('pleaseEnterFutureTime'.tr() ?? '請選擇未來的時間'),
               backgroundColor: Colors.red,
             ),
           );
@@ -185,7 +185,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
         if (newDateTime.isBefore(startTime)) {
            ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(AppLocalizations.of(context)!.endTimeMustBeAfterStartTime ?? '結束時間必須晚於開始時間'),
+              content: Text('endTimeMustBeAfterStartTime'.tr() ?? '結束時間必須晚於開始時間'),
               backgroundColor: Colors.red,
             ),
           );
@@ -225,7 +225,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     if (result != null && result is Map) {
       final lat = result['latitude'] as double;
       final lon = result['longitude'] as double;
-      final pickedName = result['name'] as String?;
+      final pickedName = result['name'] as String? ?? result['address'] as String?;
 
       if (pickedName != null && pickedName.isNotEmpty && pickedName != 'Selected Location') {
         setState(() {
@@ -233,189 +233,33 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
           longitude = lon;
           _locationController.text = pickedName;
         });
-        return;
-      }
-
-      setState(() {
-        latitude = lat;
-        longitude = lon;
-        _isLoadingLocation = true;
-        _locationController.text = "載入地點選項中...";
-      });
-
-      try {
-        // 1. Get Address
-        final addressFuture = apiService.reverseGeocode(lat, lon);
-        
-        // 2. Get Nearby POIs
-        final poisFuture = apiService.getNearbyPlaces(lat, lon);
-
-        final results = await Future.wait([
-            addressFuture,
-            poisFuture.catchError((e) => <Map<String, dynamic>>[])
-        ]);
-        
-        final address = results[0] as String;
-        final pois = results[1] as List<Map<String, dynamic>>;
-
-        if (!mounted) return;
-        
+      } else {
         setState(() {
-           _isLoadingLocation = false;
+          latitude = lat;
+          longitude = lon;
+          _isLoadingLocation = true;
+          _locationController.text = "解析地址中...";
         });
 
-        // Show selection sheet
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          shape: RoundedRectangleBorder(
-             borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          builder: (context) {
-             return DraggableScrollableSheet(
-               initialChildSize: 0.5,
-               minChildSize: 0.3,
-               maxChildSize: 0.9,
-               expand: false,
-               builder: (context, scrollController) {
-                 return Column(
-                   children: [
-                     Padding(
-                       padding: const EdgeInsets.all(16.0),
-                       child: Text(
-                         AppLocalizations.of(context)!.selectLocation ?? 'Select Location',
-                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                       ),
-                     ),
-                     Expanded(
-                       child: ListView(
-                         controller: scrollController,
-                         children: [
-                            // Option 0: Selected POI (if available)
-                            if (pickedName != null) ...[
-                               ListTile(
-                                 leading: Icon(Icons.star, color: Colors.orange),
-                                 title: Text(pickedName),
-                                 subtitle: Text('Selected on Map'),
-                                 onTap: () {
-                                   Navigator.pop(context, pickedName);
-                                 },
-                               ),
-                               Divider(),
-                            ],
-
-                            // Option 1: The precise address
-                            ListTile(
-                              leading: Icon(Icons.location_on, color: Colors.red),
-                              title: Text(address),
-                              subtitle: Text('Precise Address'),
-                              onTap: () {
-                                Navigator.pop(context, address);
-                              },
-                            ),
-                            Divider(),
-                            if (pois.isEmpty)
-                               Padding(
-                                 padding: const EdgeInsets.all(16.0),
-                                 child: Text('No nearby places found', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                               ),
-                            // Option 2...N: POIs
-                            ...pois.map((poi) {
-                               IconData icon = Icons.place;
-                               String category = poi['category'] ?? 'Unknown';
-                               if (category == 'amenity' || category == 'restaurant' || category == 'cafe') icon = Icons.restaurant;
-                               else if (category.contains('shop')) icon = Icons.shopping_bag;
-                               else if (category.contains('transport')) icon = Icons.train;
-                               
-                               return ListTile(
-                                 leading: Icon(icon, color: Colors.blue),
-                                 title: Text(poi['name'] ?? 'Unknown Place'),
-                                 subtitle: Text('${poi['category']} • ${poi['distance']}m'),
-                                 onTap: () {
-                                   Navigator.pop(context, poi['name']);
-                                 },
-                               );
-                            }).toList(),
-                         ],
-                       ),
-                     ),
-                   ],
-                 );
-               }
-             );
+        try {
+          final address = await apiService.reverseGeocode(lat, lon);
+          if (mounted) {
+             setState(() {
+                _locationController.text = address;
+                _isLoadingLocation = false;
+             });
           }
-        ).then((selectedName) {
-           if (selectedName != null && selectedName is String) {
-              setState(() {
-                 _locationController.text = selectedName;
-              });
-           } else {
-              // If dismissed without selection:
-              // - If we had a pickedName, _locationController.text is already pickedName.
-              // - If we didn't, it was "Loading...". We should fallback to address.
-              if (_locationController.text == "載入地點選項中...") {
-                  setState(() {
-                      _locationController.text = address;
-                  });
-              }
-           }
-        });
-
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _isLoadingLocation = false;
-            _locationController.text =
-                "Pinned Location (${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)})";
-          });
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to get location info: $e')));
+        } catch (e) {
+          if (mounted) {
+            setState(() {
+              _isLoadingLocation = false;
+              _locationController.text =
+                  "已選擇座標 (${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)})";
+            });
+          }
         }
       }
     }
-  }
-
-  void _onLocationTextChanged(String text) {
-    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    
-    // Clear results if text is empty or too short
-    if (text.isEmpty || text.length < 2) {
-      if (_locationSearchResults.isNotEmpty || _isSearchingLocation) {
-        if (mounted) {
-          setState(() {
-            _locationSearchResults.clear();
-            _isSearchingLocation = false;
-          });
-        }
-      }
-      return;
-    }
-
-    // Only start the visual searching spinner AFTER the user stops typing
-    _debounceTimer = Timer(const Duration(seconds: 3), () async {
-      if (mounted) {
-        setState(() {
-          _isSearchingLocation = true;
-        });
-      }
-      try {
-        final results = await apiService.searchPlaces(text, latitude, longitude);
-        if (mounted) {
-          setState(() {
-            _locationSearchResults = results;
-            _isSearchingLocation = false;
-          });
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _locationSearchResults = [];
-            _isSearchingLocation = false;
-          });
-        }
-      }
-    });
   }
 
   void _selectSearchResult(Map<String, dynamic> place) {
@@ -567,8 +411,8 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
       appBar: AppBar(
         title: Text(
           widget.schedule == null
-              ? AppLocalizations.of(context)!.addSchedule
-              : 'Edit Schedule',
+              ? 'addSchedule'.tr()
+              : 'editSchedule'.tr(),
         ),
       ),
       body: SingleChildScrollView(
@@ -581,27 +425,27 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               TextFormField(
                 controller: _titleController,
                 decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context)!.title,
+                  labelText: 'title'.tr(),
                   border: OutlineInputBorder(),
                 ),
                 autovalidateMode: AutovalidateMode
                     .onUserInteraction, // Fix validation behavior
                 validator: (value) => value!.isEmpty
-                    ? AppLocalizations.of(context)!.pleaseEnterTitle
+                    ? 'pleaseEnterTitle'.tr()
                     : null,
               ),
               SizedBox(height: 16),
               TextFormField(
                 controller: _descriptionController,
                 decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context)!.description,
+                  labelText: 'description'.tr(),
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 3,
               ),
               SizedBox(height: 16),
               ListTile(
-                title: Text(AppLocalizations.of(context)!.startTime),
+                title: Text('startTime'.tr()),
                 subtitle: Text(
                   DateFormat('yyyy-MM-dd HH:mm').format(startTime),
                 ),
@@ -614,11 +458,11 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               ),
               SizedBox(height: 16),
               ListTile(
-                title: Text(AppLocalizations.of(context)!.endTime ?? 'End Time'),
+                title: Text('endTime'.tr() ?? 'End Time'),
                 subtitle: Text(
                   endTime != null
                       ? DateFormat('yyyy-MM-dd HH:mm').format(endTime!)
-                      : AppLocalizations.of(context)!.notSet ?? 'Not Set',
+                      : 'notSet'.tr() ?? 'Not Set',
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -641,7 +485,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               DropdownButtonFormField<String>(
                 value: transportMode,
                 decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context)!.transportMode,
+                  labelText: 'transportMode'.tr(),
                   border: OutlineInputBorder(),
                 ),
                 items: transportModes.map((mode) {
@@ -656,25 +500,31 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: TextFormField(
-                      controller: _locationController,
-                      onChanged: _onLocationTextChanged,
-                      decoration: InputDecoration(
-                        labelText: AppLocalizations.of(context)!.location,
-                        border: OutlineInputBorder(),
-                        suffixIcon: (_isLoadingLocation || _isSearchingLocation)
-                            ? Container(
-                                width: 24,
-                                height: 24,
-                                padding: EdgeInsets.all(12),
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.grey,
-                                ),
-                              )
-                            : null,
+                    child: InkWell(
+                      onTap: _pickLocation,
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          controller: _locationController,
+                          readOnly: true,
+                          decoration: InputDecoration(
+                            labelText: 'location'.tr(),
+                            border: OutlineInputBorder(),
+                            hintText: 'tapToSelectOnMap'.tr(),
+                            suffixIcon: (_isLoadingLocation || _isSearchingLocation)
+                                ? Container(
+                                    width: 24,
+                                    height: 24,
+                                    padding: EdgeInsets.all(12),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.grey,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          onSaved: (value) => location = value,
+                        ),
                       ),
-                      onSaved: (value) => location = value,
                     ),
                   ),
                   SizedBox(width: 8),
@@ -692,56 +542,15 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4.0),
                   child: Text(
-                    '📍 Coordinate selected',
+                    'coordinateSelected'.tr(),
                     style: TextStyle(color: Colors.blue, fontSize: 12),
                   ),
                 ),
-              if (_locationSearchResults.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.only(top: 8.0),
-                  constraints: BoxConstraints(maxHeight: 250),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _locationSearchResults.length,
-                    separatorBuilder: (context, index) => Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final place = _locationSearchResults[index];
-                      // Determine the icon based on category, if available
-                      IconData icon = Icons.place;
-                      String category = place['category'] ?? 'Location';
-                      if (category == 'amenity' || category == 'restaurant' || category == 'cafe') icon = Icons.restaurant;
-                      else if (category.contains('shop')) icon = Icons.shopping_bag;
-                      else if (category.contains('transport')) icon = Icons.train;
-
-                      return ListTile(
-                        leading: Icon(icon, color: Colors.blue),
-                        title: Text(place['name'] ?? 'Unknown Place'),
-                        subtitle: Text(
-                          place['distance'] != null 
-                            ? '$category • ${place['distance']}m'
-                            : category,
-                        ),
-                        onTap: () => _selectSearchResult(place),
-                      );
-                    },
-                  ),
-                ),
+              // Search results list removed, search happens in the map now.
               SizedBox(height: 24),
               // Participants Section
               Text(
-                '${AppLocalizations.of(context)!.participants} (${selectedContacts.length})',
+                '${'participants'.tr()} (${selectedContacts.length})',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
@@ -777,7 +586,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                   }).toList(),
                   ActionChip(
                     avatar: Icon(Icons.person_add),
-                    label: Text('選擇參與者'),
+                    label: Text('selectParticipants'.tr()),
                     onPressed: _showAttendeeSelector,
                   ),
                 ],
@@ -790,7 +599,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 child: ElevatedButton(
                   onPressed: _save,
                   child: Text(
-                    AppLocalizations.of(context)!.saveSchedule,
+                    'saveSchedule'.tr(),
                     style: TextStyle(fontSize: 18),
                   ),
                 ),

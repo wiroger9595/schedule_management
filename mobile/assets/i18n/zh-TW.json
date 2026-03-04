@@ -14,7 +14,7 @@
   "phone": "電話",
   "email": "電子郵件",
   "lineId": "Line ID",
-  "accountNumber": "帳號",
+  "accountNumber": "User ID",
   "schedules": "行程列表",
   "calendar": "行事曆",
   "callLog": "通話記錄",
@@ -97,5 +97,17 @@
   "updateFailed": "狀態更新失敗",
   "loadFailed": "讀取待辦清單失敗",
   "deleteFailed": "刪除失敗",
-  "scheduleAndTasks": "行程與待辦"
+  "scheduleAndTasks": "行程與待辦",
+  "editSchedule": "編輯行程",
+  "filterSchedules": "篩選行程",
+  "all": "全部",
+  "dateRange": "日期區間",
+  "clearDateFilter": "清除日期篩選",
+  "reset": "重設",
+  "apply": "套用",
+  "selectParticipants": "選擇參與者",
+  "coordinateSelected": "已選取座標",
+  "tapToSelectOnMap": "在地圖上點選",
+  "searchLocation": "搜尋地點",
+  "eventsCount": "{} 個行程"
 }

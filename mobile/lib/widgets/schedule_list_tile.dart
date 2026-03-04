@@ -1,7 +1,7 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/schedule.dart';
-import '../i18n/app_localizations.dart';
 import '../utils/constants.dart';
 
 /// Reusable schedule card widget extracted from HomeScreen.
@@ -139,19 +139,19 @@ class ScheduleListTile extends StatelessWidget {
   String _getStatusText(BuildContext context, String status) {
     switch (status) {
       case ScheduleStatus.pending:
-        return AppLocalizations.of(context)!.statusPending;
+        return 'statusPending'.tr();
       case ScheduleStatus.attend:
-        return AppLocalizations.of(context)!.statusAttend;
+        return 'statusAttend'.tr();
       case ScheduleStatus.notAttended:
-        return AppLocalizations.of(context)!.statusNotAttend;
+        return 'statusNotAttend'.tr();
       case ScheduleStatus.active:
-        return AppLocalizations.of(context)!.statusActive;
+        return 'statusActive'.tr();
       case ScheduleStatus.notGoing:
-        return AppLocalizations.of(context)!.statusNotGoing;
+        return 'statusNotGoing'.tr();
       case ScheduleStatus.cancel:
-        return AppLocalizations.of(context)!.statusCancelled;
+        return 'statusCancelled'.tr();
       case ScheduleStatus.comingSoon:
-        return AppLocalizations.of(context)!.statusComingSoon;
+        return 'statusComingSoon'.tr();
       default:
         return status;
     }

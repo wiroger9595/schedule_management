@@ -1,5 +1,5 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import '../i18n/app_localizations.dart';
 import 'calendar_screen.dart';
 import 'todo_list_screen.dart';
 import '../widgets/app_drawer.dart';
@@ -60,10 +60,10 @@ class _TabbedDashboardScreenState extends State<TabbedDashboardScreen> with Sing
           labelPadding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           tabs: [
             Tab(
-              child: Text(AppLocalizations.of(context)?.calendar ?? 'Calendar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              child: Text('calendar'.tr(), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
             Tab(
-              child: Text(AppLocalizations.of(context)?.todoList ?? 'Todo List', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              child: Text('todoList'.tr(), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ],
         ),

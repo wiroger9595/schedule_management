@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -13,7 +14,6 @@ import 'map_screen.dart';
 import '../services/notification_service.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
-import '../i18n/app_localizations.dart';
 import '../utils/constants.dart';
 import 'dart:async';
 
@@ -234,22 +234,37 @@ class _HomeScreenState extends State<HomeScreen> {
       if (distance <= 500) {
         newStatus = ScheduleStatus.attend;
       } else {
-        // If time passed and not there...
-        // Updated logic: Check every minute.
-        // If > 60 mins past **start time** and still not there -> Not Attended.
+        // Dynamic Late Check: Estimate travel time
         final referenceTime = schedule.startTime;
-        final minutesLate = now.difference(referenceTime).inMinutes;
-        print(
-          'Schedule ${schedule.title}: $minutesLate mins late from reference time, distance ${distance.toStringAsFixed(2)}m',
-        );
+        final mode = schedule.transportMode ?? 'car';
 
-        if (minutesLate > 60) {
-          newStatus = ScheduleStatus.notAttended;
-        } else {
-          print(
-            'Not updating ${schedule.title}: Only $minutesLate mins late (threshold > 60 after start time)',
-          );
-          continue; // Still give them time
+        try {
+          // Fetch travel time estimate
+          final estimateData = await apiService.estimateTravelTime(
+              position.latitude, position.longitude, schedule.latitude!, schedule.longitude!, mode);
+          
+          final int travelMinutes = (estimateData['duration'] as num).round();
+          final estimatedArrivalTime = now.add(Duration(minutes: travelMinutes));
+
+          // If estimated arrival > start time + 15 mins grace period, mark as Not Attended
+          final latestAllowedTime = referenceTime.add(Duration(minutes: 15));
+
+          if (estimatedArrivalTime.isAfter(latestAllowedTime)) {
+             print('Schedule ${schedule.title}: Estimated arrival $estimatedArrivalTime is past allowed time $latestAllowedTime. Marking Not Attended.');
+             newStatus = ScheduleStatus.notAttended;
+          } else {
+             print('Schedule ${schedule.title}: Can still make it. Est arrival $estimatedArrivalTime.');
+             continue; // Still give them time
+          }
+        } catch (e) {
+          print('Failed to get travel estimate for ${schedule.title}: $e');
+          // Fallback to strict 30-minute rule if API fails
+          final minutesLate = now.difference(referenceTime).inMinutes;
+          if (minutesLate > 30) {
+             newStatus = ScheduleStatus.notAttended;
+          } else {
+             continue;
+          }
         }
       }
 
@@ -340,7 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text('Filter Schedules'),
+              title: Text('filterSchedules'.tr()),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -351,26 +366,26 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: InputDecoration(labelText: 'Status'),
                       items: [
 
-                        DropdownMenuItem(value: null, child: Text('All')),
+                        DropdownMenuItem(value: null, child: Text('all'.tr())),
                         DropdownMenuItem(
                           value: ScheduleStatus.pending,
-                          child: Text(AppLocalizations.of(context)!.statusPending),
+                          child: Text('statusPending'.tr()),
                         ),
                         DropdownMenuItem(
                           value: ScheduleStatus.comingSoon,
-                          child: Text(AppLocalizations.of(context)!.statusComingSoon),
+                          child: Text('statusComingSoon'.tr()),
                         ),
                         DropdownMenuItem(
                           value: ScheduleStatus.active,
-                          child: Text(AppLocalizations.of(context)!.statusActive),
+                          child: Text('statusActive'.tr()),
                         ),
                         DropdownMenuItem(
                           value: ScheduleStatus.notGoing,
-                          child: Text(AppLocalizations.of(context)!.statusNotGoing),
+                          child: Text('statusNotGoing'.tr()),
                         ),
                         DropdownMenuItem(
                           value: ScheduleStatus.cancel,
-                          child: Text(AppLocalizations.of(context)!.statusCancelled),
+                          child: Text('statusCancelled'.tr()),
                         ),
                       ],
                       onChanged: (val) => setState(() => tempStatus = val),
@@ -380,13 +395,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     TextField(
                       controller: tempLocationController,
                       decoration: InputDecoration(
-                        labelText: 'Location (contains)',
+                        labelText: 'location'.tr(),
                       ),
                     ),
                     SizedBox(height: 16),
                     // Date Range Filter
                     ListTile(
-                      title: Text('Date Range'),
+                      title: Text('dateRange'.tr()),
                       subtitle: Text(
                         tempStartDate != null && tempEndDate != null
                             ? '${DateFormat('yyyy-MM-dd').format(tempStartDate!)} - ${DateFormat('yyyy-MM-dd').format(tempEndDate!)}'
@@ -422,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             tempEndDate = null;
                           });
                         },
-                        child: Text('Clear Date Filter'),
+                        child: Text('clearDateFilter'.tr()),
                       ),
                   ],
                 ),
@@ -438,11 +453,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       tempEndDate = null;
                     });
                   },
-                  child: Text('Reset'),
+                  child: Text('reset'.tr()),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel'),
+                  child: Text('cancel'.tr()),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -456,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                     Navigator.pop(context);
                   },
-                  child: Text('Apply'),
+                  child: Text('apply'.tr()),
                 ),
               ],
             );
@@ -470,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.mySchedules),
+        title: Text('mySchedules'.tr()),
         actions: [
           IconButton(
             icon: Icon(Icons.filter_list),
@@ -492,7 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // But simpler here: just show text
             return Center(
               child: Text(
-                '${AppLocalizations.of(context)!.error}: ${provider.error}',
+                '${'error'.tr()}: ${provider.error}',
               ),
             );
           }
@@ -529,7 +544,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           if (filteredSchedules.isEmpty) {
             return Center(
-              child: Text(AppLocalizations.of(context)!.noSchedules),
+              child: Text('noSchedules'.tr()),
             );
           }
 
@@ -557,7 +572,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (context) => MapScreen(schedule: schedule),
                       ),
-                    );
+                    ).then((_) {
+                      // Refresh schedules in case they were edited in the MapScreen
+                      _refreshSchedules();
+                    });
                   }
                 },
               );

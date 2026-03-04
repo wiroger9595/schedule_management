@@ -1,9 +1,9 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:call_log/call_log.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
-import '../i18n/app_localizations.dart';
 
 class CallLogScreen extends StatefulWidget {
   @override
@@ -92,32 +92,32 @@ class _CallLogScreenState extends State<CallLogScreen> {
   String _getCallTypeText(CallType? type) {
     switch (type) {
       case CallType.incoming:
-        return AppLocalizations.of(context)!.incoming;
+        return 'incoming'.tr();
       case CallType.outgoing:
-        return AppLocalizations.of(context)!.outgoing;
+        return 'outgoing'.tr();
       case CallType.missed:
-        return AppLocalizations.of(context)!.missed;
+        return 'missed'.tr();
       case CallType.rejected:
-        return AppLocalizations.of(context)!.rejected;
+        return 'rejected'.tr();
       default:
-        return AppLocalizations.of(context)!.unknown;
+        return 'unknown'.tr();
     }
   }
 
   String _formatDuration(int? seconds) {
     if (seconds == null || seconds == 0)
-      return AppLocalizations.of(context)!.notConnected;
+      return 'notConnected'.tr();
 
     int hours = seconds ~/ 3600;
     int minutes = (seconds % 3600) ~/ 60;
     int secs = seconds % 60;
 
     if (hours > 0) {
-      return '$hours ${AppLocalizations.of(context)!.hours} $minutes ${AppLocalizations.of(context)!.minutes} $secs ${AppLocalizations.of(context)!.seconds}';
+      return '$hours ${'hours'.tr()} $minutes ${'minutes'.tr()} $secs ${'seconds'.tr()}';
     } else if (minutes > 0) {
-      return '$minutes ${AppLocalizations.of(context)!.minutes} $secs ${AppLocalizations.of(context)!.seconds}';
+      return '$minutes ${'minutes'.tr()} $secs ${'seconds'.tr()}';
     } else {
-      return '$secs ${AppLocalizations.of(context)!.seconds}';
+      return '$secs ${'seconds'.tr()}';
     }
   }
 
@@ -131,9 +131,9 @@ class _CallLogScreenState extends State<CallLogScreen> {
     DateTime callDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
 
     if (callDate == today) {
-      return '${AppLocalizations.of(context)!.today} ${DateFormat('HH:mm').format(dateTime)}';
+      return '${'today'.tr()} ${DateFormat('HH:mm').format(dateTime)}';
     } else if (callDate == yesterday) {
-      return '${AppLocalizations.of(context)!.yesterday} ${DateFormat('HH:mm').format(dateTime)}';
+      return '${'yesterday'.tr()} ${DateFormat('HH:mm').format(dateTime)}';
     } else {
       return DateFormat('MM/dd HH:mm').format(dateTime);
     }
@@ -143,7 +143,7 @@ class _CallLogScreenState extends State<CallLogScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.callLog),
+        title: Text('callLog'.tr()),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -173,18 +173,18 @@ class _CallLogScreenState extends State<CallLogScreen> {
               Icon(Icons.phone_disabled, size: 80, color: Colors.grey[400]),
               SizedBox(height: 24),
               Text(
-                AppLocalizations.of(context)!.iosLimitation,
+                'iosLimitation'.tr(),
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 16),
               Text(
-                AppLocalizations.of(context)!.iosLimitationDesc,
+                'iosLimitationDesc'.tr(),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
               SizedBox(height: 8),
               Text(
-                AppLocalizations.of(context)!.androidOnly,
+                'androidOnly'.tr(),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Colors.grey[500]),
               ),
@@ -208,12 +208,12 @@ class _CallLogScreenState extends State<CallLogScreen> {
               Icon(Icons.block, size: 80, color: Colors.red[300]),
               SizedBox(height: 24),
               Text(
-                AppLocalizations.of(context)!.permissionRequired,
+                'permissionRequired'.tr(),
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 16),
               Text(
-                AppLocalizations.of(context)!.permissionDesc,
+                'permissionDesc'.tr(),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
@@ -223,7 +223,7 @@ class _CallLogScreenState extends State<CallLogScreen> {
                   await openAppSettings();
                 },
                 icon: Icon(Icons.settings),
-                label: Text(AppLocalizations.of(context)!.openSettings),
+                label: Text('openSettings'.tr()),
               ),
             ],
           ),
@@ -264,7 +264,7 @@ class _CallLogScreenState extends State<CallLogScreen> {
             title: Text(
               entry.name ??
                   entry.number ??
-                  AppLocalizations.of(context)!.unknownNumber,
+                  'unknownNumber'.tr(),
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Column(

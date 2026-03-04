@@ -8,12 +8,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:schedule_management/main.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    // Ensure EasyLocalization is initialized for tests
+    // await EasyLocalization.ensureInitialized();
+    // 
+    // Usually EasyLocalization requires shared preferences testing setup,
+    // so for a basic smoke test, testing the whole App Widget might fail.
+    // But we'll try to just wrap it in EasyLocalization if needed, or bypass.
+    await tester.pumpWidget(
+      EasyLocalization(
+        supportedLocales: [Locale('en'), Locale('zh', 'TW')],
+        path: 'assets/i18n',
+        fallbackLocale: Locale('en'),
+        child: ScheduleApp(),
+      ),
+    );
 
     // Verify that our counter starts at 0.
     expect(find.text('0'), findsOneWidget);

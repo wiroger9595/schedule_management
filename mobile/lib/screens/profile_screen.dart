@@ -1,9 +1,9 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'profile_edit_screen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../i18n/app_localizations.dart';
 import '../widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -79,7 +79,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(AppLocalizations.of(context)!.profile),
+          title: Text('profile'.tr()),
           actions: [
             if (_user != null)
               IconButton(
@@ -102,7 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         body: _isLoading
             ? Center(child: CircularProgressIndicator())
             : _user == null
-            ? Center(child: Text(AppLocalizations.of(context)!.error))
+            ? Center(child: Text('error'.tr()))
             : SingleChildScrollView(
                 padding: EdgeInsets.all(16),
                 child: Column(
@@ -151,31 +151,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SizedBox(height: 24),
                     SizedBox(height: 24),
                     _buildInfoCard(
-                      AppLocalizations.of(context)!.accountNumber,
+                      'accountNumber'.tr(),
                       _user!['user_id'] ?? 'N/A',
                     ),
                     _buildInfoCard(
-                      AppLocalizations.of(context)!.name,
+                      'name'.tr(),
                       _user!['full_name'] ?? '-',
                     ),
                     _buildInfoCard(
-                      AppLocalizations.of(context)!.email,
+                      'email'.tr(),
                       _user!['email'] ?? 'N/A',
                     ),
                     _buildInfoCard(
-                      AppLocalizations.of(context)!.phone,
+                      'phone'.tr(),
                       _user!['phone'] ?? '-',
                     ),
                     _buildInfoCard(
-                      AppLocalizations.of(context)!.lineId,
+                      'lineId'.tr(),
                       _user!['line_id'] ?? '-',
                     ),
                     _buildInfoCard(
-                      AppLocalizations.of(context)!.language,
+                      'language'.tr(),
                       _getLanguageName(_user!['language']),
                     ),
                     _buildInfoCard(
-                      AppLocalizations.of(context)!.defaultNotificationMethod ?? '預設通知方式',
+                      'defaultNotificationMethod'.tr() ?? '預設通知方式',
                       _getDefaultSendingName(_user!['default_sending']),
                     ),
                   ],

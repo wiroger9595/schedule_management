@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -5,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
-import '../i18n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/form_validators.dart';
@@ -120,7 +120,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context)!.profileUpdated)),
+          SnackBar(content: Text('profileUpdated'.tr())),
         );
         Navigator.pop(context, true); // 返回並通知更新成功
       }
@@ -152,7 +152,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.edit),
+        title: Text('edit'.tr()),
         actions: [
           IconButton(
             icon: Icon(Icons.check),
@@ -193,7 +193,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             Card(
               child: ListTile(
                 title: Text(
-                  AppLocalizations.of(context)!.accountNumber,
+                  'accountNumber'.tr(),
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 subtitle: Text(
@@ -208,7 +208,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             TextFormField(
               controller: _nameController,
               decoration: InputDecoration(
-                labelText: AppLocalizations.of(context)!.name,
+                labelText: 'name'.tr(),
                 prefixIcon: Icon(Icons.person),
                 border: OutlineInputBorder(),
               ),
@@ -219,7 +219,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             TextFormField(
               initialValue: widget.user['email'],
               decoration: InputDecoration(
-                labelText: '${AppLocalizations.of(context)!.email} *',
+                labelText: '${'email'.tr()} *',
                 prefixIcon: Icon(Icons.email),
                 border: OutlineInputBorder(),
               ),
@@ -231,13 +231,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             TextFormField(
               controller: _phoneController,
               decoration: InputDecoration(
-                labelText: '${AppLocalizations.of(context)!.phone} *',
+                labelText: '${'phone'.tr()} *',
                 prefixIcon: Icon(Icons.phone),
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.phone,
               validator: (value) {
-                final requiredError = FormValidators.validateRequired(value, AppLocalizations.of(context)!.phone);
+                final requiredError = FormValidators.validateRequired(value, 'phone'.tr());
                 if (requiredError != null) return requiredError;
                 
                 return FormValidators.validatePhone(value, required: true);
@@ -249,7 +249,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             TextFormField(
               controller: _lineIdController,
               decoration: InputDecoration(
-                labelText: '${AppLocalizations.of(context)!.lineId}',
+                labelText: '${'lineId'.tr()}',
                 prefixIcon: Icon(Icons.chat),
                 border: OutlineInputBorder(),
               ),
@@ -260,7 +260,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             DropdownButtonFormField<String>(
               value: _selectedLanguage,
               decoration: InputDecoration(
-                labelText: AppLocalizations.of(context)!.language,
+                labelText: 'language'.tr(),
                 prefixIcon: Icon(Icons.language),
                 border: OutlineInputBorder(),
               ),
@@ -279,7 +279,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             DropdownButtonFormField<String>(
               value: _defaultSending,
               decoration: InputDecoration(
-                labelText: AppLocalizations.of(context)!.defaultNotificationMethod ?? '預設通知方式',
+                labelText: 'defaultNotificationMethod'.tr() ?? '預設通知方式',
                 prefixIcon: Icon(Icons.notifications),
                 border: OutlineInputBorder(),
               ),
@@ -312,7 +312,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         ),
                       )
                     : Text(
-                        AppLocalizations.of(context)!.save,
+                        'save'.tr(),
                         style: TextStyle(fontSize: 18, color: Colors.white),
                       ),
               ),

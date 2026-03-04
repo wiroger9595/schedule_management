@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
@@ -6,7 +7,6 @@ import '../models/schedule.dart';
 import 'dart:convert';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../i18n/app_localizations.dart';
 import '../utils/constants.dart';
 import 'map_screen.dart';
 
@@ -103,9 +103,9 @@ class _CalendarScreenState extends State<CalendarScreen>
       unselectedLabelColor: Colors.grey,
       indicatorColor: Colors.blue[700],
       tabs: [
-        Tab(icon: Icon(Icons.calendar_month), text: AppLocalizations.of(context)!.month),
-        Tab(icon: Icon(Icons.view_week), text: AppLocalizations.of(context)!.week),
-        Tab(icon: Icon(Icons.view_day), text: AppLocalizations.of(context)!.day),
+        Tab(icon: Icon(Icons.calendar_month), text: 'month'.tr()),
+        Tab(icon: Icon(Icons.view_week), text: 'week'.tr()),
+        Tab(icon: Icon(Icons.view_day), text: 'day'.tr()),
       ],
     );
 
@@ -118,7 +118,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       appBar: widget.isEmbedded
           ? null
           : AppBar(
-              title: Text(AppLocalizations.of(context)!.calendar),
+              title: Text('calendar'.tr()),
               bottom: innerTabBar,
               actions: [
                 IconButton(
@@ -291,16 +291,14 @@ class _CalendarScreenState extends State<CalendarScreen>
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
-                      AppLocalizations.of(
-                        context,
-                      )!.eventsCount(daySchedules.length),
+                      'eventsCount'.tr(args: [daySchedules.length.toString()]),
                     ),
                     children: [
                       if (daySchedules.isEmpty)
                         Padding(
                           padding: EdgeInsets.all(16),
                           child: Text(
-                            AppLocalizations.of(context)!.noEvents,
+                            'noEvents'.tr(),
                             style: TextStyle(color: Colors.grey),
                           ),
                         )
@@ -503,7 +501,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       return Padding(
         padding: EdgeInsets.all(32),
         child: Text(
-          AppLocalizations.of(context)!.noEvents,
+          'noEvents'.tr(),
           style: TextStyle(color: Colors.grey),
           textAlign: TextAlign.center,
         ),
@@ -572,13 +570,13 @@ class _CalendarScreenState extends State<CalendarScreen>
   String _getStatusText(String status) {
     switch (status) {
       case ScheduleStatus.pending:
-        return AppLocalizations.of(context)!.statusPending;
+        return 'statusPending'.tr();
       case ScheduleStatus.active:
-        return AppLocalizations.of(context)!.statusActive;
+        return 'statusActive'.tr();
       case ScheduleStatus.notGoing:
-        return AppLocalizations.of(context)!.statusNotGoing;
+        return 'statusNotGoing'.tr();
       case ScheduleStatus.cancel:
-        return AppLocalizations.of(context)!.statusCancelled;
+        return 'statusCancelled'.tr();
       default:
         return status;
     }
