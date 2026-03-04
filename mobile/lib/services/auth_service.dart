@@ -10,8 +10,9 @@ import 'dart:io';
 class AuthService {
   final storage = FlutterSecureStorage();
 
-  // Replace with your Web Client ID from Google Cloud Console
-  static const String _webClientId = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
+  // Injected via --dart-define during build
+  static const String _webClientId = String.fromEnvironment('WEB_CLIENT_ID', defaultValue: '');
+  static const String _appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID', defaultValue: '');
   
   // iOS Client ID - only works for native iOS app
   static const String _iosClientId = '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com';

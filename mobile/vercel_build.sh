@@ -39,8 +39,15 @@ flutter pub get
 # 5. 編譯 Flutter Web (使用 stage 環境配置)
 # Vercel 預設是在根目錄 `/` 運行，所以 `--base-href "/"`
 echo ">> 正在編譯 Flutter Web 版本 (設定 base-href 為 '/', 環境變數 ENV=stage)..."
+echo ">> Injecting environment variables into index.html..."
+if [ -f ".env-stage" ]; then
+  export $(grep -v '^#' .env-stage | xargs)
+  sed -i "s|YOUR_WEB_CLIENT_ID.apps.googleusercontent.com|$WEB_CLIENT_ID|g" web/index.html
+  sed -i "s|<!-- <script src=\"https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY\"></script> -->|<script src=\"https://maps.googleapis.com/maps/api/js?key=$GOOGLE_MAPS_API_KEY\"></script>|g" web/index.html
+fi
+
 flutter config --enable-web
-flutter build web --release --dart-define=ENV=stage --base-href "/"
+flutter build web --release --dart-define=ENV=stage --dart-define-from-file=.env-stage --base-href "/"
 
 echo "========================================="
 echo "✅ Vercel 編譯完成！"
