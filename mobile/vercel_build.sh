@@ -18,15 +18,15 @@ if [ ! -d "flutter" ]; then
     rm flutter_linux_${FLUTTER_VERSION}-stable.tar.xz
 fi
 
-# 2. Vercel 環境是用 root 權限跑的，強制解除 Flutter 警告並設定安全目錄
+# 將 Flutter 加入環境變數
+export PATH="$PATH:`pwd`/flutter/bin"
 export FLUTTER_ROOT="`pwd`/flutter"
 export FORCE_FLUTTER_RUN_AS_ROOT=true
 git config --global --add safe.directory $(pwd)/flutter
 git config --global --add safe.directory /vercel/path0/mobile/flutter
 
-# 將 Flutter 加入環境變數
-export PATH="$PATH:`pwd`/flutter/bin"
-flutter config --no-analytics
+# Disable telemetry directly bypassing the interactive prompt
+flutter --disable-telemetry || true
 
 # 4. 安裝依賴與編譯
 echo ">> 清理並安裝 packages..."
