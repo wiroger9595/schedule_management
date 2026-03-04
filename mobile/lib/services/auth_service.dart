@@ -13,6 +13,7 @@ class AuthService {
   // Injected via --dart-define during build
   static const String _webClientId = String.fromEnvironment('WEB_CLIENT_ID', defaultValue: '');
   static const String _appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID', defaultValue: '');
+  static const String _androidServiceId = String.fromEnvironment('ANDROID_SERVICE_ID', defaultValue: '');
   
   // iOS Client ID - only works for native iOS app
   static const String _iosClientId = '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com';
@@ -77,7 +78,7 @@ class AuthService {
           AppleIDAuthorizationScopes.fullName,
         ],
         webAuthenticationOptions: WebAuthenticationOptions(
-          clientId: 'YOUR_APPLE_SERVICE_ID', // e.g., com.scheduleapp.web
+          clientId: (!kIsWeb && Platform.isAndroid) ? _androidServiceId : _appleServiceId,
           redirectUri: Uri.parse('https://schedule-management-mu.vercel.app/api/auth/apple/callback'),
         ),
       );
