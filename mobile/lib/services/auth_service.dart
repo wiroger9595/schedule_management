@@ -10,17 +10,15 @@ import 'dart:io';
 class AuthService {
   final storage = FlutterSecureStorage();
 
-  // Configure GoogleSignIn with explicit parameters
-  // IMPORTANT: Use different client IDs for different platforms
+  // Replace with your Web Client ID from Google Cloud Console
+  static const String _webClientId = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
+  
+  // iOS Client ID - only works for native iOS app
+  static const String _iosClientId = '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com';
+
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
-    // iOS Client ID - only works for native iOS app
-    // For web/Android, you need to create a separate OAuth client in Google Cloud Console
-    clientId: !kIsWeb && Platform.isIOS
-        ? '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com'
-        : null, // For Android, client ID comes from google-services.json
-    // If testing on web, create a Web Application client ID and uncomment below:
-    // serverClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+    clientId: kIsWeb ? _webClientId : (Platform.isIOS ? _iosClientId : null),
   );
 
   Future<bool> signInWithGoogle() async {
@@ -77,6 +75,10 @@ class AuthService {
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
+        webAuthenticationOptions: WebAuthenticationOptions(
+          clientId: 'YOUR_APPLE_SERVICE_ID', // e.g., com.scheduleapp.web
+          redirectUri: Uri.parse('https://schedule-management-mu.vercel.app/api/auth/apple/callback'),
+        ),
       );
 
       final response = await http.post(
