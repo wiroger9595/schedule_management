@@ -6,9 +6,15 @@ from .db.database import engine
 app = FastAPI(title="Schedule Management API")
 
 # CORS middleware
+origins = [
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "https://schedule-management-mu.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
