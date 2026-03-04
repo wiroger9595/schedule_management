@@ -4,6 +4,7 @@ import 'package:call_log/call_log.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 class CallLogScreen extends StatefulWidget {
   @override
@@ -14,7 +15,7 @@ class _CallLogScreenState extends State<CallLogScreen> {
   List<CallLogEntry> _callLogs = [];
   bool _isLoading = true;
   bool _permissionDenied = false;
-  bool _isIOS = Platform.isIOS;
+  bool _isIOS = !kIsWeb && Platform.isIOS;
 
   @override
   void initState() {

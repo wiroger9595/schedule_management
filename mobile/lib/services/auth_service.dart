@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_service.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 class AuthService {
@@ -15,7 +16,7 @@ class AuthService {
     scopes: ['email', 'profile'],
     // iOS Client ID - only works for native iOS app
     // For web/Android, you need to create a separate OAuth client in Google Cloud Console
-    clientId: Platform.isIOS
+    clientId: !kIsWeb && Platform.isIOS
         ? '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com'
         : null, // For Android, client ID comes from google-services.json
     // If testing on web, create a Web Application client ID and uncomment below:
