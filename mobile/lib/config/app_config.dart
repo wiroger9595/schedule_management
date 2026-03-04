@@ -24,7 +24,7 @@ class AppConfig {
     // Default: local environment
     if (kIsWeb) {
       return 'http://localhost:$apiPort$apiPath';
-    } else if (Platform.isAndroid) {
+    } else if (!kIsWeb && Platform.isAndroid) {
       // Android emulator uses 10.0.2.2 to reach host machine
       return 'http://10.0.2.2:$apiPort$apiPath';
     } else {
