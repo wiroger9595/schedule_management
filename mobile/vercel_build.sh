@@ -21,6 +21,11 @@ fi
 # 2. 將 Flutter 加入環境變數
 export PATH="$PATH:`pwd`/flutter/bin"
 
+# Vercel 環境是用 root 權限跑的，為了防止 Flutter 跳出警告中斷部署，這裡強制解除限制
+export FLUTTER_ROOT="`pwd`/flutter"
+export FORCE_FLUTTER_RUN_AS_ROOT=true
+flutter config --no-analytics
+
 # 3. 確保 Flutter 安全目錄
 git config --global --add safe.directory $(pwd)/flutter
 
