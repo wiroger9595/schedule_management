@@ -25,8 +25,11 @@ export FORCE_FLUTTER_RUN_AS_ROOT=true
 git config --global --add safe.directory $(pwd)/flutter
 git config --global --add safe.directory /vercel/path0/mobile/flutter
 
-# Disable telemetry directly bypassing the interactive prompt
-flutter --disable-telemetry || true
+# Disable telemetry completely to bypass interactive prompts
+export FLUTTER_WEB=true
+export PUB_HOSTED_URL="https://pub.dartlang.org"
+flutter config --no-analytics > /dev/null 2>&1
+dart --disable-analytics > /dev/null 2>&1
 
 # 4. 安裝依賴與編譯
 echo ">> 清理並安裝 packages..."
