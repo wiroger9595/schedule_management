@@ -48,7 +48,7 @@ fi
 if [ -f ".env-stage" ]; then
   export $(grep -v '^#' .env-stage | xargs)
   sed -i "s|YOUR_WEB_CLIENT_ID.apps.googleusercontent.com|$WEB_CLIENT_ID|g" web/index.html
-  sed -i "s|<!-- <script src=\"https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY\"></script> -->|<script src=\"https://maps.googleapis.com/maps/api/js?key=$GOOGLE_MAPS_API_KEY\"></script>|g" web/index.html
+  sed -i "s|<!-- <script src=\"https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY\"></script> -->|<script src=\"https://maps.googleapis.com/maps/api/js?key=$GOOGLE_MAPS_API_KEY\" async defer></script>|g" web/index.html
 fi
 
 flutter config --enable-web

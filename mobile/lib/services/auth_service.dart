@@ -27,16 +27,14 @@ class AuthService {
     try {
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
       if (account == null) {
-        print('Google sign-in cancelled by user');
-        return false;
+        throw Exception('使用者已取消 Google 登入');
       }
 
       final GoogleSignInAuthentication auth = await account.authentication;
 
       // Validate required fields
       if (account.email.isEmpty) {
-        print('Google account email is required');
-        return false;
+        throw Exception('無法獲取 Google 帳號的信箱');
       }
 
       final response = await http.post(
@@ -56,18 +54,16 @@ class AuthService {
           await storage.write(key: 'jwt_token', value: data['access_token']);
           return true;
         } else {
-          print('Server did not return access_token');
-          return false;
+          throw Exception('伺服器未回傳 access_token');
         }
       } else {
-        print('Server error: ${response.statusCode} - ${response.body}');
-        return false;
+        throw Exception('伺服器錯誤: ${response.statusCode} - ${response.body}');
       }
     } catch (e, stackTrace) {
       print('Google sign-in error: $e');
       print('Stack trace: $stackTrace');
+      rethrow;
     }
-    return false;
   }
 
   Future<bool> signInWithApple() async {
@@ -98,11 +94,13 @@ class AuthService {
         final data = jsonDecode(response.body);
         await storage.write(key: 'jwt_token', value: data['access_token']);
         return true;
+      } else {
+        throw Exception('Apple Login Server Error: ${response.statusCode}');
       }
     } catch (e) {
       print('Apple Error: $e');
+      rethrow;
     }
-    return false;
   }
 
   Future<bool> register(String email, String password, String fullName) async {

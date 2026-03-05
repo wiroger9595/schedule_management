@@ -106,30 +106,34 @@ class AuthProvider with ChangeNotifier {
      _isLoading = true;
     notifyListeners();
     
-    bool success = await _authService.signInWithGoogle();
-     if (success) {
-      _isLoggedIn = true;
-      await fetchUserProfile();
+    try {
+      bool success = await _authService.signInWithGoogle();
+      if (success) {
+        _isLoggedIn = true;
+        await fetchUserProfile();
+      }
+      return success;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    
-    _isLoading = false;
-    notifyListeners();
-    return success;
   }
   
   Future<bool> appleLogin() async {
      _isLoading = true;
     notifyListeners();
     
-    bool success = await _authService.signInWithApple();
-     if (success) {
-      _isLoggedIn = true;
-      await fetchUserProfile();
+    try {
+      bool success = await _authService.signInWithApple();
+      if (success) {
+        _isLoggedIn = true;
+        await fetchUserProfile();
+      }
+      return success;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    
-    _isLoading = false;
-    notifyListeners();
-    return success;
   }
 
   Future<void> logout() async {

@@ -45,7 +45,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (success && mounted) Navigator.pushReplacementNamed(context, '/');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google 登入出錯: $e')));
+      String errorMessage = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google 登入出錯: $errorMessage')));
     }
   }
 
@@ -56,7 +57,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (success && mounted) Navigator.pushReplacementNamed(context, '/');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Apple 登入出錯: $e')));
+      String errorMessage = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Apple 登入出錯: $errorMessage')));
     }
   }
 

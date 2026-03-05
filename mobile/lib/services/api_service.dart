@@ -164,6 +164,9 @@ class ApiService {
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      throw Exception('Unauthorized');
     } else {
       throw Exception('Failed to load contacts');
     }
@@ -182,6 +185,9 @@ class ApiService {
     );
     if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      throw Exception('Unauthorized');
     } else {
       final error = jsonDecode(response.body);
       throw Exception(error['detail'] ?? 'Failed to create contact');
