@@ -8,7 +8,7 @@ echo "Building Flutter Web for Vercel Deployment"
 echo "========================================="
 
 # 1. 設置 Flutter 環境 (Vercel 本身沒有內建 Flutter，我們需要動態下載)
-FLUTTER_VERSION="3.29.0" # 你可以根據你的專案修改對應版本
+FLUTTER_VERSION="3.38.5" # 你可以根據你的專案修改對應版本
 FLUTTER_SDK_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 
 if [ ! -d "flutter" ]; then
