@@ -22,7 +22,7 @@ class AuthService {
     scopes: ['email', 'profile'],
     clientId: kIsWeb 
         ? (_webClientId.isNotEmpty ? _webClientId : (const String.fromEnvironment('WEB_CLIENT_ID') != '' ? const String.fromEnvironment('WEB_CLIENT_ID') : '644901002244-biqc0uracgbtr33cvkm50l3tpb6aap29.apps.googleusercontent.com'))
-        : (Platform.isIOS ? _iosClientId : null),
+        : (Platform.isIOS ? _iosClientId : (Platform.isAndroid ? (_androidServiceId.isNotEmpty ? _androidServiceId : null) : null)),
   );
 
   Future<bool> signInWithGoogle() async {
