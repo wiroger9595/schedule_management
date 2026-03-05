@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 
+import 'dart:typed_data';
+
 class UserAvatar extends StatelessWidget {
   final String? imageUrl;
   final File? imageFile;
+  final Uint8List? imageBytes;
   final double radius;
   final Widget? fallbackWidget;
 
@@ -11,6 +14,7 @@ class UserAvatar extends StatelessWidget {
     Key? key,
     this.imageUrl,
     this.imageFile,
+    this.imageBytes,
     this.radius = 20,
     this.fallbackWidget,
   }) : super(key: key);
@@ -31,7 +35,19 @@ class UserAvatar extends StatelessWidget {
   }
 
   Widget _buildImage() {
-    debugPrint('UserAvatar: imageUrl=\$imageUrl, imageFile=\$imageFile');
+    debugPrint('UserAvatar: imageUrl=$imageUrl, imageFile=$imageFile, hasBytes=${imageBytes != null}');
+    if (imageBytes != null) {
+      return Image.memory(
+        imageBytes!,
+        fit: BoxFit.cover,
+        width: radius * 2,
+        height: radius * 2,
+        errorBuilder: (context, error, stackTrace) {
+          return _buildFallbackDetails();
+        },
+      );
+    }
+    
     if (imageFile != null) {
       return Image.file(
         imageFile!,

@@ -10,6 +10,8 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/form_validators.dart';
 import '../widgets/user_avatar.dart';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -27,7 +29,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late TextEditingController _lineIdController;
   String _selectedLanguage = 'zh-TW';
   String _defaultSending = 'line';
-  File? _imageFile;
+  Uint8List? _imageBytes;
+  String? _imageFileName;
   bool _isLoading = false;
 
   @override
@@ -58,8 +61,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
 
     if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
       setState(() {
-        _imageFile = File(pickedFile.path);
+        _imageBytes = bytes;
+        _imageFileName = pickedFile.name;
       });
     }
   }
@@ -74,25 +79,22 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       final headers = await apiService.getHeaders();
 
       // 上傳圖片（如果有選擇）
-      if (_imageFile != null) {
+      if (_imageBytes != null && _imageFileName != null) {
         var request = http.MultipartRequest(
           'POST',
           Uri.parse('${ApiService.baseUrl}/users/upload-photo'),
         );
         request.headers.addAll(headers);
 
-        // 讀取檔案並設定正確的 MIME type
-        final bytes = await _imageFile!.readAsBytes();
-        final fileName = _imageFile!.path.split('/').last;
-        final mimeType = fileName.toLowerCase().endsWith('.png')
+        final mimeType = _imageFileName!.toLowerCase().endsWith('.png')
             ? 'image/png'
             : 'image/jpeg';
 
         request.files.add(
           http.MultipartFile.fromBytes(
             'file',
-            bytes,
-            filename: fileName,
+            _imageBytes!,
+            filename: _imageFileName!,
             contentType: MediaType.parse(mimeType),
           ),
         );
@@ -171,7 +173,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 children: [
                   UserAvatar(
                     radius: 60,
-                    imageFile: _imageFile,
+                    imageBytes: _imageBytes,
                     imageUrl: widget.user['profile_image_path'],
                   ),
                   Positioned(
