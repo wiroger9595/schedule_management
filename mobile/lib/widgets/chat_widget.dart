@@ -2,10 +2,10 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'dart:convert';
-import 'dart:convert';
 import 'package:http/http.dart' as http;
-
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class ChatWidget extends StatefulWidget {
   final Function() onScheduleCreated;
@@ -57,9 +57,14 @@ class ChatWidgetState extends State<ChatWidget> {
     } catch (e) {
       print("Failed to load contacts for mention: $e");
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('讀取失敗: $e')));
+        if (e.toString().contains('Unauthorized')) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('登入憑證已過期，請重新登入')));
+          Provider.of<AuthProvider>(context, listen: false).logout();
+        } else {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('讀取聯絡人失敗: $e')));
+        }
       }
     }
   }
