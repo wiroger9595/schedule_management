@@ -21,7 +21,7 @@ class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
     clientId: kIsWeb 
-        ? (_webClientId.isNotEmpty ? _webClientId : (const String.fromEnvironment('WEB_CLIENT_ID') != '' ? const String.fromEnvironment('WEB_CLIENT_ID') : '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com'))
+        ? (_webClientId.isNotEmpty ? _webClientId : (const String.fromEnvironment('WEB_CLIENT_ID') != '' ? const String.fromEnvironment('WEB_CLIENT_ID') : '644901002244-biqc0uracgbtr33cvkm50l3tpb6aap29.apps.googleusercontent.com'))
         : (Platform.isIOS ? _iosClientId : null),
   );
 
