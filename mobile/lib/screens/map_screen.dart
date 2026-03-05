@@ -326,29 +326,35 @@ class _MapScreenState extends State<MapScreen> {
             ),
               
             // Custom Map Controls (since native ones may not show on Web)
+            // My Location Button (Bottom Right)
             Positioned(
               right: 16,
+              bottom: 400, // 380 (sheet height) + 20 (padding)
+              child: FloatingActionButton(
+                heroTag: "btn_my_location",
+                mini: true,
+                backgroundColor: Colors.white,
+                child: Icon(Icons.my_location, color: Colors.blue),
+                onPressed: () async {
+                  if (_controller.isCompleted && _currentPosition != null) {
+                    final controller = await _controller.future;
+                    controller.animateCamera(
+                      CameraUpdate.newLatLng(
+                        LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+                      )
+                    );
+                  }
+                },
+              ),
+            ),
+            
+            // Zoom Controls (Bottom Left)
+            Positioned(
+              left: 16,
               bottom: 400, // 380 (sheet height) + 20 (padding)
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  FloatingActionButton(
-                    heroTag: "btn_my_location",
-                    mini: true,
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.my_location, color: Colors.blue),
-                    onPressed: () async {
-                      if (_controller.isCompleted && _currentPosition != null) {
-                        final controller = await _controller.future;
-                        controller.animateCamera(
-                          CameraUpdate.newLatLng(
-                            LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                          )
-                        );
-                      }
-                    },
-                  ),
-                  SizedBox(height: 12),
                   FloatingActionButton(
                     heroTag: "btn_zoom_in",
                     mini: true,
