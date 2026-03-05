@@ -286,6 +286,10 @@ class _MapScreenState extends State<MapScreen> {
           // MAP
           if (_currentPosition != null) ...[
             GoogleMap(
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
+              zoomControlsEnabled: true,
+              mapToolbarEnabled: true,
               initialCameraPosition: CameraPosition(
                 target: LatLng(
                   _currentPosition!.latitude,
@@ -321,60 +325,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
               },
               padding: const EdgeInsets.only(
-                bottom: 250,
-              ), // Make space for bottom sheet
-            ),
-              
-            // Map Controls
-            Positioned(
-              right: 16,
-              bottom: 396, // Just above the bottom sheet (380 + 16)
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FloatingActionButton(
-                    heroTag: "btn_my_location",
-                    mini: true,
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.my_location, color: Colors.blue),
-                    onPressed: () async {
-                      if (_controller.isCompleted && _currentPosition != null) {
-                        final controller = await _controller.future;
-                        controller.animateCamera(
-                          CameraUpdate.newLatLng(
-                            LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                          )
-                        );
-                      }
-                    },
-                  ),
-                  SizedBox(height: 8),
-                  FloatingActionButton(
-                    heroTag: "btn_zoom_in",
-                    mini: true,
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.add, color: Colors.black87),
-                    onPressed: () async {
-                      if (_controller.isCompleted) {
-                        final controller = await _controller.future;
-                        controller.animateCamera(CameraUpdate.zoomIn());
-                      }
-                    },
-                  ),
-                  SizedBox(height: 8),
-                  FloatingActionButton(
-                    heroTag: "btn_zoom_out",
-                    mini: true,
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.remove, color: Colors.black87),
-                    onPressed: () async {
-                      if (_controller.isCompleted) {
-                        final controller = await _controller.future;
-                        controller.animateCamera(CameraUpdate.zoomOut());
-                      }
-                    },
-                  ),
-                ],
+                bottom: 400, // Make space for bottom sheet and let native controls sit above it
               ),
             ),
           ] else
