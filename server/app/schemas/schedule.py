@@ -67,6 +67,7 @@ class ChatRequest(BaseModel):
     message: str
     current_data: Optional[dict] = None
     force_create: bool = False
+    confirm_location: bool = False
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -77,4 +78,6 @@ class ChatResponse(BaseModel):
     is_complete: bool
     schedule: Optional[dict] = None
     conflict: Optional[dict] = None
+    needs_location_confirm: bool = False
+    location_details: Optional[dict] = None
 

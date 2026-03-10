@@ -9,6 +9,7 @@ import '../widgets/chat_widget.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/schedule_list_tile.dart';
 import '../utils/error_handler.dart';
+import '../widgets/add_action_sheet.dart';
 import 'add_schedule_screen.dart';
 import 'map_screen.dart';
 import '../services/notification_service.dart';
@@ -25,7 +26,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final NotificationService notificationService = NotificationService();
   Timer? _statusCheckTimer; // Added timer
-  final Set<String> _alertedScheduleIds = {}; // Track which schedules we've shown in-app alerts for
+  final Set<String> _alertedScheduleIds =
+      {}; // Track which schedules we've shown in-app alerts for
 
   // Filter State
   String? _filterStatus;
@@ -73,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _checkComingSoon(scheduleProvider.schedules);
       _checkUpcomingReminders(scheduleProvider.schedules);
     });
-    
+
     // Check initially as well
     _checkUpcomingReminders(scheduleProvider.schedules);
   }
@@ -83,7 +85,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
 
     for (var schedule in schedules) {
-      if (schedule.status == ScheduleStatus.cancel || schedule.status == ScheduleStatus.notGoing) continue;
+      if (schedule.status == ScheduleStatus.cancel ||
+          schedule.status == ScheduleStatus.notGoing) continue;
 
       final diff = schedule.startTime.difference(now);
       final minutesUntilStart = diff.inMinutes;
@@ -123,7 +126,8 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.pop(context);
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => MapScreen(schedule: schedule)),
+                MaterialPageRoute(
+                    builder: (context) => MapScreen(schedule: schedule)),
               );
             },
             child: Text('查看地圖'),
@@ -140,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final comingSoonSchedules = schedules.where((s) {
       if (s.status != ScheduleStatus.pending) return false;
-      
+
       final diff = s.startTime.difference(now);
       final minutes = diff.inMinutes;
 
@@ -148,15 +152,16 @@ class _HomeScreenState extends State<HomeScreen> {
       // If it's more than 60 mins late, _checkScheduleArrivals handles it (NotAttended)
       // If it's more than 120 mins future, it's just Pending
       final inWindow = minutes > -60 && minutes < 120;
-      
+
       if (inWindow) {
-         print('Check ComingSoon match: ${s.title} | Diff: ${minutes}m');
+        print('Check ComingSoon match: ${s.title} | Diff: ${minutes}m');
       }
 
       return inWindow;
     }).toList();
 
-    print('Found ${comingSoonSchedules.length} schedules to update to Coming Soon');
+    print(
+        'Found ${comingSoonSchedules.length} schedules to update to Coming Soon');
 
     for (var schedule in comingSoonSchedules) {
       print('Updating status to Coming Soon for ${schedule.title}');
@@ -185,7 +190,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final targetSchedules = schedules
         .where(
           (s) =>
-              (s.status == ScheduleStatus.pending || s.status == ScheduleStatus.comingSoon) && 
+              (s.status == ScheduleStatus.pending ||
+                  s.status == ScheduleStatus.comingSoon) &&
               s.startTime.isBefore(now),
         )
         .toList();
@@ -241,29 +247,36 @@ class _HomeScreenState extends State<HomeScreen> {
         try {
           // Fetch travel time estimate
           final estimateData = await apiService.estimateTravelTime(
-              position.latitude, position.longitude, schedule.latitude!, schedule.longitude!, mode);
-          
+              position.latitude,
+              position.longitude,
+              schedule.latitude!,
+              schedule.longitude!,
+              mode);
+
           final int travelMinutes = (estimateData['duration'] as num).round();
-          final estimatedArrivalTime = now.add(Duration(minutes: travelMinutes));
+          final estimatedArrivalTime =
+              now.add(Duration(minutes: travelMinutes));
 
           // If estimated arrival > start time + 15 mins grace period, mark as Not Attended
           final latestAllowedTime = referenceTime.add(Duration(minutes: 15));
 
           if (estimatedArrivalTime.isAfter(latestAllowedTime)) {
-             print('Schedule ${schedule.title}: Estimated arrival $estimatedArrivalTime is past allowed time $latestAllowedTime. Marking Not Attended.');
-             newStatus = ScheduleStatus.notAttended;
+            print(
+                'Schedule ${schedule.title}: Estimated arrival $estimatedArrivalTime is past allowed time $latestAllowedTime. Marking Not Attended.');
+            newStatus = ScheduleStatus.notAttended;
           } else {
-             print('Schedule ${schedule.title}: Can still make it. Est arrival $estimatedArrivalTime.');
-             continue; // Still give them time
+            print(
+                'Schedule ${schedule.title}: Can still make it. Est arrival $estimatedArrivalTime.');
+            continue; // Still give them time
           }
         } catch (e) {
           print('Failed to get travel estimate for ${schedule.title}: $e');
           // Fallback to strict 30-minute rule if API fails
           final minutesLate = now.difference(referenceTime).inMinutes;
           if (minutesLate > 30) {
-             newStatus = ScheduleStatus.notAttended;
+            newStatus = ScheduleStatus.notAttended;
           } else {
-             continue;
+            continue;
           }
         }
       }
@@ -365,7 +378,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       value: tempStatus,
                       decoration: InputDecoration(labelText: 'Status'),
                       items: [
-
                         DropdownMenuItem(value: null, child: Text('all'.tr())),
                         DropdownMenuItem(
                           value: ScheduleStatus.pending,
@@ -415,11 +427,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           lastDate: DateTime(2101),
                           initialDateRange:
                               tempStartDate != null && tempEndDate != null
-                              ? DateTimeRange(
-                                  start: tempStartDate!,
-                                  end: tempEndDate!,
-                                )
-                              : null,
+                                  ? DateTimeRange(
+                                      start: tempStartDate!,
+                                      end: tempEndDate!,
+                                    )
+                                  : null,
                         );
                         if (picked != null) {
                           setState(() {
@@ -522,8 +534,8 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_filterLocation != null && _filterLocation!.isNotEmpty) {
               if (s.location == null ||
                   !s.location!.toLowerCase().contains(
-                    _filterLocation!.toLowerCase(),
-                  )) {
+                        _filterLocation!.toLowerCase(),
+                      )) {
                 return false;
               }
             }
@@ -561,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
 
                   final now = DateTime.now();
-                  if (schedule.startTime.isBefore(now) && 
+                  if (schedule.startTime.isBefore(now) &&
                       schedule.status != ScheduleStatus.attend) {
                     // Past schedule interaction (Pending, ComingSoon, NotAttended)
                     _showPastScheduleActionDialog(schedule);
@@ -583,13 +595,11 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: FloatingActionButton(
         heroTag: 'add_schedule',
         onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => AddScheduleScreen()),
-          );
+          await AddActionSheet.show(context);
           _refreshSchedules();
         },
         child: Icon(Icons.add),
@@ -605,7 +615,9 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(child: Text('${schedule.title}', overflow: TextOverflow.ellipsis)),
+            Expanded(
+                child:
+                    Text('${schedule.title}', overflow: TextOverflow.ellipsis)),
             IconButton(
               icon: Icon(Icons.close),
               onPressed: () => Navigator.pop(context),
@@ -657,7 +669,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showReschedulePicker(Schedule schedule) async {
     final now = DateTime.now();
     final firstDate = now;
-    
+
     // 1. Pick Start Date
     final DateTime? pickedStartDate = await showDatePicker(
       context: context,
@@ -685,7 +697,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (newStartDateTime.isBefore(now)) {
-           if (mounted) {
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('請選擇未來的開始時間')),
             );
@@ -696,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Calculate initial end time based on original duration
         Duration originalDuration = Duration(hours: 1); // Default
         if (schedule.endTime != null) {
-           originalDuration = schedule.endTime!.difference(schedule.startTime);
+          originalDuration = schedule.endTime!.difference(schedule.startTime);
         }
         DateTime initialEndDateTime = newStartDateTime.add(originalDuration);
 
@@ -710,46 +722,47 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (pickedEndDate != null) {
-           // 4. Pick End Time
-           final TimeOfDay? pickedEndTime = await showTimePicker(
-              context: context,
-              initialTime: TimeOfDay.fromDateTime(initialEndDateTime),
-              helpText: '選擇結束時間',
-           );
+          // 4. Pick End Time
+          final TimeOfDay? pickedEndTime = await showTimePicker(
+            context: context,
+            initialTime: TimeOfDay.fromDateTime(initialEndDateTime),
+            helpText: '選擇結束時間',
+          );
 
-           if (pickedEndTime != null) {
-              final newEndDateTime = DateTime(
-                  pickedEndDate.year,
-                  pickedEndDate.month,
-                  pickedEndDate.day,
-                  pickedEndTime.hour,
-                  pickedEndTime.minute,
-              );
+          if (pickedEndTime != null) {
+            final newEndDateTime = DateTime(
+              pickedEndDate.year,
+              pickedEndDate.month,
+              pickedEndDate.day,
+              pickedEndTime.hour,
+              pickedEndTime.minute,
+            );
 
-              if (newEndDateTime.isBefore(newStartDateTime)) {
-                 if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('結束時間必須晚於開始時間')),
-                    );
-                 }
-                 return;
+            if (newEndDateTime.isBefore(newStartDateTime)) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('結束時間必須晚於開始時間')),
+                );
               }
+              return;
+            }
 
-              await _handleReschedule(schedule, newStartDateTime, newEndDateTime);
-           }
+            await _handleReschedule(schedule, newStartDateTime, newEndDateTime);
+          }
         }
       }
     }
   }
 
-  Future<void> _handleReschedule(Schedule schedule, DateTime newStartTime, DateTime newEndTime) async {
+  Future<void> _handleReschedule(
+      Schedule schedule, DateTime newStartTime, DateTime newEndTime) async {
     // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => Center(child: CircularProgressIndicator()),
     );
-    
+
     try {
       final apiService = ApiService();
       await apiService.updateSchedule(schedule.id, {

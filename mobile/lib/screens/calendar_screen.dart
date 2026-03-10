@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
+import '../widgets/add_action_sheet.dart';
 import 'map_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -146,11 +147,14 @@ class _CalendarScreenState extends State<CalendarScreen>
                   ],
                 )
               : innerTabBarView,
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/add').then((_) => _loadSchedules());
+        onPressed: () async {
+          await AddActionSheet.show(context);
+          _loadSchedules();
         },
         child: Icon(Icons.add),
+        backgroundColor: Colors.blue,
       ),
     );
   }
@@ -165,7 +169,8 @@ class _CalendarScreenState extends State<CalendarScreen>
               firstDay: DateTime.utc(2020, 1, 1),
               lastDay: DateTime.utc(2030, 12, 31),
               focusedDay: _focusedDay,
-              availableGestures: AvailableGestures.none, // Disable swipe so TabBarView can swipe
+              availableGestures: AvailableGestures
+                  .none, // Disable swipe so TabBarView can swipe
               selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
               calendarFormat: _calendarFormat,
               eventLoader: _getSchedulesForDay,
@@ -192,7 +197,6 @@ class _CalendarScreenState extends State<CalendarScreen>
                   color: Colors.blue,
                   shape: BoxShape.circle,
                 ),
-
               ),
               calendarBuilders: CalendarBuilders(
                 markerBuilder: (context, date, events) {

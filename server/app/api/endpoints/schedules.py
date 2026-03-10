@@ -114,15 +114,27 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
             
+        start_time_str = schedule_data.get("start_time")
+        if not start_time_str:
+            raise HTTPException(status_code=400, detail="無法從訊息中辨識出時間，請提供包含時間的行程內容。")
+        
+        meeting_start_time = datetime.fromisoformat(start_time_str)
+        
+        end_time_str = schedule_data.get("end_time")
+        if end_time_str:
+            meeting_end_time = datetime.fromisoformat(end_time_str)
+        else:
+            meeting_end_time = meeting_start_time.replace(hour=meeting_start_time.hour + 1)
+            
         # Create Schedule object
         schedule = Schedule(
             user_id=current_user.user_id,
             title=schedule_data.get("title", "未命名行程"),
-            start_time=schedule_data.get("start_time"),
-            end_time=schedule_data.get("end_time"),
+            meeting_start_time=meeting_start_time,
+            meeting_end_time=meeting_end_time,
+            meeting_location=schedule_data.get("location"),
             location=schedule_data.get("location"),
-            description=schedule_data.get("description"),
-            is_all_day=schedule_data.get("is_all_day", False)
+            description=schedule_data.get("description")
         )
     
     # Geocoding if needed (Unified logic)
@@ -462,6 +474,41 @@ def chat_schedule(
             else:
                 end_time = start_time.replace(hour=start_time.hour + 1) # Default 1 hour
 
+            # --- 地點二次確認邏輯 ---
+            location_name = updated_data.get("location")
+            location_lat = None
+            location_lon = None
+            location_details = None
+
+            if location_name:
+                # Get location coordinates and details
+                places = HereService.search_places(
+                    location_name,
+                    lat=request.latitude,
+                    lon=request.longitude
+                )
+                if places:
+                    first_place = places[0]
+                    location_lat = first_place.get("lat")
+                    location_lon = first_place.get("lon")
+                    location_details = {
+                        "name": first_place.get("name"),
+                        "address": first_place.get("address"),
+                        "lat": location_lat,
+                        "lon": location_lon
+                    }
+                    
+                    # If we need confirmation and haven't gotten it yet
+                    if not request.confirm_location:
+                        print(f"DEBUG [chat]: Pausing for location confirmation: {location_details}")
+                        return ChatResponse(
+                            ai_reply=f"我為您找到了「{location_details['name']}」（{location_details['address']}）。請問這個地點正確嗎？",
+                            updated_data=updated_data,
+                            is_complete=True, # AI Logic complete
+                            needs_location_confirm=True,
+                            location_details=location_details
+                        )
+
             repo = ScheduleRepository(session)
 
             # 3. 檢查衝突 (Conflict Detection)
@@ -499,23 +546,12 @@ def chat_schedule(
                 description=updated_data.get('description', ''),
                 meeting_start_time=start_time,
                 meeting_end_time=end_time,
-                # meeting_time removed
-                meeting_location=updated_data.get("location"),
-                location=updated_data.get("location"),
+                meeting_location=location_name,
+                location=location_name,
+                latitude=location_lat,
+                longitude=location_lon,
                 status=Status.PENDING.value
             )
-            
-            # 地理編碼 (Optional)
-            if new_schedule.meeting_location:
-                 # Pass user's current location to bias the search (e.g. find nearest 7-11)
-                 coords = HereService.get_coordinates(
-                     new_schedule.meeting_location, 
-                     lat=request.latitude, 
-                     lon=request.longitude
-                 )
-                 if coords:
-                     new_schedule.latitude = coords[0]
-                     new_schedule.longitude = coords[1]
 
             saved_schedule_obj = repo.create(new_schedule)
             saved_schedule = saved_schedule_obj.dict()

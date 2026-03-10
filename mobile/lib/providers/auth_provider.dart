@@ -3,9 +3,11 @@ import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
+  StreamSubscription? _unauthorizedSubscription;
   bool _isLoading = false;
   bool _isLoggedIn = false;
   Map<String, dynamic>? _user;
@@ -13,6 +15,19 @@ class AuthProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _isLoggedIn;
   Map<String, dynamic>? get user => _user;
+
+  AuthProvider() {
+    _unauthorizedSubscription = ApiService.onUnauthorized.stream.listen((_) {
+      // Trigger logout when a 401 is encountered globally
+      logout();
+    });
+  }
+
+  @override
+  void dispose() {
+    _unauthorizedSubscription?.cancel();
+    super.dispose();
+  }
 
   Future<void> checkAuth() async {
     _isLoggedIn = await _authService.isLoggedIn();
@@ -30,9 +45,10 @@ class AuthProvider with ChangeNotifier {
         Uri.parse('${ApiService.baseUrl}/users/me'),
         headers: headers,
       );
-      
+
       if (response.statusCode == 200) {
-        _user = jsonDecode(utf8.decode(response.bodyBytes)); // Properly parse UTF-8 characters like Chinese
+        _user = jsonDecode(utf8.decode(response
+            .bodyBytes)); // Properly parse UTF-8 characters like Chinese
         notifyListeners();
       } else if (response.statusCode == 401) {
         // Token is invalid or expired
@@ -48,18 +64,18 @@ class AuthProvider with ChangeNotifier {
   Future<bool> updateProfile(Map<String, dynamic> data) async {
     _isLoading = true;
     notifyListeners();
-    
+
     try {
       final apiService = ApiService();
       final headers = await apiService.getHeaders();
       headers['Content-Type'] = 'application/json';
-      
+
       final response = await http.patch(
         Uri.parse('${ApiService.baseUrl}/users/me'),
         headers: headers,
         body: jsonEncode(data),
       );
-      
+
       if (response.statusCode == 200) {
         await fetchUserProfile(); // Refresh local user data
         _isLoading = false;
@@ -79,33 +95,33 @@ class AuthProvider with ChangeNotifier {
   Future<bool> login(String email, String password) async {
     _isLoading = true;
     notifyListeners();
-    
+
     bool success = await _authService.login(email, password);
     if (success) {
       _isLoggedIn = true;
       await fetchUserProfile();
     }
-    
+
     _isLoading = false;
     notifyListeners();
     return success;
   }
-  
+
   Future<bool> register(String email, String password, String name) async {
     _isLoading = true;
     notifyListeners();
-    
+
     bool success = await _authService.register(email, password, name);
-    
+
     _isLoading = false;
     notifyListeners();
     return success;
   }
 
   Future<bool> googleLogin() async {
-     _isLoading = true;
+    _isLoading = true;
     notifyListeners();
-    
+
     try {
       bool success = await _authService.signInWithGoogle();
       if (success) {
@@ -118,11 +134,11 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   Future<bool> appleLogin() async {
-     _isLoading = true;
+    _isLoading = true;
     notifyListeners();
-    
+
     try {
       bool success = await _authService.signInWithApple();
       if (success) {

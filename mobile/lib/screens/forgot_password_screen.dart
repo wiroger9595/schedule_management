@@ -12,8 +12,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   
-  int _step = 0; // 0: Input Email, 1: Input Code & New Password
+  int _step = 0; // 0: Input Email, 1: Input Code, 2: Input New Password & Confirm
   bool _isLoading = false;
 
   @override
@@ -21,6 +22,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     _emailController.dispose();
     _codeController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -111,7 +113,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     padding: EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
-              ] else ...[
+              ] else if (_step == 1) ...[
                  Text('驗證碼已發送至 ${_emailController.text}。', style: TextStyle(fontSize: 14, color: Colors.grey)),
                  SizedBox(height: 24),
                  TextFormField(
@@ -128,7 +130,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     return null;
                   },
                 ),
+                SizedBox(height: 32),
+                ElevatedButton(
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      setState(() => _step = 2);
+                    }
+                  },
+                  child: Text('下一步'),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
                 SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => setState(() => _step = 0),
+                  child: Text('重新發送驗證碼 / 更換信箱'),
+                ),
+              ] else if (_step == 2) ...[
+                Text('請輸入您的新密碼。', style: TextStyle(fontSize: 16)),
+                SizedBox(height: 24),
                 TextFormField(
                   controller: _passwordController,
                   decoration: InputDecoration(
@@ -140,6 +161,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   validator: (value) {
                     if (value == null || value.isEmpty) return '請輸入新密碼';
                     if (value.length < 6) return '密碼長度至少6碼';
+                    return null;
+                  },
+                ),
+                SizedBox(height: 16),
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  decoration: InputDecoration(
+                    labelText: '確認新密碼',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock_outline),
+                  ),
+                  obscureText: true,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return '請再次輸入新密碼';
+                    if (value != _passwordController.text) return '兩次密碼輸入不一致';
                     return null;
                   },
                 ),
@@ -155,8 +191,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ),
                 SizedBox(height: 16),
                 TextButton(
-                  onPressed: () => setState(() => _step = 0),
-                  child: Text('重新發送驗證碼'),
+                  onPressed: () => setState(() => _step = 1),
+                  child: Text('上一步'),
                 ),
               ],
             ],

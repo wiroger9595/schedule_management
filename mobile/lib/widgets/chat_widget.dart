@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../screens/location_picker_screen.dart';
 
 class ChatWidget extends StatefulWidget {
   final Function() onScheduleCreated;
@@ -30,6 +31,8 @@ class ChatWidgetState extends State<ChatWidget> {
       _messages.clear();
       _currentContext = null;
       _showMentionList = false;
+      _isLoading = false;
+      _messages.add(ChatMessage(text: "對話與記憶已清空，請重新輸入您的行程資訊。", isUser: false));
     });
   }
 
@@ -244,7 +247,7 @@ class ChatWidgetState extends State<ChatWidget> {
     );
   }
 
-  Future<void> _sendMessage({String? text, bool forceCreate = false}) async {
+  Future<void> _sendMessage({String? text, bool forceCreate = false, double? overrideLat, double? overrideLon}) async {
     final messageText = text ?? _controller.text.trim();
     if (messageText.isEmpty && !forceCreate) return;
 
@@ -264,32 +267,40 @@ class ChatWidgetState extends State<ChatWidget> {
     try {
       final apiService = ApiService();
 
-      // Get current location (best effort)
+      // Get current location (best effort) or use overridden ones
       Position? position;
-      try {
-        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        if (serviceEnabled) {
-          LocationPermission permission = await Geolocator.checkPermission();
-          if (permission == LocationPermission.denied) {
-            permission = await Geolocator.requestPermission();
+      double? finalLat = overrideLat;
+      double? finalLon = overrideLon;
+      
+      if (finalLat == null || finalLon == null) {
+        try {
+          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+          if (serviceEnabled) {
+            LocationPermission permission = await Geolocator.checkPermission();
+            if (permission == LocationPermission.denied) {
+              permission = await Geolocator.requestPermission();
+            }
+            if (permission != LocationPermission.denied &&
+                permission != LocationPermission.deniedForever) {
+              position = await Geolocator.getCurrentPosition(
+                timeLimit: Duration(seconds: 5),
+              );
+              finalLat = position?.latitude;
+              finalLon = position?.longitude;
+            }
           }
-          if (permission != LocationPermission.denied &&
-              permission != LocationPermission.deniedForever) {
-            position = await Geolocator.getCurrentPosition(
-              timeLimit: Duration(seconds: 5),
-            );
-          }
+        } catch (e) {
+          print("Error getting location for chat: $e");
         }
-      } catch (e) {
-        print("Error getting location for chat: $e");
       }
 
       final data = await apiService.chatWithAI(
         forceCreate ? "Confirm" : messageText,
         currentContext: _currentContext,
         forceCreate: forceCreate,
-        latitude: position?.latitude,
-        longitude: position?.longitude,
+        confirmLocation: forceCreate,
+        latitude: finalLat,
+        longitude: finalLon,
       );
 
       if (mounted) {
@@ -310,6 +321,56 @@ class ChatWidgetState extends State<ChatWidget> {
                     // Let AI know
                     _sendMessage(text: "我要更改時間");
                   });
+                },
+              ),
+            );
+          } else if (data['needs_location_confirm'] == true) {
+            // Location confirmation required
+            _messages.add(
+              ChatMessage(text: data['ai_reply'] ?? '請確認地點是否正確：', isUser: false),
+            );
+            _messages.add(
+              LocationConfirmMessage(
+                onConfirm: () => _sendMessage(forceCreate: true),
+                onChange: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          LocationPickerScreen(
+                            initialLat: data['location_details']?['lat'],
+                            initialLon: data['location_details']?['lon'],
+                          ),
+                    ),
+                  );
+
+                  if (result != null && result is Map<String, dynamic>) {
+                    final lat = result['latitude'];
+                    final lon = result['longitude'];
+                    final address = result['address'];
+
+                    setState(() {
+                      _messages.add(ChatMessage(text: "已手動選擇地點：$address", isUser: true));
+                    });
+
+                    // Update the context with the new address so backend uses it
+                    _currentContext ??= {};
+                    _currentContext!['location'] = address;
+                    _currentContext!['latitude'] = lat;
+                    _currentContext!['longitude'] = lon;
+
+                    // Immediately dispatch the save request with the fixed location
+                    final newPosData = {
+                      'latitude': lat,
+                      'longitude': lon,
+                    };
+                    
+                    _sendMessage(
+                      forceCreate: true,
+                      overrideLat: newPosData['latitude'],
+                      overrideLon: newPosData['longitude'],
+                    );
+                  }
                 },
               ),
             );
@@ -556,6 +617,45 @@ class ConflictMessage extends StatelessWidget {
                   foregroundColor: Colors.white,
                 ),
                 child: Text("確定預約"),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LocationConfirmMessage extends StatelessWidget {
+  final VoidCallback onConfirm;
+  final VoidCallback onChange;
+
+  LocationConfirmMessage({required this.onConfirm, required this.onChange});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 40.0),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton(
+                onPressed: onChange,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey[300],
+                  foregroundColor: Colors.black,
+                ),
+                child: Text("更改地點"),
+              ),
+              ElevatedButton(
+                onPressed: onConfirm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple[700],
+                  foregroundColor: Colors.white,
+                ),
+                child: Text("確認地點"),
               ),
             ],
           ),

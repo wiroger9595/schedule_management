@@ -44,6 +44,7 @@ class AIService:
 **重要規則**：
 1. 如果用戶說「明天」、「後天」，請根據今天日期計算實際日期
 2. 如果只提到時間（如「下午3點」）但沒說日期，假設是今天
+3. 如果用戶【完全沒有】提到任何關於時間或日期的資訊，請絕對不可以自己發明或假設時間，必須將 start_time 設為 null
 3. transport_mode 只能是 car/motorcycle/transit/bike/walk 其中之一，若用戶未提及則設為 null (不要預設 car)
 4. 如果是與人約會（如"跟Robert吃飯"），type設為"meeting"，attends設為"Robert"
 5. 只回應 JSON，不要有其他文字。必須是一個可解析的 JSON 對象。
@@ -69,7 +70,8 @@ class AIService:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                timeout=15.0
             )
             
             text = response.choices[0].message.content.strip()
@@ -141,9 +143,10 @@ class AIService:
 
 【任務】：
 1. 將「使用者最新輸入」與「目前已知資訊」合併更新
-2. 時間處理：
+2. 時間處理 (start_time) **[極度重要]**：
    - 如果用戶說「下星期一」、「明天」，請計算實際日期
    - 如果只說時間（早上10點）沒說日期，如果已有日期就用已知日期，否則假設是今天
+   - **防呆檢查**：如果對話中【完全沒有】提到任何具體的時間點，【絕對不可以自己發明或假設時間】（也不要使用範例中的時間），你必須將 start_time 設為 null 或空字串，將 "start_time" 加入 missing_fields 清單，is_complete 設為 false，並在 reply 中親切詢問確切時間。
 3. 地點處理 (location) **[極度重要]**：
    - 仔細尋找表示地點的關鍵字，如「在」、「去」、「到」後面的名詞
    - 例如：「去台北101吃飯」-> location: "台北101"
@@ -193,7 +196,8 @@ class AIService:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                timeout=15.0
             )
             
             clean_text = response.choices[0].message.content.strip()

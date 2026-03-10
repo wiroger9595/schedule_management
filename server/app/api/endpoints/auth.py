@@ -48,7 +48,8 @@ def register(user_data: RegisterRequest, session: Session = Depends(get_session)
         hashed_password=get_password_hash(password),
         full_name=full_name
     )
-    return repo.create(user)
+    repo.create(user)
+    return {"msg": "User created successfully", "email": email}
 
 @router.post("/login")
 def login(user_data: LoginRequest, session: Session = Depends(get_session)):

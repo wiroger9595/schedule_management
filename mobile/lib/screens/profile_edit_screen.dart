@@ -113,9 +113,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       await auth.updateProfile({
         'full_name': _nameController.text,
         'phone': _phoneController.text,
-        'line_id': _lineIdController.text.isNotEmpty
-            ? _lineIdController.text
-            : null,
+        'line_id':
+            _lineIdController.text.isNotEmpty ? _lineIdController.text : null,
         'language': _selectedLanguage,
         'default_sending': _defaultSending,
       });
@@ -192,19 +191,19 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             SizedBox(height: 32),
 
             // 用戶帳號（唯讀）
-            Card(
-              child: ListTile(
-                title: Text(
-                  'accountNumber'.tr(),
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-                subtitle: Text(
-                  widget.user['account_number'] ?? 'N/A',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-            SizedBox(height: 16),
+            // Card(
+            //   child: ListTile(
+            //     title: Text(
+            //       'accountNumber'.tr(),
+            //       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            //     ),
+            //     subtitle: Text(
+            //       widget.user['account_number'] ?? '',
+            //       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            //     ),
+            //   ),
+            // ),
+            // SizedBox(height: 16),
 
             // 姓名
             TextFormField(
@@ -239,9 +238,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
               keyboardType: TextInputType.phone,
               validator: (value) {
-                final requiredError = FormValidators.validateRequired(value, 'phone'.tr());
+                final requiredError =
+                    FormValidators.validateRequired(value, 'phone'.tr());
                 if (requiredError != null) return requiredError;
-                
+
                 return FormValidators.validatePhone(value, required: true);
               },
             ),
@@ -287,7 +287,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
               items: [
                 DropdownMenuItem(value: 'line', child: Text('Line')),
-                DropdownMenuItem(value: 'sms', child: Text('SMS/簡訊')), // Localized 'Phone'
+                DropdownMenuItem(
+                    value: 'sms', child: Text('SMS/簡訊')), // Localized 'Phone'
                 DropdownMenuItem(value: 'email', child: Text('Email')),
               ],
               onChanged: (value) {

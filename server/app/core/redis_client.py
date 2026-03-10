@@ -19,31 +19,55 @@ class RedisClient:
     
     def store_token(self, user_id: str, token: str, expire_seconds: int = 604800):
         """
-        儲存 JWT Token 到 Redis
-        key 格式: jwt:{user_id}:{token_hash}
+        儲存 JWT Token 到 Redis，並覆蓋舊的 token
+        key 格式: jwt:{user_id}
         TTL: 7 天（604800 秒）
         """
-        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-        key = f"jwt:{user_id}:{token_hash}"
+        key = f"jwt:{user_id}"
         return self.client.setex(key, expire_seconds, token)
     
     def validate_token(self, user_id: str, token: str) -> bool:
-        """驗證 Token 是否存在於 Redis"""
-        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-        key = f"jwt:{user_id}:{token_hash}"
-        return self.client.exists(key) > 0
+        """驗證 Token 是否與存在於 Redis 的最新 Token 相符"""
+        # 1. 檢查精確匹配
+        key = f"jwt:{user_id}"
+        stored_token = self.client.get(key)
+        if stored_token == token:
+            return True
+            
+        # 2. 檢查帶有 session_id 後綴的 key (例如 jwt:user_id:session_id)
+        pattern = f"jwt:{user_id}:*"
+        for k in self.client.scan_iter(match=pattern):
+            if self.client.get(k) == token:
+                return True
+                
+        return False
     
     def revoke_token(self, user_id: str, token: str):
-        """登出時刪除 Token"""
-        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-        key = f"jwt:{user_id}:{token_hash}"
-        self.client.delete(key)
+        """登出時刪除 Token（如果傳來的 Token 與目前的 Token 符合才刪除）"""
+        # 1. 檢查精確匹配
+        key = f"jwt:{user_id}"
+        stored_token = self.client.get(key)
+        if stored_token == token:
+            self.client.delete(key)
+            return
+            
+        # 2. 檢查帶有 session_id 後綴的 key (例如 jwt:user_id:session_id)
+        pattern = f"jwt:{user_id}:*"
+        for k in self.client.scan_iter(match=pattern):
+            if self.client.get(k) == token:
+                self.client.delete(k)
+                break
     
     def delete_all_user_tokens(self, user_id: str):
-        """刪除用戶的所有 Token（例如：強制登出所有裝置）"""
+        """刪除用戶的 Token（強制登出）"""
+        # 1. 刪除精確匹配的 key
+        key = f"jwt:{user_id}"
+        self.client.delete(key)
+        
+        # 2. 刪除所有帶有 session_id 後綴的 key
         pattern = f"jwt:{user_id}:*"
-        for key in self.client.scan_iter(match=pattern):
-            self.client.delete(key)
+        for k in self.client.scan_iter(match=pattern):
+            self.client.delete(k)
 
     def set_reset_code(self, email: str, code: str, expire_seconds: int = 600):
         """儲存密碼重置驗證碼 (預設 10 分鐘)"""

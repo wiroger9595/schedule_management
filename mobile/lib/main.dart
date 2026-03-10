@@ -11,15 +11,18 @@ import 'screens/login_screen.dart';
 import 'screens/profile_completion_screen.dart';
 
 import 'services/notification_service.dart';
+import 'services/api_service.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Notifications
   await NotificationService().init();
-  
+
   await EasyLocalization.ensureInitialized();
-  
+
   runApp(
     EasyLocalization(
       supportedLocales: [Locale('en'), Locale('zh', 'TW')],
@@ -36,10 +39,34 @@ void main() async {
   );
 }
 
-class ScheduleApp extends StatelessWidget {
+class ScheduleApp extends StatefulWidget {
+  @override
+  _ScheduleAppState createState() => _ScheduleAppState();
+}
+
+class _ScheduleAppState extends State<ScheduleApp> {
+  @override
+  void initState() {
+    super.initState();
+    ApiService.onUnauthorized.stream.listen((_) {
+      if (navigatorKey.currentState != null) {
+        navigatorKey.currentState!
+            .pushNamedAndRemoveUntil('/login', (route) => false);
+            
+        final context = navigatorKey.currentContext;
+        if (context != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('登入已逾期或在其他裝置登入，請重新登入')),
+          );
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Schedule Management'.tr(),
       theme: AppTheme.lightTheme,
       localizationsDelegates: context.localizationDelegates,
