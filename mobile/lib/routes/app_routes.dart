@@ -14,7 +14,7 @@ class AppRoutes {
 
   // Route name constants
   static const String startup = '/startup';
-  static const String home = '/';
+  static const String home = '/home';
   static const String login = '/login';
   static const String register = '/register';
   static const String profileCompletion = '/profile_completion';
@@ -25,7 +25,7 @@ class AppRoutes {
   /// Named route map for MaterialApp
   static Map<String, WidgetBuilder> get routes {
     return {
-      // Note: '/startup' is handled separately via initialRoute + _StartupWrapper in main.dart
+      // Note: App startup is handled via the home property in main.dart
       home: (context) => AiChatScreen(),
       login: (context) => LoginScreen(),
       register: (context) => RegisterScreen(),

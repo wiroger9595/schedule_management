@@ -36,6 +36,10 @@ cd mobile
 flutter run
 
 
+
+// 跑之前記得
+pip install -r requirements.txt
+
 // 跟小明去淡水碼頭下個月
 
 // 下週跟小美去台北車站打遊戲
@@ -60,3 +64,12 @@ flutter run
 
 
 // ai 
+
+
+
+
+// 啟動方式
+# iOS
+flutter clean && flutter run --dart-define-from-file=.env
+# Web
+flutter clean && flutter run -d chrome --web-port=3000 --dart-define-from-file=.env

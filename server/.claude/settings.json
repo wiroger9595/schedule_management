@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/chenrobert/Documents/code_life/schedule_management/mobile/lib/widgets/**)",
+      "Read(//Users/chenrobert/Documents/code_life/schedule_management/mobile/lib/screens/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/chenrobert/Documents/code_life/schedule_management/mobile/lib/widgets"
+    ]
+  }
+}

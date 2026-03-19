@@ -19,7 +19,25 @@ class ScheduleRepository:
         return self.session.exec(select(Schedule)).all()
 
     def get_by_user_id(self, user_id: str) -> List[Schedule]:
-        return self.session.exec(select(Schedule).where(Schedule.user_id == user_id)).all()
+        # Return schedules created by the user OR where the user is an attendee.
+        # Attendee matching covers three cases:
+        #   1. attend.user_id == user_id  (directly linked)
+        #   2. attend.contact_id -> Contact.contact_user_id == user_id  (linked via contact email match)
+        from sqlalchemy import and_
+        statement = (
+            select(Schedule)
+            .outerjoin(attend, Schedule.schedule_id == attend.schedule_id)
+            .outerjoin(Contact, attend.contact_id == Contact.id)
+            .where(
+                or_(
+                    Schedule.user_id == user_id,
+                    attend.user_id == user_id,
+                    and_(Contact.id.isnot(None), Contact.contact_user_id == user_id)
+                )
+            )
+            .distinct()
+        )
+        return self.session.exec(statement).all()
 
     def create(self, schedule: Schedule) -> Schedule:
         self.session.add(schedule)

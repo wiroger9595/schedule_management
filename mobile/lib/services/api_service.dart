@@ -338,6 +338,19 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> checkEmailUser(String email) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/contacts/check-email?email=${Uri.encodeComponent(email)}'),
+        headers: await getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (_) {}
+    return {'found': false};
+  }
+
   // --- Todo List / Comments ---
 
   Future<List<TodoComment>> getComments() async {

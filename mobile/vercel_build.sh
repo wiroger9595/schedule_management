@@ -40,14 +40,13 @@ echo ">> Injecting environment variables into index.html..."
 if [ ! -f ".env-stage" ]; then
   echo ">> .env-stage not found! Creating from Vercel system environment variables..."
   echo "WEB_CLIENT_ID=${WEB_CLIENT_ID:-644901002244-biqc0uracgbtr33cvkm50l3tpb6aap29.apps.googleusercontent.com}" > .env-stage
-  echo "APPLE_SERVICE_ID=${APPLE_SERVICE_ID:-644901002244-soa2s80jbm0l9ne9jgdf7ifrq5rl7rac.apps.googleusercontent.com}" >> .env-stage
+  echo "IOS_CLIENT_ID=${IOS_CLIENT_ID:-644901002244-soa2s80jbm0l9ne9jgdf7ifrq5rl7rac.apps.googleusercontent.com}" >> .env-stage
   echo "GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-AIzaSyCeppdyrBY73xJ-sZzqChzlzOc0u1nqgmc}" >> .env-stage
 fi
 
 # Apply to web/index.html (so placeholders get swapped before build)
 if [ -f ".env-stage" ]; then
   export $(grep -v '^#' .env-stage | xargs)
-  sed -i "s|YOUR_WEB_CLIENT_ID.apps.googleusercontent.com|$WEB_CLIENT_ID|g" web/index.html
   sed -i "s|<!-- <script src=\"https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY\"></script> -->|<script src=\"https://maps.googleapis.com/maps/api/js?key=$GOOGLE_MAPS_API_KEY\&loading=async\" async defer></script>|g" web/index.html
 fi
 

@@ -15,7 +15,7 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
-
+星期六下午約 ＠小明 ＠mimi 去彰化燒瓶子聚會
 
 # 手機啟動方式
 

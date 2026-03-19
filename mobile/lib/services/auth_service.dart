@@ -8,30 +8,71 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 class AuthService {
-  final storage = FlutterSecureStorage();
+  static final AuthService _instance = AuthService._internal();
+  factory AuthService() => _instance;
+  AuthService._internal();
 
-  // Injected via --dart-define during build
-  static const String _webClientId = String.fromEnvironment('WEB_CLIENT_ID', defaultValue: '');
-  static const String _appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID', defaultValue: '');
-  static const String _androidServiceId = String.fromEnvironment('ANDROID_SERVICE_ID', defaultValue: '');
-  
-  // iOS Client ID - only works for native iOS app
-  static const String _iosClientId = '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com';
+  final storage = const FlutterSecureStorage(
+    webOptions: WebOptions(
+      dbName: 'auth_db',
+      publicKey: 'auth_key',
+    ),
+  );
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
+  // Injected via --dart-define during build or flutter run --dart-define-from-file=.env-local
+  static const String _webClientId = String.fromEnvironment('WEB_CLIENT_ID', 
+      defaultValue: '200440251043-ia6vtcvdp3ls1cp4ba681q3phs3onuds.apps.googleusercontent.com');
+  static const String _androidServiceId = String.fromEnvironment('ANDROID_SERVICE_ID', 
+      defaultValue: '');
+  static const String _iosClientId = String.fromEnvironment('IOS_CLIENT_ID', 
+      defaultValue: '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com');
+
+  late final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
     clientId: kIsWeb 
-        ? (_webClientId.isNotEmpty ? _webClientId : (const String.fromEnvironment('WEB_CLIENT_ID') != '' ? const String.fromEnvironment('WEB_CLIENT_ID') : '644901002244-biqc0uracgbtr33cvkm50l3tpb6aap29.apps.googleusercontent.com'))
-        : (Platform.isIOS ? _iosClientId : (Platform.isAndroid ? (_androidServiceId.isNotEmpty ? _androidServiceId : null) : null)),
+        ? (_webClientId.isNotEmpty ? _webClientId : null)
+        : (Platform.isIOS ? (_iosClientId.isNotEmpty ? _iosClientId : null) : (Platform.isAndroid ? (_androidServiceId.isNotEmpty ? _androidServiceId : null) : null)),
+    // serverClientId is NOT supported on Web (the plugin asserts it must be null)
+    // Only set it for native platforms
+    serverClientId: kIsWeb ? null : (_webClientId.isNotEmpty ? _webClientId : null),
   );
+
+  GoogleSignIn get googleSignIn => _googleSignIn;
+
+  Future<void> initWeb() async {
+    if (kIsWeb) {
+      // For web, if the meta tag is removed, we MUST explicitly initialize it
+      // before rendering the button or calling other methods.
+      try {
+        await _googleSignIn.signInSilently();
+      } catch (e) {
+        print('GoogleSignIn initWeb (expected if not signed in): $e');
+      }
+    }
+  }
 
   Future<bool> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      final GoogleSignInAccount? account = await _googleSignIn.signIn().timeout(
+        const Duration(seconds: 45),
+        onTimeout: () {
+          throw Exception('Google 登入超時。請確認您的瀏覽器是否阻擋了彈出視窗 (Popup Blocker)，或請重新嘗試。');
+        },
+      );
       if (account == null) {
         throw Exception('使用者已取消 Google 登入');
       }
 
+      return await processGoogleAccount(account);
+    } catch (e, stackTrace) {
+      print('Google sign-in error: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  Future<bool> processGoogleAccount(GoogleSignInAccount account) async {
+    try {
       final GoogleSignInAuthentication auth = await account.authentication;
 
       // Validate required fields
@@ -61,9 +102,8 @@ class AuthService {
       } else {
         throw Exception('伺服器錯誤: ${response.statusCode} - ${response.body}');
       }
-    } catch (e, stackTrace) {
-      print('Google sign-in error: $e');
-      print('Stack trace: $stackTrace');
+    } catch (e) {
+      print('Error processing Google account: $e');
       rethrow;
     }
   }
@@ -76,7 +116,7 @@ class AuthService {
           AppleIDAuthorizationScopes.fullName,
         ],
         webAuthenticationOptions: WebAuthenticationOptions(
-          clientId: (!kIsWeb && Platform.isAndroid) ? _androidServiceId : _appleServiceId,
+          clientId: (!kIsWeb && Platform.isAndroid) ? _androidServiceId : _iosClientId,
           redirectUri: Uri.parse('https://schedule-management-mu.vercel.app/api/auth/apple/callback'),
         ),
       );

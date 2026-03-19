@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'theme/app_theme.dart';
@@ -12,6 +13,7 @@ import 'screens/profile_completion_screen.dart';
 
 import 'services/notification_service.dart';
 import 'services/api_service.dart';
+import 'services/auth_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -22,6 +24,7 @@ void main() async {
   await NotificationService().init();
 
   await EasyLocalization.ensureInitialized();
+
 
   runApp(
     EasyLocalization(
@@ -72,11 +75,8 @@ class _ScheduleAppState extends State<ScheduleApp> {
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,
       locale: context.locale,
-      initialRoute: '/startup',
-      routes: {
-        '/startup': (context) => _StartupWrapper(),
-        ...AppRoutes.routes,
-      },
+      home: _StartupWrapper(),
+      routes: AppRoutes.routes,
       onGenerateRoute: AppRoutes.onGenerateRoute,
     );
   }
@@ -101,6 +101,13 @@ class _StartupWrapperState extends State<_StartupWrapper> {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, auth, _) {
+        // Wait for initialization (especially GoogleSignIn on Web)
+        if (!auth.isInitialized) {
+          return Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
         if (auth.isLoggedIn) {
           // Check profile completeness (simple heuristic)
           if (auth.user != null &&
@@ -110,10 +117,6 @@ class _StartupWrapperState extends State<_StartupWrapper> {
           }
           return AiChatScreen();
         } else {
-          // If we are still loading/checking, show loading?
-          // Since checkAuth defaults isLoggedIn to false initially, we might flash login.
-          // Ideally AuthProvider should have an 'isInitialized' flag.
-          // For now, let's assume if not logged in, go to Login.
           return LoginScreen();
         }
       },

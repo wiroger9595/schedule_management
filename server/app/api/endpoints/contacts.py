@@ -28,6 +28,23 @@ def get_contact_schedules(contact_id: int, current_user: User = Depends(get_curr
     schedules = repo.get_schedules_with_contact(current_user.user_id, contact_id)
     return [s.dict() for s in schedules]
 
+@router.get("/check-email")
+def check_email_user(
+    email: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """
+    查詢某個 email 是否是已註冊的用戶（排除自己）。
+    回傳 found=True 時附上 user_id / full_name。
+    """
+    from sqlmodel import select
+    user = session.exec(select(User).where(User.email == email)).first()
+    if user and user.user_id != current_user.user_id:
+        return {"found": True, "user_id": user.user_id, "full_name": user.full_name, "email": user.email}
+    return {"found": False}
+
+
 @router.post("/validate", response_model=ContactValidateResponse)
 def validate_contact(
     request: ContactValidateRequest,

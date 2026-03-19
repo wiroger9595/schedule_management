@@ -177,7 +177,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             elif contact_id is not None:
                  contact_ids_to_fetch.append(int(contact_id))
         
-        # 2. Fetch Contacts map
+        # 2. Fetch Contacts map and auto-link to users by email
         contact_user_map = {}
         contact_models_map = {}
         if contact_ids_to_fetch:
@@ -187,14 +187,23 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             contacts = session.exec(statement).all()
             for c in contacts:
                 contact_models_map[c.id] = c
+                # Auto-link contact to user by email if not already linked
+                if not c.contact_user_id and c.email:
+                    matched_user = session.exec(select(User).where(User.email == c.email)).first()
+                    if matched_user:
+                        c.contact_user_id = matched_user.user_id
+                        session.add(c)
+                        session.commit()
+                        session.refresh(c)
+                        print(f"DEBUG: Auto-linked contact {c.id} to user {matched_user.user_id} via email {c.email}")
                 if c.contact_user_id:
                     contact_user_map[c.id] = c.contact_user_id
-        
+
         for att in attends_data:
             # Check if system user or guest
             # System user has 'id' (Contact ID) and 'contact_user_id' (The friend's User ID)
             # Guest has name/email/phone/line_id
-            
+
             # Prioritize contact_user_id from a Contact object
             user_id = att.user_id
             contact_id = att.contact_id
@@ -203,7 +212,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
                  contact_id = None # It's a GUID user_id, not contact_id
             elif contact_id is not None:
                  contact_id = int(contact_id)
-            
+
             # If user_id is missing, try to get from contact map
             if not user_id and contact_id and contact_id in contact_user_map:
                 user_id = contact_user_map[contact_id]
@@ -219,9 +228,116 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
         
         # Dispatch notifications
         created_attends = session.exec(select(attend).where(attend.schedule_id == created_schedule.schedule_id)).all()
-        notification_service.notify_attendees(created_schedule.title, created_attends, contact_models_map)
-    
+        # Build users_map so notification_service can look up user emails
+        users_map = {}
+        user_ids_to_fetch = list(contact_user_map.values())
+        if user_ids_to_fetch:
+            fetched_users = session.exec(select(User).where(User.user_id.in_(user_ids_to_fetch))).all()
+            for u in fetched_users:
+                users_map[u.user_id] = u
+        notification_service.notify_attendees(
+            created_schedule, created_attends, contact_models_map,
+            users_map=users_map, inviter_name=current_user.full_name or "某人"
+        )
+
     return created_schedule.dict()
+
+@router.post("/fix-contact-links")
+def fix_contact_links(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """
+    Backfill: 對所有 contact.email 能找到 user.email 的聯絡人，補上 contact_user_id 和 attend.user_id。
+    """
+    from sqlmodel import select as sql_select
+    from ...models.contact import Contact
+
+    updated_contacts = 0
+    updated_attends = 0
+
+    # 1. 找出所有有 email 但沒有 contact_user_id 的 contact
+    contacts = session.exec(
+        sql_select(Contact).where(Contact.email.isnot(None), Contact.contact_user_id.is_(None))
+    ).all()
+
+    for c in contacts:
+        matched_user = session.exec(sql_select(User).where(User.email == c.email)).first()
+        if matched_user:
+            c.contact_user_id = matched_user.user_id
+            session.add(c)
+            updated_contacts += 1
+
+    session.commit()
+
+    # 2. 找出所有 attend.user_id 是 NULL 但 contact 已有 contact_user_id 的記錄
+    attends = session.exec(sql_select(attend).where(attend.user_id.is_(None), attend.contact_id.isnot(None))).all()
+    for a in attends:
+        contact = session.get(Contact, a.contact_id)
+        if contact and contact.contact_user_id:
+            a.user_id = contact.contact_user_id
+            session.add(a)
+            updated_attends += 1
+
+    session.commit()
+
+    return {
+        "updated_contacts": updated_contacts,
+        "updated_attends": updated_attends,
+        "message": f"已補上 {updated_contacts} 筆 contact 連結，{updated_attends} 筆 attend 連結"
+    }
+
+
+@router.get("/rsvp")
+def rsvp_schedule(token: str, action: str, session: Session = Depends(get_session)):
+    """
+    Handle RSVP links sent via email.
+    token = attend_id (UUID)
+    action = "accept" | "decline"
+    """
+    from sqlmodel import select as sql_select
+
+    if action not in ("accept", "decline"):
+        raise HTTPException(status_code=400, detail="Invalid action. Use 'accept' or 'decline'.")
+
+    # Look up the attend record by attend_id
+    attend_record = session.exec(sql_select(attend).where(attend.attend_id == token)).first()
+    if not attend_record:
+        raise HTTPException(status_code=404, detail="Invitation not found or already expired.")
+
+    # Fetch the schedule
+    repo = ScheduleRepository(session)
+    schedule = repo.get_by_schedule_id(attend_record.schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found.")
+
+    if action == "accept":
+        attend_record.status = "AT"
+        session.add(attend_record)
+        session.commit()
+        return {"message": f"您已接受「{schedule.title}」的邀請！", "status": "accepted"}
+
+    # action == "decline"
+    attend_record.status = "NG"
+    session.add(attend_record)
+    session.commit()
+
+    # Notify the schedule creator
+    creator = session.exec(sql_select(User).where(User.user_id == schedule.user_id)).first()
+    if creator:
+        # Get attendee display name
+        attendee_name = "受邀者"
+        if attend_record.contact_id:
+            from ...models.contact import Contact
+            contact = session.get(Contact, attend_record.contact_id)
+            if contact:
+                attendee_name = contact.nick_name or attendee_name
+        elif attend_record.user_id:
+            invitee = session.exec(sql_select(User).where(User.user_id == attend_record.user_id)).first()
+            if invitee:
+                attendee_name = invitee.full_name or attendee_name
+
+        notification_service.notify_creator_of_decline(schedule, attendee_name, creator)
+
+    return {"message": f"您已拒絕「{schedule.title}」的邀請，活動建立者已收到通知。", "status": "declined"}
+
 
 @router.put("/{schedule_id}/status")
 @router.patch("/{schedule_id}/status")
@@ -373,7 +489,7 @@ def update_schedule(
             elif contact_id is not None:
                  contact_ids_to_fetch.append(int(contact_id))
         
-        # 2. Fetch Contacts map
+        # 2. Fetch Contacts map and auto-link to users by email
         contact_user_map = {}
         contact_models_map = {}
         if contact_ids_to_fetch:
@@ -383,6 +499,15 @@ def update_schedule(
             contacts = session.exec(statement).all()
             for c in contacts:
                 contact_models_map[c.id] = c
+                # Auto-link contact to user by email if not already linked
+                if not c.contact_user_id and c.email:
+                    matched_user = session.exec(select(User).where(User.email == c.email)).first()
+                    if matched_user:
+                        c.contact_user_id = matched_user.user_id
+                        session.add(c)
+                        session.commit()
+                        session.refresh(c)
+                        print(f"DEBUG: Auto-linked contact {c.id} to user {matched_user.user_id} via email {c.email}")
                 if c.contact_user_id:
                     contact_user_map[c.id] = c.contact_user_id
 
@@ -414,7 +539,17 @@ def update_schedule(
         # Dispatch notifications for updates
         from sqlmodel import select
         updated_attends = session.exec(select(attend).where(attend.schedule_id == updated_schedule.schedule_id)).all()
-        notification_service.notify_attendees(updated_schedule.title, updated_attends, contact_models_map)
+        # Build users_map so notification_service can look up user emails
+        users_map = {}
+        user_ids_to_fetch = list(contact_user_map.values())
+        if user_ids_to_fetch:
+            fetched_users = session.exec(select(User).where(User.user_id.in_(user_ids_to_fetch))).all()
+            for u in fetched_users:
+                users_map[u.user_id] = u
+        notification_service.notify_attendees(
+            updated_schedule, updated_attends, contact_models_map,
+            users_map=users_map, inviter_name=current_user.full_name or "某人"
+        )
 
     updated_schedule = repo.get_by_schedule_id(schedule_id) # Refresh to get latest state if needed
     result = updated_schedule.dict()

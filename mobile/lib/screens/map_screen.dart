@@ -26,6 +26,7 @@ class _MapScreenState extends State<MapScreen> {
   Map<String, dynamic> _allEstimates = {};
   String _selectedMode = 'car';
   late Schedule _schedule;
+  int _selectedAttendeeIndex = 0;
 
   @override
   void initState() {
@@ -149,6 +150,94 @@ class _MapScreenState extends State<MapScreen> {
         _isLate = arrivalTime.isAfter(_schedule.startTime);
       });
     }
+  }
+
+  Widget _buildAttendeeSection() {
+    final attends = _schedule.attends;
+    final hasAttends = attends != null && attends.isNotEmpty;
+
+    String displayName;
+    String? displayPhone;
+
+    if (hasAttends) {
+      final idx = _selectedAttendeeIndex.clamp(0, attends.length - 1);
+      final selected = attends[idx];
+      displayName = selected['nick_name'] ?? selected['name'] ?? selected['full_name'] ?? '';
+      displayPhone = selected['phone'] as String?;
+    } else {
+      displayName = _schedule.contactName ?? '';
+      displayPhone = _schedule.contactPhone;
+    }
+
+    if (displayName.isEmpty && (displayPhone == null || displayPhone.isEmpty)) {
+      return SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(height: 4),
+        // Chip selector when multiple attendees
+        if (hasAttends && attends.length > 1) ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(attends.length, (i) {
+                final name = attends[i]['nick_name'] ?? attends[i]['name'] ?? attends[i]['full_name'] ?? '?';
+                final isSelected = i == _selectedAttendeeIndex;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedAttendeeIndex = i),
+                  child: Container(
+                    margin: EdgeInsets.only(right: 8),
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.blue[50] : Colors.grey[100],
+                      border: Border.all(
+                        color: isSelected ? Colors.blue : Colors.grey[300]!,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      name,
+                      style: TextStyle(
+                        color: isSelected ? Colors.blue : Colors.grey[700],
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          SizedBox(height: 6),
+        ],
+        // Name + Phone row
+        Row(
+          children: [
+            Icon(Icons.person, size: 16, color: Colors.grey),
+            SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                displayName,
+                style: TextStyle(color: Colors.grey[700]),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            if (displayPhone != null && displayPhone.isNotEmpty) ...[
+              SizedBox(width: 8),
+              Icon(Icons.phone, size: 16, color: Colors.grey),
+              SizedBox(width: 4),
+              Text(
+                displayPhone,
+                style: TextStyle(color: Colors.grey[700]),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
   }
 
   void _showCancelDialog() {
@@ -427,39 +516,7 @@ class _MapScreenState extends State<MapScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    if (_schedule.contactName != null &&
-                        _schedule.contactName!.isNotEmpty) ...[
-                      SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.person, size: 16, color: Colors.grey),
-                          SizedBox(width: 4),
-
-                          // 關鍵修正：使用 Expanded 加上 ellipsis
-                          Expanded(
-                            child: Text(
-                              _schedule.contactName!,
-                              style: TextStyle(color: Colors.grey[700]),
-                              overflow: TextOverflow.ellipsis, // 超出長度顯示 ...
-                              maxLines: 1, // 限制只有一行
-                            ),
-                          ),
-
-                          // 電話部分
-                          if (_schedule.contactPhone != null &&
-                              _schedule.contactPhone!.isNotEmpty) ...[
-                            SizedBox(width: 8),
-                            Icon(Icons.phone, size: 16, color: Colors.grey),
-                            SizedBox(width: 4),
-                            // 電話號碼通常長度固定，可以直接顯示
-                            Text(
-                              _schedule.contactPhone!,
-                              style: TextStyle(color: Colors.grey[700]),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
+                    _buildAttendeeSection(),
                     SizedBox(height: 8),
 
                     // Mode Selection Row

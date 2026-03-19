@@ -91,19 +91,19 @@ GOOGLE_WEB_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 #### iOS 測試
 ```bash
 cd mobile
-flutter run -d iPhone
+flutter run -d iPhone --dart-define-from-file=.env
 ```
 
 #### Android 測試
 ```bash
 cd mobile
-flutter run -d <android-device-id>
+flutter run -d <android-device-id> --dart-define-from-file=.env
 ```
 
 #### Web 測試
 ```bash
 cd mobile
-flutter run -d chrome
+flutter run -d chrome --web-port=8080 --dart-define-from-file=.env
 ```
 
 ## 常見問題

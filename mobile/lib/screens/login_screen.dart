@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/google_sign_in_button.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/form_validators.dart';
@@ -117,10 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      IconButton(
-                        icon: Icon(Icons.g_mobiledata, size: 40, color: Colors.red),
-                        onPressed: _loginGoogle,
-                      ),
+                      buildGoogleSignInButton(_loginGoogle),
                       SizedBox(width: 20),
                       IconButton(
                         icon: Icon(Icons.apple, size: 40, color: Colors.black),

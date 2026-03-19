@@ -19,15 +19,16 @@ class AttendeeSelector extends StatefulWidget {
   _AttendeeSelectorState createState() => _AttendeeSelectorState();
 }
 
-class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerProviderStateMixin {
+class _AttendeeSelectorState extends State<AttendeeSelector>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final ApiService apiService = ApiService();
-  
+
   // Data
   List<dynamic> _allContacts = [];
   List<dynamic> _selectedContacts = [];
   bool _isLoadingContacts = true;
-  
+
   // New Contact Form
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
@@ -59,24 +60,26 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
     });
 
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    
+
     _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
       final phone = _phoneController.text.trim();
       final email = _emailController.text.trim();
       final lineId = _lineIdController.text.trim();
-      
+
       if (phone.isEmpty && email.isEmpty && lineId.isEmpty) return;
-      
+
       try {
         final result = await apiService.validateContact(phone, email, lineId);
-        
+
         if (mounted && result['is_valid'] == false) {
-           setState(() {
-              final dup = result['duplicate_field'];
-              if (dup == 'phone') _phoneError = '此號碼已存在';
-              else if (dup == 'email') _emailError = '此Email已存在';
-              else if (dup == 'line') _lineError = '此Line ID已存在';
-           });
+          setState(() {
+            final dup = result['duplicate_field'];
+            if (dup == 'phone')
+              _phoneError = '此號碼已存在';
+            else if (dup == 'email')
+              _emailError = '此Email已存在';
+            else if (dup == 'line') _lineError = '此Line ID已存在';
+          });
         }
       } catch (e) {
         // ignore
@@ -91,7 +94,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
     _selectedContacts = List.from(widget.initialSelectedContacts);
     _fetchContacts();
   }
-  
+
   @override
   void dispose() {
     _debounceTimer?.cancel();
@@ -132,7 +135,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
     setState(() {
       final id = contact['id'];
       final existingIndex = _selectedContacts.indexWhere((c) => c['id'] == id);
-      
+
       if (existingIndex >= 0) {
         _selectedContacts.removeAt(existingIndex);
       } else {
@@ -144,7 +147,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
 
   Future<void> _createContact() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     // Validation is now handled by the Form fields directly
     // Force validation to show errors if fields are empty
     // if (!_formKey.currentState!.validate()) return; is already at the top
@@ -168,26 +171,26 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
 
       if (response.statusCode == 200) {
         final newContact = jsonDecode(response.body);
-        
+
         // Refresh list and auto-select
         await _fetchContacts();
-        
+
         if (mounted) {
           setState(() {
             _selectedContacts.add(newContact);
             widget.onSelectionChanged(_selectedContacts);
-            
+
             // Reset form
             _nameController.clear();
             _phoneController.clear();
             _emailController.clear();
             _lineIdController.clear();
             _isCreating = false;
-            
+
             // Switch to list tab
             _tabController.animateTo(0);
           });
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('聯絡人建立成功並已選取')),
           );
@@ -226,7 +229,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
-          
+
           // Tabs
           TabBar(
             controller: _tabController,
@@ -237,20 +240,20 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
               Tab(text: '新增聯絡人'),
             ],
           ),
-          
+
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: [
                 // Tab 1: List
                 _buildContactList(),
-                
+
                 // Tab 2: Create Form
                 _buildCreateForm(),
               ],
             ),
           ),
-          
+
           // Action Buttons
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -284,7 +287,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
     if (_isLoadingContacts) {
       return Center(child: CircularProgressIndicator());
     }
-    
+
     if (_allContacts.isEmpty) {
       return Center(child: Text('尚無聯絡人，請由右側分頁新增'));
     }
@@ -358,9 +361,9 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
               ),
               keyboardType: TextInputType.emailAddress,
               validator: (value) {
-                 final emailError = FormValidators.validateEmail(value);
-                 if (emailError != null) return emailError;
-                 return _validateContactMethod(value);
+                final emailError = FormValidators.validateEmail(value);
+                if (emailError != null) return emailError;
+                return _validateContactMethod(value);
               },
               onChanged: (_) => _validateRealTime(),
             ),
@@ -381,8 +384,12 @@ class _AttendeeSelectorState extends State<AttendeeSelector> with SingleTickerPr
               width: double.infinity,
               height: 50,
               child: ElevatedButton.icon(
-                icon: _isCreating 
-                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                icon: _isCreating
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
                     : Icon(Icons.save),
                 label: Text(_isCreating ? '儲存中...' : '儲存並選取'),
                 onPressed: _isCreating ? null : _createContact,

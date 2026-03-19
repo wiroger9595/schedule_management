@@ -1,23 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
   StreamSubscription? _unauthorizedSubscription;
   bool _isLoading = false;
   bool _isLoggedIn = false;
+  bool _isInitialized = false;
   Map<String, dynamic>? _user;
+  DateTime? _lastLoginTime;
 
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _isLoggedIn;
+  bool get isInitialized => _isInitialized;
   Map<String, dynamic>? get user => _user;
 
   AuthProvider() {
     _unauthorizedSubscription = ApiService.onUnauthorized.stream.listen((_) {
+      // Guard: If we just logged in within the last 5 seconds, ignore 401
+      // as it might be a race condition with a pending request or storage write.
+      if (_lastLoginTime != null && 
+          DateTime.now().difference(_lastLoginTime!).inSeconds < 5) {
+        print('Ignoring 401 due to recent login (race condition guard)');
+        return;
+      }
       // Trigger logout when a 401 is encountered globally
       logout();
     });
@@ -30,10 +42,34 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> checkAuth() async {
+    // Set up Google sign-in listener for Web renderButton events
+    if (kIsWeb) {
+      _authService.googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount? account) async {
+        if (account != null) {
+          _isLoading = true;
+          notifyListeners();
+          try {
+            bool success = await _authService.processGoogleAccount(account);
+            if (success) {
+              _lastLoginTime = DateTime.now();
+              _isLoggedIn = true;
+              await fetchUserProfile();
+            }
+          } catch (e) {
+            print('Error processing Google login from listener: $e');
+          } finally {
+            _isLoading = false;
+            notifyListeners();
+          }
+        }
+      });
+    }
+
     _isLoggedIn = await _authService.isLoggedIn();
     if (_isLoggedIn) {
       await fetchUserProfile();
     }
+    _isInitialized = true;
     notifyListeners();
   }
 
@@ -98,6 +134,7 @@ class AuthProvider with ChangeNotifier {
 
     bool success = await _authService.login(email, password);
     if (success) {
+      _lastLoginTime = DateTime.now();
       _isLoggedIn = true;
       await fetchUserProfile();
     }
@@ -125,6 +162,7 @@ class AuthProvider with ChangeNotifier {
     try {
       bool success = await _authService.signInWithGoogle();
       if (success) {
+        _lastLoginTime = DateTime.now();
         _isLoggedIn = true;
         await fetchUserProfile();
       }
@@ -142,6 +180,7 @@ class AuthProvider with ChangeNotifier {
     try {
       bool success = await _authService.signInWithApple();
       if (success) {
+        _lastLoginTime = DateTime.now();
         _isLoggedIn = true;
         await fetchUserProfile();
       }

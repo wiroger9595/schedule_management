@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pip show:*)",
+      "Bash(.venv/bin/pip uninstall:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(/Users/chenrobert/Documents/code_life/schedule_management/.venv/bin/pip uninstall:*)",
+      "Bash(/Users/chenrobert/Documents/code_life/schedule_management/.venv/bin/pip install:*)",
+      "Bash(/Users/chenrobert/Documents/code_life/schedule_management/.venv/bin/python --version)"
+    ]
+  }
+}
