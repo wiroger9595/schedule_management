@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../widgets/google_sign_in_button.dart';
 import 'package:provider/provider.dart';
@@ -68,7 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = Provider.of<AuthProvider>(context);
     
     return Scaffold(
-      appBar: AppBar(title: Text('登入')),
+      appBar: AppBar(title: Text('login'.tr())),
       body: Padding(
         padding: EdgeInsets.all(24),
         child: Form(
@@ -77,25 +78,25 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               children: [
                 TextFormField(
-                  decoration: InputDecoration(labelText: '電子郵件', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: 'email'.tr(), border: OutlineInputBorder()),
                   validator: (value) {
-                      if (value == null || value.isEmpty) return '請輸入電子郵件';
+                      if (value == null || value.isEmpty) return 'enterEmail'.tr();
                       return FormValidators.validateEmail(value);
                   },
                   onSaved: (value) => email = value!,
                 ),
                 SizedBox(height: 16),
                 TextFormField(
-                  decoration: InputDecoration(labelText: '密碼', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: 'password'.tr(), border: OutlineInputBorder()),
                   obscureText: true,
-                  validator: (value) => value!.isEmpty ? '請輸入密碼' : null,
+                  validator: (value) => value!.isEmpty ? 'enterPassword'.tr() : null,
                   onSaved: (value) => password = value!,
                 ),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () => Navigator.pushNamed(context, '/forgot_password'),
-                    child: Text('忘記密碼？'),
+                    child: Text('forgotPassword'.tr()),
                   ),
                 ),
                 SizedBox(height: 16),
@@ -105,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     width: double.infinity,
                     height: 50,
-                    child: ElevatedButton(onPressed: _login, child: Text('登入')),
+                    child: ElevatedButton(onPressed: _login, child: Text('login'.tr())),
                   ),
                   SizedBox(height: 16),
                   TextButton(
@@ -113,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text('還沒有帳號？立即註冊'),
                   ),
                   Divider(),
-                  Text("快速登入"),
+                  Text('quickLogin'.tr()),
                   SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

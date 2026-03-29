@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../utils/form_validators.dart';
@@ -36,7 +37,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('驗證碼已發送至您的信箱')),
+        SnackBar(content: Text('codeSentToEmail'.tr())),
       );
       setState(() => _step = 1);
     } catch (e) {
@@ -79,7 +80,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('忘記密碼')),
+      appBar: AppBar(title: Text('forgotPassword'.tr())),
       body: Padding(
         padding: EdgeInsets.all(24),
         child: Form(
@@ -93,13 +94,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 TextFormField(
                   controller: _emailController,
                   decoration: InputDecoration(
-                    labelText: '電子郵件',
+                    labelText: 'email'.tr(),
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.email),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
-                    if (value == null || value.isEmpty) return '請輸入電子郵件';
+                    if (value == null || value.isEmpty) return 'enterEmail'.tr();
                     return FormValidators.validateEmail(value);
                   },
                 ),
@@ -108,7 +109,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   onPressed: _isLoading ? null : _sendCode,
                   child: _isLoading 
                     ? CircularProgressIndicator(color: Colors.white)
-                    : Text('發送驗證碼'),
+                    : Text('sendCode'.tr()),
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -119,13 +120,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                  TextFormField(
                   controller: _codeController,
                   decoration: InputDecoration(
-                    labelText: '驗證碼 (6位數)',
+                    labelText: 'enterCode'.tr(),
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.security),
                   ),
                   keyboardType: TextInputType.number,
                   validator: (value) {
-                    if (value == null || value.isEmpty) return '請輸入驗證碼';
+                    if (value == null || value.isEmpty) return 'enterCode'.tr();
                     if (value.length != 6) return '驗證碼應為6位數';
                     return null;
                   },
@@ -153,13 +154,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 TextFormField(
                   controller: _passwordController,
                   decoration: InputDecoration(
-                    labelText: '新密碼',
+                    labelText: 'newPassword'.tr(),
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.lock),
                   ),
                   obscureText: true,
                   validator: (value) {
-                    if (value == null || value.isEmpty) return '請輸入新密碼';
+                    if (value == null || value.isEmpty) return 'enterNewPassword'.tr();
                     if (value.length < 6) return '密碼長度至少6碼';
                     return null;
                   },
@@ -168,14 +169,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 TextFormField(
                   controller: _confirmPasswordController,
                   decoration: InputDecoration(
-                    labelText: '確認新密碼',
+                    labelText: 'confirmNewPassword'.tr(),
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.lock_outline),
                   ),
                   obscureText: true,
                   validator: (value) {
-                    if (value == null || value.isEmpty) return '請再次輸入新密碼';
-                    if (value != _passwordController.text) return '兩次密碼輸入不一致';
+                    if (value == null || value.isEmpty) return 'reEnterNewPassword'.tr();
+                    if (value != _passwordController.text) return 'passwordsNotMatch'.tr();
                     return null;
                   },
                 ),
@@ -184,7 +185,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   onPressed: _isLoading ? null : _resetPassword,
                   child: _isLoading 
                     ? CircularProgressIndicator(color: Colors.white)
-                    : Text('重置密碼'),
+                    : Text('resetPassword'.tr()),
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 16),
                   ),

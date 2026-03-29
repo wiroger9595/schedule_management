@@ -31,12 +31,14 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   String transportMode = 'walk';
   double? latitude;
   double? longitude;
+  bool _isOnline = false;
   bool _isLoadingLocation = false;
   bool _isSearchingLocation = false;
   List<Map<String, dynamic>> _locationSearchResults = [];
   Timer? _debounceTimer;
 
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _onlineLinkController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _contactNameController = TextEditingController();
@@ -45,12 +47,12 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   final TextEditingController _contactLineIdController =
       TextEditingController();
 
-  final List<Map<String, String>> transportModes = [
-    {'value': 'car', 'label': '汽車'},
-    {'value': 'motorcycle', 'label': '機車'},
-    {'value': 'transit', 'label': '大眾運輸 (TDX)'},
-    {'value': 'bike', 'label': '腳踏車'},
-    {'value': 'walk', 'label': '行走'},
+  List<Map<String, String>> get transportModes => [
+    {'value': 'car', 'label': 'car'.tr()},
+    {'value': 'motorcycle', 'label': 'motorcycle'.tr()},
+    {'value': 'transit', 'label': 'transit'.tr()},
+    {'value': 'bike', 'label': 'bicycle'.tr()},
+    {'value': 'walk', 'label': 'walkMode'.tr()},
   ];
 
   @override
@@ -64,7 +66,9 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
       transportMode = s.transportMode ?? 'car';
       latitude = s.latitude;
       longitude = s.longitude;
+      _isOnline = s.isOnline == true;
       _locationController.text = location ?? '';
+      if (s.isOnline == true) _onlineLinkController.text = location ?? '';
       _titleController.text = s.title;
       _descriptionController.text = s.description ?? '';
       _contactNameController.text = s.contactName ?? '';
@@ -99,6 +103,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   void dispose() {
     _debounceTimer?.cancel();
     _locationController.dispose();
+    _onlineLinkController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
     _contactNameController.dispose();
@@ -292,7 +297,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   void _save() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      location = _locationController.text;
+      location = _isOnline ? _onlineLinkController.text.trim() : _locationController.text;
 
       // Prepare contact info from first attend if available, for backward compat
       String? contactName;
@@ -319,8 +324,9 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               startTime: startTime,
               endTime: endTime,
               location: location,
-              latitude: latitude,
-              longitude: longitude,
+              latitude: _isOnline ? null : latitude,
+              longitude: _isOnline ? null : longitude,
+              isOnline: _isOnline,
               status: ScheduleStatus.pending, // Use constant
               transportMode: transportMode,
               attends: selectedContacts.map((c) {
@@ -356,10 +362,11 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             'description': _descriptionController.text,
             'start_time': startTime.toIso8601String(),
             'end_time': endTime?.toIso8601String(),
-            'location': _locationController.text,
+            'location': location,
             'transport_mode': transportMode,
-            'latitude': latitude,
-            'longitude': longitude,
+            'is_online': _isOnline,
+            'latitude': _isOnline ? null : latitude,
+            'longitude': _isOnline ? null : longitude,
             'attends': selectedContacts.map((c) {
               return {
                 'user_id': c['contact_user_id'] ?? c['user_id'],
@@ -497,55 +504,102 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 onChanged: (value) => setState(() => transportMode = value!),
               ),
               SizedBox(height: 16),
+              // Online / Physical toggle
               Row(
                 children: [
                   Expanded(
-                    child: InkWell(
-                      onTap: _pickLocation,
-                      child: AbsorbPointer(
-                        child: TextFormField(
-                          controller: _locationController,
-                          readOnly: true,
-                          decoration: InputDecoration(
-                            labelText: 'location'.tr(),
-                            border: OutlineInputBorder(),
-                            hintText: 'tapToSelectOnMap'.tr(),
-                            suffixIcon: (_isLoadingLocation || _isSearchingLocation)
-                                ? Container(
-                                    width: 24,
-                                    height: 24,
-                                    padding: EdgeInsets.all(12),
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.grey,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          onSaved: (value) => location = value,
+                    child: SegmentedButton<bool>(
+                      segments: [
+                        ButtonSegment(
+                          value: false,
+                          label: Text('physicalLocation'.tr()),
+                          icon: Icon(Icons.location_on),
                         ),
-                      ),
+                        ButtonSegment(
+                          value: true,
+                          label: Text('onlineEvent'.tr()),
+                          icon: Icon(Icons.video_call),
+                        ),
+                      ],
+                      selected: {_isOnline},
+                      onSelectionChanged: (sel) => setState(() {
+                        _isOnline = sel.first;
+                        // clear the other field when switching
+                        if (_isOnline) {
+                          latitude = null;
+                          longitude = null;
+                          _locationController.clear();
+                        } else {
+                          _onlineLinkController.clear();
+                        }
+                      }),
                     ),
-                  ),
-                  SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(
-                      Icons.map,
-                      color: latitude != null ? Colors.blue : Colors.grey,
-                    ),
-                    onPressed: _isLoadingLocation ? null : _pickLocation,
-                    tooltip: 'Select on Map',
                   ),
                 ],
               ),
-              if (latitude != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(
-                    'coordinateSelected'.tr(),
-                    style: TextStyle(color: Colors.blue, fontSize: 12),
+              SizedBox(height: 12),
+              if (_isOnline) ...[
+                TextFormField(
+                  controller: _onlineLinkController,
+                  decoration: InputDecoration(
+                    labelText: 'onlineMeetingLink'.tr(),
+                    hintText: 'onlineMeetingLinkHint'.tr(),
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.link),
                   ),
+                  keyboardType: TextInputType.url,
                 ),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickLocation,
+                        child: AbsorbPointer(
+                          child: TextFormField(
+                            controller: _locationController,
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'location'.tr(),
+                              border: OutlineInputBorder(),
+                              hintText: 'tapToSelectOnMap'.tr(),
+                              suffixIcon: (_isLoadingLocation || _isSearchingLocation)
+                                  ? Container(
+                                      width: 24,
+                                      height: 24,
+                                      padding: EdgeInsets.all(12),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.grey,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            onSaved: (value) => location = value,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(
+                        Icons.map,
+                        color: latitude != null ? Colors.black : Colors.grey,
+                      ),
+                      onPressed: _isLoadingLocation ? null : _pickLocation,
+                      tooltip: 'Select on Map',
+                    ),
+                  ],
+                ),
+                if (latitude != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      'coordinateSelected'.tr(),
+                      style: TextStyle(color: Colors.black87, fontSize: 12),
+                    ),
+                  ),
+              ],
               // Search results list removed, search happens in the map now.
               SizedBox(height: 24),
               // Participants Section

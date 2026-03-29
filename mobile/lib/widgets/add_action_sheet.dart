@@ -31,16 +31,16 @@ class AddActionSheet {
                 leading: Container(
                   padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.purple[100],
+                    color: Colors.grey[200],
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.smart_toy, color: Colors.purple[700]),
+                  child: Icon(Icons.smart_toy, color: Colors.black87),
                 ),
                 title: Text(
                   'AI 助手 (AI Chatbot)',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text('透過對話快速建立行程'),
+                subtitle: Text('aiAssistantSubtitle'.tr()),
                 onTap: () async {
                   Navigator.pop(context); // Close the bottom sheet first
                   await Navigator.push(
@@ -54,16 +54,16 @@ class AddActionSheet {
                 leading: Container(
                   padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.blue[100],
+                    color: Colors.grey[200],
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.edit_calendar, color: Colors.blue[700]),
+                  child: Icon(Icons.edit_calendar, color: Colors.black87),
                 ),
                 title: Text(
                   '手動新增 (Manual Add)',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text('手動填寫行程表單'),
+                subtitle: Text('manualEntrySubtitle'.tr()),
                 onTap: () async {
                   Navigator.pop(context); // Close the bottom sheet first
                   await Navigator.push(

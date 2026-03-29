@@ -6,10 +6,11 @@ class AppConfig {
   AppConfig._();
 
   /// Environment flag passed during compilation, e.g. --dart-define=ENV=dev
-  static const String environment = String.fromEnvironment('ENV', defaultValue: 'local');
+  static const String environment =
+      String.fromEnvironment('ENV', defaultValue: 'local');
 
   /// API port number
-  static const int apiPort = 3000;
+  static const int apiPort = 7800;
 
   /// API base path
   static const String apiPath = '/api';
@@ -17,7 +18,9 @@ class AppConfig {
   /// Returns the appropriate API base URL based on the platform and environment.
   static String get baseUrl {
     // If environment is dev or stage, use the cloud backend
-    if (environment == 'dev' || environment == 'stage' || environment == 'prod') {
+    if (environment == 'dev' ||
+        environment == 'stage' ||
+        environment == 'prod') {
       return 'https://schedule-backend-200440251043.asia-east1.run.app$apiPath';
     }
 

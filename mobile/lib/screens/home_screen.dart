@@ -16,6 +16,7 @@ import '../services/notification_service.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
+import '../providers/settings_provider.dart';
 import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
@@ -109,17 +110,17 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(Icons.notifications_active, color: Colors.amber, size: 28),
             SizedBox(width: 8),
-            Text('活動快到囉！'),
+            Text('upcomingScheduleTitle'.tr()),
           ],
         ),
         content: Text(
-          '您的行程「${schedule.title}」將在 $minutesUntilStart 分鐘後開始！',
+          'upcomingScheduleBody'.tr(namedArgs: {'title': schedule.title, 'minutes': minutesUntilStart.toString()}),
           style: TextStyle(fontSize: 16),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('知道了', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: Text('gotIt'.tr(), style: TextStyle(fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -130,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context) => MapScreen(schedule: schedule)),
               );
             },
-            child: Text('查看地圖'),
+            child: Text('viewMap'.tr()),
           ),
         ],
       ),
@@ -525,8 +526,11 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           // Apply filters
+          final settingsProvider = context.watch<SettingsProvider>();
           final filteredSchedules = provider.schedules.where((s) {
-            // Status Filter
+            // Global status visibility (from Settings)
+            if (!settingsProvider.isVisible(s.status)) return false;
+            // Status Filter (from filter dialog)
             if (_filterStatus != null && s.status != _filterStatus) {
               return false;
             }
@@ -603,7 +607,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _refreshSchedules();
         },
         child: Icon(Icons.add),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.black,
       ),
     );
   }
@@ -626,21 +630,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        content: Text('此行程時間已過，您想要？'),
+        content: Text('pastScheduleAction'.tr()),
         actions: [
           TextButton(
             onPressed: () async {
               Navigator.pop(context); // Close dialog
               await _handleCancelSchedule(schedule);
             },
-            child: Text('取消行程', style: TextStyle(color: Colors.red)),
+            child: Text('cancelSchedule'.tr(), style: TextStyle(color: Colors.red)),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog
               _showReschedulePicker(schedule);
             },
-            child: Text('更改時間'),
+            child: Text('changeTime'.tr()),
           ),
         ],
       ),
@@ -648,19 +652,75 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleCancelSchedule(Schedule schedule) async {
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final confirmed = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('cancelSchedule'.tr()),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(schedule.title,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: reasonController,
+                autofocus: true,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'cancelReason'.tr(),
+                  hintText: 'cancelReasonHint'.tr(),
+                  border: const OutlineInputBorder(),
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty)
+                        ? 'cancelReasonRequired'.tr()
+                        : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('cancel'.tr()),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(ctx, reasonController.text.trim());
+            },
+            child: Text('confirm'.tr()),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == null || !mounted) return;
+
     try {
       final apiService = ApiService();
-      await apiService.updateStatus(schedule.id, ScheduleStatus.cancel);
+      await apiService.updateStatus(
+        schedule.id,
+        ScheduleStatus.cancel,
+        cancelReason: confirmed,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('行程已取消')),
+          SnackBar(content: Text('scheduleCancelled'.tr())),
         );
         _refreshSchedules();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('取消失敗: $e')),
+          SnackBar(content: Text('cancelFailed'.tr(namedArgs: {'error': e.toString()}))),
         );
       }
     }
@@ -676,15 +736,16 @@ class _HomeScreenState extends State<HomeScreen> {
       initialDate: now.add(Duration(minutes: 5)),
       firstDate: firstDate,
       lastDate: DateTime(2101),
-      helpText: '選擇開始日期',
+      helpText: 'selectStartDate'.tr(),
     );
 
     if (pickedStartDate != null) {
       // 2. Pick Start Time
+      if (!mounted) return;
       final TimeOfDay? pickedStartTime = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(now.add(Duration(minutes: 30))),
-        helpText: '選擇開始時間',
+        helpText: 'selectStartTime'.tr(),
       );
 
       if (pickedStartTime != null) {
@@ -699,7 +760,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (newStartDateTime.isBefore(now)) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('請選擇未來的開始時間')),
+              SnackBar(content: Text('pleaseEnterFutureTime'.tr())),
             );
           }
           return;
@@ -713,20 +774,22 @@ class _HomeScreenState extends State<HomeScreen> {
         DateTime initialEndDateTime = newStartDateTime.add(originalDuration);
 
         // 3. Pick End Date (Default to Start Date or calculated End Date)
+        if (!mounted) return;
         final DateTime? pickedEndDate = await showDatePicker(
           context: context,
           initialDate: initialEndDateTime,
           firstDate: newStartDateTime, // End date cannot be before start date
           lastDate: DateTime(2101),
-          helpText: '選擇結束日期',
+          helpText: 'selectEndDate'.tr(),
         );
 
         if (pickedEndDate != null) {
           // 4. Pick End Time
+          if (!mounted) return;
           final TimeOfDay? pickedEndTime = await showTimePicker(
             context: context,
             initialTime: TimeOfDay.fromDateTime(initialEndDateTime),
-            helpText: '選擇結束時間',
+            helpText: 'selectEndTime'.tr(),
           );
 
           if (pickedEndTime != null) {
@@ -741,7 +804,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (newEndDateTime.isBefore(newStartDateTime)) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('結束時間必須晚於開始時間')),
+                  SnackBar(content: Text('endTimeMustBeAfterStartTime'.tr())),
                 );
               }
               return;
@@ -775,7 +838,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Navigator.of(context).pop(); // Close loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ 行程時間已更新'),
+            content: Text('scheduleTimeUpdated'.tr()),
             duration: Duration(seconds: 3),
             backgroundColor: Colors.green,
           ),
@@ -787,7 +850,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Navigator.of(context).pop(); // Close loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ 更新失敗: $e'),
+            content: Text('updateScheduleFailed'.tr(namedArgs: {'error': e.toString()})),
             duration: Duration(seconds: 4),
             backgroundColor: Colors.red,
           ),

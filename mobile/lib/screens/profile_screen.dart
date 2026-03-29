@@ -47,13 +47,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _getLanguageName(String? language) {
     switch (language) {
       case 'zh-TW':
-        return '繁體中文';
+        return 'traditionalChinese'.tr();
       case 'en':
         return 'English';
       case 'ja':
-        return '日本語';
+        return 'japanese'.tr();
       default:
-        return language ?? '未設定';
+        return language ?? 'notSet'.tr();
     }
   }
 
@@ -62,7 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       case 'line':
         return 'Line';
       case 'sms':
-        return 'SMS/簡訊';
+        return 'notificationSMSShort'.tr();
       case 'email':
         return 'Email';
       default:
@@ -135,7 +135,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Container(
                               padding: EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: Colors.purple[700],
+                                color: Colors.black,
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(

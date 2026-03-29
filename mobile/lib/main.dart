@@ -6,6 +6,7 @@ import 'theme/app_theme.dart';
 import 'routes/app_routes.dart';
 import 'providers/auth_provider.dart';
 import 'providers/schedule_provider.dart';
+import 'providers/settings_provider.dart';
 import 'screens/ai_chat_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -35,6 +36,7 @@ void main() async {
         providers: [
           ChangeNotifierProvider(create: (_) => AuthProvider()),
           ChangeNotifierProvider(create: (_) => ScheduleProvider()),
+          ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ],
         child: ScheduleApp(),
       ),
@@ -59,7 +61,7 @@ class _ScheduleAppState extends State<ScheduleApp> {
         final context = navigatorKey.currentContext;
         if (context != null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('登入已逾期或在其他裝置登入，請重新登入')),
+            SnackBar(content: Text('loginExpired'.tr())),
           );
         }
       }

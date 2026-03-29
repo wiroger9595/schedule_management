@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../utils/form_validators.dart';
@@ -44,7 +45,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           // Let's assume generic error for now, but prioritize email error if likely.
           if (e.toString().contains("400") || e.toString().contains("registered")) {
                setState(() {
-                 _emailError = '該信箱已被註冊';
+                 _emailError = 'emailAlreadyRegistered'.tr();
                });
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -60,7 +61,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('註冊')),
+      appBar: AppBar(title: Text('register'.tr())),
       body: Padding(
         padding: EdgeInsets.all(24),
         child: Form(
@@ -68,19 +69,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             children: [
               TextFormField(
-                decoration: InputDecoration(labelText: '全名', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: 'fullName'.tr(), border: OutlineInputBorder()),
                 onSaved: (value) => fullName = value ?? '',
               ),
               SizedBox(height: 16),
               SizedBox(height: 16),
               TextFormField(
                 decoration: InputDecoration(
-                    labelText: '電子郵件', 
+                    labelText: 'email'.tr(),
                     border: OutlineInputBorder(),
                     errorText: _emailError, // Field-level error
                 ),
                 validator: (value) {
-                    if (value == null || value.isEmpty) return '請輸入電子郵件';
+                    if (value == null || value.isEmpty) return 'enterEmail'.tr();
                     return FormValidators.validateEmail(value);
                 },
                 onChanged: (_) {
@@ -92,7 +93,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               SizedBox(height: 16),
               TextFormField(
-                decoration: InputDecoration(labelText: '密碼', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: 'password'.tr(), border: OutlineInputBorder()),
                 obscureText: true,
                 validator: (value) => value!.length < 6 ? '密碼長度需至少 6 位' : null,
                 onSaved: (value) => password = value!,
@@ -104,7 +105,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 SizedBox(
                   width: double.infinity,
                   height: 50,
-                  child: ElevatedButton(onPressed: _register, child: Text('註冊')),
+                  child: ElevatedButton(onPressed: _register, child: Text('register'.tr())),
                 ),
             ],
           ),

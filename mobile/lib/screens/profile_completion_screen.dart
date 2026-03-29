@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -15,7 +16,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   Future<void> _saveProfile() async {
     if (_phoneController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('請輸入電話號碼')),
+        SnackBar(content: Text('enterPhone'.tr())),
       );
       return;
     }
@@ -45,7 +46,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('完善個人資料'),
+        title: Text('completeProfile'.tr()),
         automaticallyImplyLeading: false,
       ),
       body: Padding(
@@ -53,17 +54,17 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.person_add, size: 80, color: Colors.blue),
+            Icon(Icons.person_add, size: 80, color: Colors.black87),
             SizedBox(height: 24),
             Text(
-              '請完善您的個人資料',
+              'pleaseCompleteProfile'.tr(),
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 32),
             TextField(
               controller: _nameController,
               decoration: InputDecoration(
-                labelText: '姓名（選填）',
+                labelText: 'nameOptional'.tr(),
                 prefixIcon: Icon(Icons.person),
                 border: OutlineInputBorder(),
               ),

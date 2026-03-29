@@ -17,6 +17,7 @@ class Schedule {
   final String? contactLineId;
 
   final String? cancelReason;
+  final bool? isOnline;
 
   Schedule({
     required this.id,
@@ -36,6 +37,7 @@ class Schedule {
     this.contactEmail,
     this.contactPhone,
     this.contactLineId,
+    this.isOnline,
   });
 
   factory Schedule.fromJson(Map<String, dynamic> json) {
@@ -63,6 +65,7 @@ class Schedule {
       attends: (json['attends'] as List<dynamic>?)
           ?.map((e) => e as Map<String, dynamic>)
           .toList(),
+      isOnline: json['is_online'] == true,
     );
   }
 
@@ -80,6 +83,7 @@ class Schedule {
       'attend_ids': attendIds,
       'attends': attends,
       'cancel_reason': cancelReason,
+      'is_online': isOnline,
       'contact_name': contactName,
       'contact_email': contactEmail,
       'contact_phone': contactPhone,

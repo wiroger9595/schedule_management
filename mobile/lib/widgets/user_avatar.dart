@@ -103,7 +103,7 @@ class UserAvatar extends StatelessWidget {
         return Icon(
           Icons.person,
           size: radius * 1.2,
-          color: Colors.purple[700],
+          color: Colors.black87,
         );
       },
     );

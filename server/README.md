@@ -72,4 +72,4 @@ pip install -r requirements.txt
 # iOS
 flutter clean && flutter run --dart-define-from-file=.env
 # Web
-flutter clean && flutter run -d chrome --web-port=3000 --dart-define-from-file=.env
+flutter clean && flutter run -d chrome --web-port=7800 --dart-define-from-file=.env

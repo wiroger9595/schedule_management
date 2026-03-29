@@ -30,6 +30,7 @@ class ScheduleCreate(BaseModel):
     contact_line_id: Optional[str] = None
     attends: Optional[List[AttendCreate]] = None
     message: Optional[str] = None
+    is_online: Optional[bool] = None
 
 
 class ScheduleUpdate(BaseModel):
@@ -52,6 +53,7 @@ class ScheduleUpdate(BaseModel):
     contact_line_id: Optional[str] = None
     attends: Optional[List[AttendCreate]] = None
     status: Optional[str] = None
+    is_online: Optional[bool] = None
 
 
 class StatusUpdate(BaseModel):

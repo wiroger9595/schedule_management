@@ -79,6 +79,9 @@ class Schedule(SQLModel, table=True):
     latitude: Optional[float] = Field(default=None)
     longitude: Optional[float] = Field(default=None)
 
+    # Online event flag
+    is_online: bool = Field(default=False)
+
     # Relationship
     from sqlmodel import Relationship
     # Use string forward reference and explicit join condition since we use custom string IDs
@@ -118,6 +121,7 @@ class Schedule(SQLModel, table=True):
         data['latitude'] = self.latitude
         data['longitude'] = self.longitude
         data['id'] = self.schedule_id  # Frontend expects 'id' to be the schedule_id
+        data['is_online'] = self.is_online
         
         # Serialize attends
         try:

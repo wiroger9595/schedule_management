@@ -26,22 +26,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('aiChat'.tr()),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.purple[700]!, Colors.blue[700]!],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
         actions: [
           IconButton(
             icon: Icon(Icons.delete_outline, color: Colors.white),
             onPressed: () {
               _chatWidgetKey.currentState?.clearChat();
             },
-            tooltip: '清空對話',
+            tooltip: 'clearChat'.tr(),
           ),
         ],
       ),

@@ -88,8 +88,8 @@ python-dotenv
 ## 驗證結果
 
 ✅ **伺服器狀態**: 正常運行
-✅ **運行端口**: http://0.0.0.0:3000
-✅ **API 文檔**: http://localhost:3000/docs
+✅ **運行端口**: http://0.0.0.0:7800
+✅ **API 文檔**: http://localhost:7800/docs
 
 服務器啟動日誌：
 ```

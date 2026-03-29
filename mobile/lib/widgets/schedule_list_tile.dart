@@ -1,6 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/schedule.dart';
 import '../utils/constants.dart';
 
@@ -39,20 +38,32 @@ class ScheduleListTile extends StatelessWidget {
               children: [
                 Icon(Icons.access_time, size: 16, color: Colors.grey),
                 SizedBox(width: 8),
-                Text(
-                  schedule.endTime != null
-                      ? '${DateFormat('yyyy-MM-dd HH:mm').format(schedule.startTime)} - ${DateFormat('HH:mm').format(schedule.endTime!)}'
-                      : DateFormat('yyyy-MM-dd HH:mm').format(schedule.startTime),
-                ),
+                Text(_formatDateRange(schedule.startTime, schedule.endTime)),
               ],
             ),
             if (schedule.location != null) ...[
               SizedBox(height: 4),
               Row(
                 children: [
-                  Icon(Icons.location_on, size: 16, color: Colors.grey),
+                  Icon(
+                    (schedule.isOnline == true) ? Icons.video_call : Icons.location_on,
+                    size: 16,
+                    color: Colors.grey,
+                  ),
                   SizedBox(width: 8),
-                  Expanded(child: Text(schedule.location!)),
+                  Expanded(
+                    child: Text(
+                      schedule.location!,
+                      style: (schedule.isOnline == true)
+                          ? TextStyle(
+                              color: Colors.blue,
+                              decoration: TextDecoration.underline,
+                            )
+                          : null,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -92,12 +103,12 @@ class ScheduleListTile extends StatelessWidget {
                           message: name,
                           child: CircleAvatar(
                             radius: 12,
-                            backgroundColor: Colors.blue[100],
+                            backgroundColor: Colors.grey[300],
                             child: Text(
                               name.isNotEmpty ? name[0] : '?',
                               style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.blue[800],
+                                color: Colors.black87,
                               ),
                             ),
                           ),
@@ -113,6 +124,18 @@ class ScheduleListTile extends StatelessWidget {
         onTap: onTap,
       ),
     );
+  }
+
+  String _formatDateRange(DateTime start, DateTime? end) {
+    final sameDay = end != null &&
+        start.year == end.year &&
+        start.month == end.month &&
+        start.day == end.day;
+
+    final startStr = DateFormat('yyyy-MM-dd HH:mm').format(start);
+    if (end == null) return startStr;
+    if (sameDay) return '$startStr - ${DateFormat('HH:mm').format(end)}';
+    return '$startStr\n→ ${DateFormat('yyyy-MM-dd HH:mm').format(end)}';
   }
 
   Color _getStatusColor(String status) {

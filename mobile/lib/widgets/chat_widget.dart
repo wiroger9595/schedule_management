@@ -138,35 +138,35 @@ class ChatWidgetState extends State<ChatWidget> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('新增聯絡人'),
+          title: Text('addContact'.tr()),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameController,
-                decoration: InputDecoration(labelText: '姓名*'),
+                decoration: InputDecoration(labelText: 'nameStar'.tr()),
               ),
               SizedBox(height: 10),
               TextField(
                 controller: phoneController,
-                decoration: InputDecoration(labelText: '電話'),
+                decoration: InputDecoration(labelText: 'phone'.tr()),
               ),
               SizedBox(height: 10),
               TextField(
                 controller: emailController,
-                decoration: InputDecoration(labelText: 'Email'),
+                decoration: InputDecoration(labelText: 'email'.tr()),
               ),
               SizedBox(height: 10),
               TextField(
                 controller: lineIdController,
-                decoration: InputDecoration(labelText: 'Line ID (選填)'),
+                decoration: InputDecoration(labelText: 'lineOptional'.tr()),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('取消'),
+              child: Text('cancel'.tr()),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -187,10 +187,10 @@ class ChatWidgetState extends State<ChatWidget> {
                 } catch (e) {
                   ScaffoldMessenger.of(
                     context,
-                  ).showSnackBar(SnackBar(content: Text('新增失敗: $e')));
+                  ).showSnackBar(SnackBar(content: Text('addFailed'.tr())));
                 }
               },
-              child: Text('儲存'),
+              child: Text('save'.tr()),
             ),
           ],
         );
@@ -209,7 +209,7 @@ class ChatWidgetState extends State<ChatWidget> {
       constraints: BoxConstraints(maxHeight: 180),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.purple[100]!, width: 2)),
+        border: Border(top: BorderSide(color: Colors.grey[300]!, width: 2)),
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -224,8 +224,8 @@ class ChatWidgetState extends State<ChatWidget> {
         itemBuilder: (context, index) {
           if (index == filteredContacts.length) {
             return ListTile(
-              leading: Icon(Icons.person_add, color: Colors.blue),
-              title: Text('➕ 新增聯絡人', style: TextStyle(color: Colors.blue)),
+              leading: Icon(Icons.person_add, color: Colors.black87),
+              title: Text('➕ ${'addContact'.tr()}', style: TextStyle(color: Colors.black87)),
               onTap: _showAddContactDialog,
             );
           }
@@ -236,7 +236,7 @@ class ChatWidgetState extends State<ChatWidget> {
           return ListTile(
             leading: CircleAvatar(
               child: Text(displayInitial),
-              backgroundColor: Colors.purple[100],
+              backgroundColor: Colors.grey[300],
             ),
             title: Text(contact['nick_name'] ?? 'Unknown'),
             subtitle: Text(contact['phone'] ?? contact['email'] ?? ''),
@@ -310,16 +310,16 @@ class ChatWidgetState extends State<ChatWidget> {
           if (data['conflict'] != null) {
             // Conflict Detected
             _messages.add(
-              ChatMessage(text: data['ai_reply'] ?? '時間衝突', isUser: false),
+              ChatMessage(text: data['ai_reply'] ?? 'timeConflict'.tr(), isUser: false),
             );
             _messages.add(
               ConflictMessage(
                 onConfirm: () => _sendMessage(forceCreate: true),
                 onChange: () {
                   setState(() {
-                    _messages.add(ChatMessage(text: "我要更改時間", isUser: true));
+                    _messages.add(ChatMessage(text: 'changeTimeRequest'.tr(), isUser: true));
                     // Let AI know
-                    _sendMessage(text: "我要更改時間");
+                    _sendMessage(text: 'changeTimeRequest'.tr());
                   });
                 },
               ),
@@ -522,7 +522,7 @@ class ChatWidgetState extends State<ChatWidget> {
                   child: Icon(Icons.send, size: 20),
                   backgroundColor: _isLoading
                       ? Colors.grey
-                      : Colors.purple[700],
+                      : Colors.black,
                 ),
               ],
             ),
@@ -552,8 +552,8 @@ class ChatMessage extends StatelessWidget {
           if (!isUser) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: Colors.purple[100],
-              child: Icon(Icons.assistant, size: 16, color: Colors.purple[700]),
+              backgroundColor: Colors.grey[200],
+              child: Icon(Icons.assistant, size: 16, color: Colors.black87),
             ),
             SizedBox(width: 8),
           ],
@@ -561,7 +561,7 @@ class ChatMessage extends StatelessWidget {
             child: Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isUser ? Colors.purple[700] : Colors.grey[200],
+                color: isUser ? Colors.black : Colors.grey[200],
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
@@ -577,8 +577,8 @@ class ChatMessage extends StatelessWidget {
             SizedBox(width: 8),
             CircleAvatar(
               radius: 16,
-              backgroundColor: Colors.blue[100],
-              child: Icon(Icons.person, size: 16, color: Colors.blue[700]),
+              backgroundColor: Colors.grey[300],
+              child: Icon(Icons.person, size: 16, color: Colors.black87),
             ),
           ],
         ],
@@ -608,7 +608,7 @@ class ConflictMessage extends StatelessWidget {
                   backgroundColor: Colors.grey[300],
                   foregroundColor: Colors.black,
                 ),
-                child: Text("更改時間"),
+                child: Text('changeTime'.tr()),
               ),
               ElevatedButton(
                 onPressed: onConfirm,
@@ -616,7 +616,7 @@ class ConflictMessage extends StatelessWidget {
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
                 ),
-                child: Text("確定預約"),
+                child: Text('confirmBooking'.tr()),
               ),
             ],
           ),
@@ -647,15 +647,15 @@ class LocationConfirmMessage extends StatelessWidget {
                   backgroundColor: Colors.grey[300],
                   foregroundColor: Colors.black,
                 ),
-                child: Text("更改地點"),
+                child: Text('changeLocation'.tr()),
               ),
               ElevatedButton(
                 onPressed: onConfirm,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple[700],
+                  backgroundColor: Colors.black,
                   foregroundColor: Colors.white,
                 ),
-                child: Text("確認地點"),
+                child: Text('confirmLocation'.tr()),
               ),
             ],
           ),

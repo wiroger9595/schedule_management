@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -69,7 +70,7 @@ class _ContactPickerState extends State<ContactPicker> {
       child: Column(
         children: [
           Text(
-            '邀請朋友',
+            'inviteFriends'.tr(),
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           SizedBox(height: 16),
@@ -77,7 +78,7 @@ class _ContactPickerState extends State<ContactPicker> {
             child: isLoading
                 ? Center(child: CircularProgressIndicator())
                 : contacts.isEmpty
-                ? Center(child: Text('尚無聯絡人'))
+                ? Center(child: Text('noContacts'.tr()))
                 : ListView.builder(
                     itemCount: contacts.length,
                     itemBuilder: (context, index) {
@@ -127,10 +128,10 @@ class _ContactPickerState extends State<ContactPicker> {
           ),
           ElevatedButton(
             onPressed: _confirmSelection,
-            child: Text('確認 (${selectedIds.length})'),
             style: ElevatedButton.styleFrom(
               minimumSize: Size(double.infinity, 50),
             ),
+            child: Text('confirmCount'.tr(namedArgs: {'count': selectedIds.length.toString()})),
           ),
         ],
       ),

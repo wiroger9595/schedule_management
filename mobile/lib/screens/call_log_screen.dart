@@ -80,7 +80,7 @@ class _CallLogScreenState extends State<CallLogScreen> {
       case CallType.incoming:
         return Colors.green;
       case CallType.outgoing:
-        return Colors.blue;
+        return Colors.black87;
       case CallType.missed:
         return Colors.red;
       case CallType.rejected:
@@ -240,7 +240,7 @@ class _CallLogScreenState extends State<CallLogScreen> {
             Icon(Icons.phone_disabled, size: 80, color: Colors.grey[400]),
             SizedBox(height: 16),
             Text(
-              '無通話記錄',
+              'noCallLogs'.tr(),
               style: TextStyle(fontSize: 18, color: Colors.grey[600]),
             ),
           ],

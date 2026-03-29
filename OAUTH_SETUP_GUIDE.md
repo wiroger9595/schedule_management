@@ -39,6 +39,7 @@
 4. Authorized redirect URIs:
    ```
    http://localhost:3000
+   http://localhost:7800
    http://localhost:8080
    https://your-web-domain.com (如果有部署)
    ```

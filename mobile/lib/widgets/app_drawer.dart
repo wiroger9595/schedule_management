@@ -6,6 +6,7 @@ import '../screens/profile_screen.dart';
 import '../screens/call_log_screen.dart';
 import '../screens/contact_list_screen.dart';
 import '../screens/home_screen.dart';
+import '../screens/settings_screen.dart';
 import '../screens/tabbed_dashboard_screen.dart';
 import 'user_avatar.dart';
 
@@ -25,7 +26,7 @@ class AppDrawer extends StatelessWidget {
           DrawerHeader(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Colors.purple[700]!, Colors.blue[700]!],
+                colors: [Colors.black, Colors.grey[800]!],
               ),
             ),
             child: Consumer<AuthProvider>(
@@ -88,7 +89,7 @@ class AppDrawer extends StatelessWidget {
             ),
           ),
           ListTile(
-            leading: Icon(Icons.person, color: Colors.blue),
+            leading: Icon(Icons.person, color: Colors.black87),
             title: Text('profile'.tr()),
             onTap: () {
               Navigator.pop(context);
@@ -132,7 +133,7 @@ class AppDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: Icon(Icons.people, color: Colors.purple),
+            leading: Icon(Icons.people, color: Colors.black87),
             title: Text('myContacts'.tr()),
             onTap: () {
               Navigator.pop(context);
@@ -143,13 +144,24 @@ class AppDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: Icon(Icons.list_alt, color: Colors.blue),
+            leading: Icon(Icons.list_alt, color: Colors.black87),
             title: Text('mySchedules'.tr()),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => HomeScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.settings, color: Colors.black87),
+            title: Text('settings'.tr()),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
             },
           ),

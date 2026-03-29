@@ -3,9 +3,8 @@ from sqlalchemy import text
 
 with engine.connect() as conn:
     print("Executing ALTER TABLE...")
-    # Add column if not exists
     try:
-        conn.execute(text("ALTER TABLE schedule_management.contact ADD COLUMN default_notification_method VARCHAR(255) DEFAULT 'mobile';"))
+        conn.execute(text("ALTER TABLE schedule_management.schedule ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT FALSE;"))
         conn.commit()
         print("Migration complete!")
     except Exception as e:

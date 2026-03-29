@@ -1,3 +1,5 @@
+import 'package:easy_localization/easy_localization.dart';
+
 class FormValidators {
   /// Email 格式驗證
   /// 如果值為空，返回 null（允許選填）
@@ -12,7 +14,7 @@ class FormValidators {
     );
     
     if (!emailRegex.hasMatch(value.trim())) {
-      return '請輸入有效的 Email 格式';
+      return 'invalidEmailFormat'.tr();
     }
     return null;
   }
@@ -21,7 +23,7 @@ class FormValidators {
   /// [required] 是否為必填欄位
   static String? validatePhone(String? value, {bool required = false}) {
     if (value == null || value.trim().isEmpty) {
-      return required ? '請輸入電話號碼' : null;
+      return required ? 'enterPhone'.tr() : null;
     }
     
     // 移除空格、括號、破折號
@@ -29,7 +31,7 @@ class FormValidators {
     
     // 檢查是否為數字
     if (!RegExp(r'^\d+$').hasMatch(cleaned)) {
-      return '電話號碼只能包含數字';
+      return 'phoneNumberOnly'.tr();
     }
     
     // 台灣手機號碼：09開頭，10碼

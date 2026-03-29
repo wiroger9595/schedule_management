@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -212,7 +213,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
       if (phoneController.text.trim().isEmpty &&
           emailController.text.trim().isEmpty &&
           lineIdController.text.trim().isEmpty) {
-        return '請至少填寫一項';
+        return 'phoneOrEmailHint'.tr();
       }
       return null;
     }
@@ -245,11 +246,11 @@ class _ContactListScreenState extends State<ContactListScreen> {
                   setState(() {
                     final dup = result['duplicate_field'];
                     if (dup == 'phone') {
-                      phoneError = '此號碼已存在';
+                      phoneError = 'phoneExists'.tr();
                     } else if (dup == 'email') {
-                      emailError = '此Email已存在';
+                      emailError = 'emailExists'.tr();
                     } else if (dup == 'line') {
-                      lineError = '此Line ID已存在';
+                      lineError = 'lineExists'.tr();
                     }
                   });
                 }
@@ -268,7 +269,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('編輯聯絡人',
+                  Text('editContact'.tr(),
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 16),
                   SingleChildScrollView(
@@ -279,13 +280,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
                         children: [
                           TextFormField(
                             controller: nameController,
-                            decoration: const InputDecoration(
-                              labelText: '姓名／暱稱 *',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: 'enterName'.tr(),
+                              border: const OutlineInputBorder(),
                             ),
                             textInputAction: TextInputAction.next,
                             validator: (v) =>
-                                v?.trim().isEmpty == true ? '請輸入姓名' : null,
+                                v?.trim().isEmpty == true ? 'enterName'.tr() : null,
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -321,7 +322,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                           TextFormField(
                             controller: lineIdController,
                             decoration: InputDecoration(
-                              labelText: 'Line ID（選填）',
+                              labelText: 'lineOptional'.tr(),
                               border: const OutlineInputBorder(),
                               errorText: lineError,
                             ),
@@ -331,18 +332,18 @@ class _ContactListScreenState extends State<ContactListScreen> {
                           ),
                           const SizedBox(height: 16),
                           DropdownButtonFormField<String>(
-                            decoration: const InputDecoration(
-                              labelText: '預設通知方式',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: 'defaultNotificationMethod'.tr(),
+                              border: const OutlineInputBorder(),
                             ),
                             value: selectedNotificationMethod,
-                            items: const [
+                            items: [
                               DropdownMenuItem(
-                                  value: 'mobile', child: Text('手機簡訊')),
+                                  value: 'mobile', child: Text('notificationSMS'.tr())),
                               DropdownMenuItem(
-                                  value: 'email', child: Text('Email')),
+                                  value: 'email', child: Text('notificationEmail'.tr())),
                               DropdownMenuItem(
-                                  value: 'line', child: Text('LINE')),
+                                  value: 'line', child: Text('notificationLine'.tr())),
                             ],
                             onChanged: (val) {
                               if (val != null) {
@@ -365,7 +366,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                           debounceTimer?.cancel();
                           Navigator.pop(context);
                         },
-                        child: const Text('取消'),
+                        child: Text('cancel'.tr()),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton(
@@ -386,7 +387,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                             Navigator.pop(context);
                           }
                         },
-                        child: const Text('儲存'),
+                        child: Text('save'.tr()),
                       ),
                       const SizedBox(width: 4),
                     ],
@@ -451,10 +452,10 @@ class _ContactListScreenState extends State<ContactListScreen> {
                       setState(() {
                         final dup = result['duplicate_field'];
                         if (dup == 'phone')
-                          phoneError = '此號碼已存在';
+                          phoneError = 'phoneExists'.tr();
                         else if (dup == 'email')
-                          emailError = '此Email已存在';
-                        else if (dup == 'line') lineError = '此Line ID已存在';
+                          emailError = 'emailExists'.tr();
+                        else if (dup == 'line') lineError = 'lineExists'.tr();
                       });
                     }
                   } catch (_) {}
@@ -484,16 +485,16 @@ class _ContactListScreenState extends State<ContactListScreen> {
                             title: Row(
                               children: [
                                 Icon(Icons.person_search,
-                                    color: Colors.blue, size: 22),
+                                    color: Colors.black87, size: 22),
                                 SizedBox(width: 8),
-                                Text('找到用戶'),
+                                Text('foundUser'.tr()),
                               ],
                             ),
                             content: Column(
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('此 Email 已是我們的用戶：'),
+                                Text('thisEmailIsUser'.tr()),
                                 SizedBox(height: 10),
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
@@ -512,7 +513,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                   subtitle: Text(email),
                                 ),
                                 SizedBox(height: 8),
-                                Text('是否認識此用戶？確定後系統將自動建立關聯。',
+                                Text('isKnownUser'.tr(),
                                     style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 13)),
@@ -521,11 +522,11 @@ class _ContactListScreenState extends State<ContactListScreen> {
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, false),
-                                child: Text('不認識'),
+                                child: Text('dontKnow'.tr()),
                               ),
                               ElevatedButton(
                                 onPressed: () => Navigator.pop(ctx, true),
-                                child: Text('認識，建立關聯'),
+                                child: Text('linkUser'.tr()),
                               ),
                             ],
                           ),
@@ -545,7 +546,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                  '已與 ${userResult['full_name']} 建立關聯'),
+                                  'linkedWithUser'.tr(namedArgs: {'name': userResult['full_name'] ?? ''})),
                               backgroundColor: Colors.green,
                             ),
                           );
@@ -561,9 +562,8 @@ class _ContactListScreenState extends State<ContactListScreen> {
               // Helper for cross-field validation (reused logic)
               String? validateContactMethod(String? value) {
                 if (phoneController.text.trim().isEmpty &&
-                    emailController.text.trim().isEmpty &&
-                    lineIdController.text.trim().isEmpty) {
-                  return '請至少填寫一項';
+                    emailController.text.trim().isEmpty) {
+                  return 'phoneEmailRequired'.tr();
                 }
                 return null;
               }
@@ -603,16 +603,16 @@ class _ContactListScreenState extends State<ContactListScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('新增聯絡人',
+                      Text('addContact'.tr(),
                           style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: 12),
                       TabBar(
-                        labelColor: Colors.blue,
+                        labelColor: Colors.black,
                         unselectedLabelColor: Colors.grey,
-                        indicatorColor: Colors.blue,
-                        tabs: const [
-                          Tab(text: '手動填寫'),
-                          Tab(text: '搜尋用戶'),
+                        indicatorColor: Colors.black,
+                        tabs: [
+                          Tab(text: 'manualEntry'.tr()),
+                          Tab(text: 'searchUser'.tr()),
                         ],
                       ),
                       SizedBox(
@@ -626,23 +626,46 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                 key: formKey,
                                 child: Column(
                                   children: [
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber[50],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                            color: Colors.amber[300]!),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.info_outline,
+                                              size: 16, color: Colors.black54),
+                                          const SizedBox(width: 8),
+                                          Text('phoneOrEmailHint'.tr(),
+                                              style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: Colors.black87)),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
                                     TextFormField(
                                       controller: nameController,
-                                      decoration: const InputDecoration(
-                                        labelText: '姓名／暱稱 *',
-                                        border: OutlineInputBorder(),
+                                      decoration: InputDecoration(
+                                        labelText: 'enterName'.tr(),
+                                        border: const OutlineInputBorder(),
                                       ),
                                       textInputAction: TextInputAction.next,
                                       validator: (v) =>
                                           v?.trim().isEmpty == true
-                                              ? '請輸入姓名'
+                                              ? 'enterName'.tr()
                                               : null,
                                     ),
                                     const SizedBox(height: 16),
                                     TextFormField(
                                       controller: phoneController,
                                       decoration: InputDecoration(
-                                        labelText: '電話',
+                                        labelText: 'phoneStar'.tr(),
                                         border: const OutlineInputBorder(),
                                         errorText: phoneError,
                                       ),
@@ -655,13 +678,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                     TextFormField(
                                       controller: emailController,
                                       decoration: InputDecoration(
-                                        labelText: 'Email（選填）',
+                                        labelText: 'emailStar'.tr(),
                                         border: const OutlineInputBorder(),
                                         errorText: emailError,
                                         suffixIcon:
                                             selectedContactUserId != null
-                                                ? const Tooltip(
-                                                    message: '已與用戶建立關聯',
+                                                ? Tooltip(
+                                                    message: 'linkedWithUser'.tr(namedArgs: {'name': ''}),
                                                     child: Icon(
                                                         Icons.verified_user,
                                                         color: Colors.green),
@@ -690,7 +713,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                     TextFormField(
                                       controller: lineIdController,
                                       decoration: InputDecoration(
-                                        labelText: 'Line ID（選填）',
+                                        labelText: 'lineOptional'.tr(),
                                         border: const OutlineInputBorder(),
                                         errorText: lineError,
                                       ),
@@ -700,21 +723,21 @@ class _ContactListScreenState extends State<ContactListScreen> {
                                     ),
                                     const SizedBox(height: 16),
                                     DropdownButtonFormField<String>(
-                                      decoration: const InputDecoration(
-                                        labelText: '預設通知方式',
-                                        border: OutlineInputBorder(),
+                                      decoration: InputDecoration(
+                                        labelText: 'defaultNotificationMethod'.tr(),
+                                        border: const OutlineInputBorder(),
                                       ),
                                       value: selectedNotificationMethod,
-                                      items: const [
+                                      items: [
                                         DropdownMenuItem(
                                             value: 'mobile',
-                                            child: Text('手機簡訊')),
+                                            child: Text('notificationSMS'.tr())),
                                         DropdownMenuItem(
                                             value: 'email',
-                                            child: Text('Email')),
+                                            child: Text('notificationEmail'.tr())),
                                         DropdownMenuItem(
                                             value: 'line',
-                                            child: Text('LINE')),
+                                            child: Text('notificationLine'.tr())),
                                       ],
                                       onChanged: (val) {
                                         if (val != null) {
@@ -870,7 +893,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                               debounceTimer?.cancel();
                               Navigator.pop(context);
                             },
-                            child: const Text('取消'),
+                            child: Text('cancel'.tr()),
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
@@ -884,16 +907,15 @@ class _ContactListScreenState extends State<ContactListScreen> {
                               } else {
                                 if (nameController.text.trim().isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('請輸入姓名')));
+                                      SnackBar(content: Text('enterName'.tr())));
                                   DefaultTabController.of(context).animateTo(0);
                                   return;
                                 }
                                 if (phoneController.text.trim().isEmpty &&
-                                    emailController.text.trim().isEmpty &&
-                                    lineIdController.text.trim().isEmpty) {
+                                    emailController.text.trim().isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text('請至少填寫一項聯絡方式')));
+                                      SnackBar(
+                                          content: Text('phoneEmailRequired'.tr())));
                                   DefaultTabController.of(context).animateTo(0);
                                   return;
                                 }
@@ -911,7 +933,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                               debounceTimer?.cancel();
                               Navigator.pop(context);
                             },
-                            child: const Text('新增'),
+                            child: Text('add'.tr()),
                           ),
                           const SizedBox(width: 4),
                         ],
@@ -953,7 +975,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('刪除聯絡人'),
+        title: Text('deleteContact'.tr()),
         content: Text(
             '確定要刪除這 ${selectedContactIds.length} 位聯絡人嗎？\n注意：這些聯絡人參與的行程記錄也會一併被刪除，此動作無法復原。'),
         actions: [
@@ -999,7 +1021,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
         } else {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('部分聯絡人刪除失敗')));
+          ).showSnackBar(SnackBar(content: Text('someDeleteFailed'.tr())));
         }
 
         setState(() {
@@ -1021,7 +1043,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('刪除聯絡人'),
+        title: Text('deleteContact'.tr()),
         content: Text('確定要刪除這位聯絡人嗎？\n注意：此聯絡人參與的行程記錄也會一併被刪除，此動作無法復原。'),
         actions: [
           TextButton(
@@ -1070,7 +1092,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
               )
             : null,
         title: Text(
-          isSelectionMode ? '已選擇 ${selectedContactIds.length} 項' : '我的聯絡人',
+          isSelectionMode ? 'selectedCount'.tr(namedArgs: {'count': selectedContactIds.length.toString()}) : 'myContacts'.tr(),
         ),
         actions: [
           if (isSelectionMode)
@@ -1086,14 +1108,14 @@ class _ContactListScreenState extends State<ContactListScreen> {
                 Icons.checklist,
               ), // Or Icons.select_all / Icons.playlist_add_check
               onPressed: _toggleSelectionMode,
-              tooltip: '多選刪除',
+              tooltip: 'deleteSelected'.tr(),
             ),
         ],
       ),
       body: isLoading
           ? Center(child: CircularProgressIndicator())
           : contacts.isEmpty
-              ? Center(child: Text('尚無聯絡人，點擊右下角新增'))
+              ? Center(child: Text('noContacts'.tr()))
               : ListView.builder(
                   itemCount: contacts.length,
                   itemBuilder: (context, index) {
@@ -1153,7 +1175,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                           Text(
                               '預設通知: ${_getNotificationMethodLabel(contact['default_notification_method'])}',
                               style: TextStyle(
-                                  color: Colors.blueGrey, fontSize: 12)),
+                                  color: Colors.grey[600], fontSize: 12)),
                         ],
                       ),
                       trailing: isSelectionMode
@@ -1162,7 +1184,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: Icon(Icons.edit, color: Colors.blue),
+                                  icon: Icon(Icons.edit, color: Colors.black87),
                                   onPressed: () => _showEditDialog(contact),
                                 ),
                                 IconButton(
@@ -1188,6 +1210,6 @@ class _ContactListScreenState extends State<ContactListScreen> {
   String _getNotificationMethodLabel(String? method) {
     if (method == 'email') return 'Email';
     if (method == 'line') return 'LINE';
-    return '手機簡訊';
+    return 'notificationSMS'.tr();
   }
 }

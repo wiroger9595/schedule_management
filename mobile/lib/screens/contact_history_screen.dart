@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/schedule.dart';
@@ -30,14 +31,14 @@ class _ContactHistoryScreenState extends State<ContactHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.contact['nick_name'] ?? '聯絡人紀錄'),
+        title: Text(widget.contact['nick_name'] ?? 'contactHistory'.tr()),
       ),
       body: Column(
         children: [
           // Top: Contact Info
           Container(
             padding: EdgeInsets.all(20),
-            color: Colors.blue.shade50,
+            color: Colors.grey[100],
             child: Row(
               children: [
                  CircleAvatar(
@@ -95,7 +96,7 @@ class _ContactHistoryScreenState extends State<ContactHistoryScreen> {
                       children: [
                         Icon(Icons.history_toggle_off, size: 60, color: Colors.grey),
                         SizedBox(height: 16),
-                        Text('尚無與此聯絡人的互動紀錄', style: TextStyle(color: Colors.grey)),
+                        Text('noContactHistory'.tr(), style: TextStyle(color: Colors.grey)),
                       ],
                     ),
                   );

@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -191,16 +192,16 @@ class _MapScreenState extends State<MapScreen> {
                     margin: EdgeInsets.only(right: 8),
                     padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.blue[50] : Colors.grey[100],
+                      color: isSelected ? Colors.grey[200] : Colors.grey[100],
                       border: Border.all(
-                        color: isSelected ? Colors.blue : Colors.grey[300]!,
+                        color: isSelected ? Colors.black : Colors.grey[300]!,
                       ),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       name,
                       style: TextStyle(
-                        color: isSelected ? Colors.blue : Colors.grey[700],
+                        color: isSelected ? Colors.black : Colors.grey[700],
                         fontSize: 13,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       ),
@@ -245,18 +246,22 @@ class _MapScreenState extends State<MapScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Cancel Schedule'),
+        title: Text('cancelSchedule'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Are you sure you want to cancel this schedule?'),
-            SizedBox(height: 8),
+            Text(_schedule.title,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
             TextField(
               controller: reasonController,
+              autofocus: true,
+              maxLines: 3,
               decoration: InputDecoration(
-                labelText: 'Reason',
-                hintText: 'e.g. Sick, Emergency',
-                border: OutlineInputBorder(),
+                labelText: 'cancelReason'.tr(),
+                hintText: 'cancelReasonHint'.tr(),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -264,52 +269,40 @@ class _MapScreenState extends State<MapScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Back'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red,
+                foregroundColor: Colors.white),
             onPressed: () async {
-              if (reasonController.text.isEmpty) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('Reason is required')));
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('cancelReasonRequired'.tr())));
                 return;
               }
 
-              Navigator.pop(context);
+              final dialogContext = context;
+              Navigator.pop(dialogContext);
               try {
                 final apiService = ApiService();
                 await apiService.updateStatus(
                   _schedule.id,
                   ScheduleStatus.cancel,
-                  cancelReason: reasonController.text,
+                  cancelReason: reasonController.text.trim(),
                 );
 
-                setState(() {
-                  // We need to update local schedule object to reflect change immediately
-                  // But schedule is final, so we might need to refetch or create new instance
-                  // For now, let's just pop back or refresh?
-                  // Better to refresh the map screen state.
-                  // Actually MapScreen takes schedule as param.
-                });
-
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('Schedule cancelled')));
-                Navigator.pop(
-                  context,
-                  true,
-                ); // Return true to trigger refresh in HomeScreen
+                if (!mounted) return;
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(content: Text('scheduleCancelled'.tr())));
+                Navigator.pop(this.context, true);
               } catch (e) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('Failed to cancel: $e')));
+                if (!mounted) return;
+                ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
+                    content: Text('cancelFailed'.tr(
+                        namedArgs: {'error': e.toString()}))));
               }
             },
-            child: Text(
-              'Confirm Cancel',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: Text('confirm'.tr()),
           ),
         ],
       ),
@@ -367,7 +360,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Travel Plan'),
+        title: Text('travelPlan'.tr()),
         actions: [IconButton(icon: Icon(Icons.edit), onPressed: _editSchedule)],
       ),
       body: Stack(
@@ -423,7 +416,7 @@ class _MapScreenState extends State<MapScreen> {
                 heroTag: "btn_my_location",
                 mini: true,
                 backgroundColor: Colors.white,
-                child: Icon(Icons.my_location, color: Colors.blue),
+                child: Icon(Icons.my_location, color: Colors.black87),
                 onPressed: () async {
                   if (_controller.isCompleted && _currentPosition != null) {
                     final controller = await _controller.future;
@@ -564,11 +557,11 @@ class _MapScreenState extends State<MapScreen> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: isSelected
-                                              ? Colors.blue[50]
+                                              ? Colors.grey[200]
                                               : Colors.grey[100],
                                           border: Border.all(
                                             color: isSelected
-                                                ? Colors.blue
+                                                ? Colors.black
                                                 : Colors.transparent,
                                           ),
                                           borderRadius: BorderRadius.circular(
@@ -580,7 +573,7 @@ class _MapScreenState extends State<MapScreen> {
                                             Icon(
                                               icon,
                                               color: isSelected
-                                                  ? Colors.blue
+                                                  ? Colors.black
                                                   : Colors.grey,
                                             ),
                                             SizedBox(height: 4),
@@ -589,7 +582,7 @@ class _MapScreenState extends State<MapScreen> {
                                               style: TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 color: isSelected
-                                                    ? Colors.blue
+                                                    ? Colors.black
                                                     : Colors.black,
                                               ),
                                             ),
@@ -619,7 +612,7 @@ class _MapScreenState extends State<MapScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Estimated Arrival',
+                              'estimatedArrival'.tr(),
                               style: TextStyle(
                                 color: Colors.grey,
                                 fontSize: 12,
@@ -648,14 +641,14 @@ class _MapScreenState extends State<MapScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              'Status',
+                              'status'.tr(),
                               style: TextStyle(
                                 color: Colors.grey,
                                 fontSize: 12,
                               ),
                             ),
                             Text(
-                              _isLate ? 'Running Late' : 'On Time',
+                              _isLate ? 'runningLate'.tr() : 'onTime'.tr(),
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -674,7 +667,7 @@ class _MapScreenState extends State<MapScreen> {
                         width: double.infinity,
                         child: ElevatedButton.icon(
                           icon: Icon(Icons.notifications),
-                          label: Text('Notify Others'),
+                          label: Text('notifyOthers'.tr()),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,
@@ -690,7 +683,7 @@ class _MapScreenState extends State<MapScreen> {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           icon: Icon(Icons.cancel),
-                          label: Text('Cancel Schedule'),
+                          label: Text('cancelSchedule'.tr()),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
                           ),
@@ -700,7 +693,7 @@ class _MapScreenState extends State<MapScreen> {
                     ] else ...[
                       SizedBox(height: 12),
                       Text(
-                        'Cancelled: ${_schedule.cancelReason ?? "No reason"}',
+                        'cancelledLabel'.tr(namedArgs: {'reason': _schedule.cancelReason ?? 'noReason'.tr()}),
                         style: TextStyle(
                           color: Colors.red,
                           fontWeight: FontWeight.bold,
@@ -711,27 +704,21 @@ class _MapScreenState extends State<MapScreen> {
                         width: double.infinity,
                         child: ElevatedButton.icon(
                           icon: Icon(Icons.restore),
-                          label: Text('Restore Schedule'),
+                          label: Text('restoreSchedule'.tr()),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.grey[200],
                             foregroundColor: Colors.black,
                           ),
                           onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             try {
                               final apiService = ApiService();
                               await apiService.updateStatus(
                                 _schedule.id,
                                 ScheduleStatus.pending,
-                                cancelReason:
-                                    null, // Clear reason? API might ignore nulls if not explicit.
                               );
-                              // API updateStatus logic: if cancelReason is not in dict, it's not updated.
-                              // But `updateStatus` in ApiService takes `cancelReason` and puts it in if not null.
-                              // If I want to clear it, I might need to send empty string or handle it in backend.
-                              // For now, just changing status to PENDING is enough to "restore" it.
-
+                              if (!mounted) return;
                               setState(() {
-                                // Optimistically update
                                 _schedule = Schedule(
                                   id: _schedule.id,
                                   title: _schedule.title,
@@ -741,26 +728,23 @@ class _MapScreenState extends State<MapScreen> {
                                   location: _schedule.location,
                                   latitude: _schedule.latitude,
                                   longitude: _schedule.longitude,
-                                  status:
-                                      ScheduleStatus.pending, // Back to pending
+                                  status: ScheduleStatus.pending,
                                   transportMode: _schedule.transportMode,
                                   attendIds: _schedule.attendIds,
-                                  cancelReason: _schedule
-                                      .cancelReason, // Keep reason for history or clear it?
+                                  cancelReason: null,
                                   contactName: _schedule.contactName,
                                   contactEmail: _schedule.contactEmail,
                                   contactPhone: _schedule.contactPhone,
                                   contactLineId: _schedule.contactLineId,
                                 );
                               });
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Schedule restored')),
+                              messenger.showSnackBar(
+                                SnackBar(content: Text('scheduleRestored'.tr())),
                               );
                             } catch (e) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Failed to restore: $e'),
-                                ),
+                              messenger.showSnackBar(
+                                SnackBar(content: Text('restoreFailed'.tr(
+                                    namedArgs: {'error': e.toString()}))),
                               );
                             }
                           },

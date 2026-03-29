@@ -103,7 +103,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         final response = await http.Response.fromStream(streamedResponse);
 
         if (response.statusCode != 200) {
-          throw Exception('圖片上傳失敗');
+          throw Exception('imageUploadFailed'.tr());
         }
       }
 
@@ -139,11 +139,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   String _getLanguageName(String code) {
     switch (code) {
       case 'zh-TW':
-        return '繁體中文';
+        return 'traditionalChinese'.tr();
       case 'en':
         return 'English';
       case 'ja':
-        return '日本語';
+        return 'japanese'.tr();
       default:
         return code;
     }
@@ -181,7 +181,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     child: FloatingActionButton(
                       mini: true,
                       onPressed: _pickImage,
-                      backgroundColor: Colors.purple[700],
+                      backgroundColor: Colors.black,
                       child: Icon(Icons.camera_alt, size: 20),
                     ),
                   ),
@@ -267,9 +267,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 border: OutlineInputBorder(),
               ),
               items: [
-                DropdownMenuItem(value: 'zh-TW', child: Text('繁體中文')),
+                DropdownMenuItem(value: 'zh-TW', child: Text('traditionalChinese'.tr())),
                 DropdownMenuItem(value: 'en', child: Text('English')),
-                DropdownMenuItem(value: 'ja', child: Text('日本語')),
+                DropdownMenuItem(value: 'ja', child: Text('japanese'.tr())),
               ],
               onChanged: (value) {
                 setState(() => _selectedLanguage = value!);
@@ -288,7 +288,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               items: [
                 DropdownMenuItem(value: 'line', child: Text('Line')),
                 DropdownMenuItem(
-                    value: 'sms', child: Text('SMS/簡訊')), // Localized 'Phone'
+                    value: 'sms', child: Text('notificationSMSShort'.tr())),
                 DropdownMenuItem(value: 'email', child: Text('Email')),
               ],
               onChanged: (value) {
@@ -303,7 +303,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _saveProfile,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple[700],
+                  backgroundColor: Colors.black,
                 ),
                 child: _isLoading
                     ? SizedBox(

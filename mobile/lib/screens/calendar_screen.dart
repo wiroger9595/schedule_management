@@ -100,9 +100,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   Widget build(BuildContext context) {
     final innerTabBar = TabBar(
       controller: _tabController,
-      labelColor: Colors.blue[700],
-      unselectedLabelColor: Colors.grey,
-      indicatorColor: Colors.blue[700],
+      labelColor: Colors.white,
+      unselectedLabelColor: Colors.white60,
+      indicatorColor: Colors.white,
       tabs: [
         Tab(icon: Icon(Icons.calendar_month), text: 'month'.tr()),
         Tab(icon: Icon(Icons.view_week), text: 'week'.tr()),
@@ -154,7 +154,7 @@ class _CalendarScreenState extends State<CalendarScreen>
           _loadSchedules();
         },
         child: Icon(Icons.add),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.black,
       ),
     );
   }
@@ -190,11 +190,11 @@ class _CalendarScreenState extends State<CalendarScreen>
               },
               calendarStyle: CalendarStyle(
                 todayDecoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 selectedDecoration: BoxDecoration(
-                  color: Colors.blue,
+                  color: Colors.black,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -281,10 +281,10 @@ class _CalendarScreenState extends State<CalendarScreen>
 
                 return Card(
                   margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  color: isToday ? Colors.blue.withOpacity(0.1) : null,
+                  color: isToday ? Colors.black.withValues(alpha: 0.07) : null,
                   child: ExpansionTile(
                     leading: CircleAvatar(
-                      backgroundColor: isToday ? Colors.blue : Colors.grey,
+                      backgroundColor: isToday ? Colors.black : Colors.grey,
                       child: Text(
                         '${day.day}',
                         style: TextStyle(color: Colors.white),

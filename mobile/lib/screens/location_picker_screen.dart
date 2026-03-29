@@ -600,10 +600,10 @@ class __SearchOverlayState extends State<_SearchOverlay> {
                                 leading: Container(
                                    padding: EdgeInsets.all(8),
                                    decoration: BoxDecoration(
-                                      color: Colors.blue[50], // Soft blue bg
+                                      color: Colors.grey[200],
                                       shape: BoxShape.circle,
                                    ),
-                                   child: Icon(Icons.place, color: Colors.blue),
+                                   child: Icon(Icons.place, color: Colors.black87),
                                 ),
                                 title: Text(place['name'] ?? '', style: TextStyle(fontWeight: FontWeight.w600)),
                                 subtitle: Text(place['address'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),

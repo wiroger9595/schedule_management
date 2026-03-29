@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -47,7 +48,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
     if (_phoneController.text.trim().isEmpty &&
         _emailController.text.trim().isEmpty &&
         _lineIdController.text.trim().isEmpty) {
-      return '請至少填寫一項';
+      return 'phoneEmailRequired'.tr();
     }
     return null;
   }
@@ -75,10 +76,10 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
           setState(() {
             final dup = result['duplicate_field'];
             if (dup == 'phone')
-              _phoneError = '此號碼已存在';
+              _phoneError = 'phoneExists'.tr();
             else if (dup == 'email')
-              _emailError = '此Email已存在';
-            else if (dup == 'line') _lineError = '此Line ID已存在';
+              _emailError = 'emailExists'.tr();
+            else if (dup == 'line') _lineError = 'lineExists'.tr();
           });
         }
       } catch (e) {
@@ -192,7 +193,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('聯絡人建立成功並已選取')),
+            SnackBar(content: Text('contactCreatedSelected'.tr())),
           );
         }
       } else {
@@ -225,7 +226,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              '選擇參與者',
+              'selectParticipants'.tr(),
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
@@ -236,8 +237,8 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
             labelColor: Theme.of(context).primaryColor,
             unselectedLabelColor: Colors.grey,
             tabs: [
-              Tab(text: '選擇聯絡人'),
-              Tab(text: '新增聯絡人'),
+              Tab(text: 'selectContact'.tr()),
+              Tab(text: 'addContact'.tr()),
             ],
           ),
 
@@ -262,7 +263,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text('取消'),
+                    child: Text('cancel'.tr()),
                   ),
                 ),
                 SizedBox(width: 16),
@@ -272,7 +273,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
                       widget.onSelectionChanged(_selectedContacts);
                       Navigator.pop(context);
                     },
-                    child: Text('完成 (${_selectedContacts.length})'),
+                    child: Text('doneCount'.tr(namedArgs: {'count': _selectedContacts.length.toString()})),
                   ),
                 ),
               ],
@@ -289,7 +290,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
     }
 
     if (_allContacts.isEmpty) {
-      return Center(child: Text('尚無聯絡人，請由右側分頁新增'));
+      return Center(child: Text('noContacts'.tr()));
     }
 
     return ListView.builder(
@@ -331,17 +332,17 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
             TextFormField(
               controller: _nameController,
               decoration: InputDecoration(
-                labelText: '姓名/暱稱 *',
+                labelText: 'enterName'.tr(),
                 prefixIcon: Icon(Icons.person),
                 border: OutlineInputBorder(),
               ),
-              validator: (v) => v?.trim().isEmpty == true ? '請輸入姓名' : null,
+              validator: (v) => v?.trim().isEmpty == true ? 'enterName'.tr() : null,
             ),
             SizedBox(height: 16),
             TextFormField(
               controller: _phoneController,
               decoration: InputDecoration(
-                labelText: '電話',
+                labelText: 'phone'.tr(),
                 prefixIcon: Icon(Icons.phone),
                 border: OutlineInputBorder(),
                 errorText: _phoneError,
@@ -391,7 +392,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
                         child: CircularProgressIndicator(
                             color: Colors.white, strokeWidth: 2))
                     : Icon(Icons.save),
-                label: Text(_isCreating ? '儲存中...' : '儲存並選取'),
+                label: Text(_isCreating ? 'saving'.tr() : 'saveAndSelect'.tr()),
                 onPressed: _isCreating ? null : _createContact,
               ),
             ),

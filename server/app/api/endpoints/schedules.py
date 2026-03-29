@@ -65,6 +65,8 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
             latitude=data.latitude,
             longitude=data.longitude,
             
+            is_online=data.is_online or False,
+
             # Contact Details - Strict contact_id logic
             contact_id=contact_id,
             # Legacy fields removed
@@ -396,6 +398,7 @@ def update_schedule(
     
     if data.transport_mode is not None: schedule.transport_mode = data.transport_mode
     if data.status is not None: schedule.status = data.status
+    if data.is_online is not None: schedule.is_online = data.is_online
     
     # Update contact_id if present
     if data.contact_id is not None:

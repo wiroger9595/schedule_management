@@ -185,15 +185,6 @@ class _TodoListScreenState extends State<TodoListScreen> {
     return Scaffold(
       appBar: widget.isEmbedded ? null : AppBar(
         title: Text('todoList'.tr()),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.purple[700]!, Colors.blue[700]!],
-            ),
-          ),
-        ),
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
@@ -224,10 +215,10 @@ class _TodoListScreenState extends State<TodoListScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: isActive ? Colors.purple[100] : Colors.grey[300],
+                          backgroundColor: isActive ? Colors.grey[200] : Colors.grey[300],
                           child: Icon(
                             isCompleted ? Icons.check : (isCancelled ? Icons.close : Icons.note_alt_outlined),
-                            color: isActive ? Colors.purple[700] : Colors.grey[600]
+                            color: isActive ? Colors.black87 : Colors.grey[600]
                           ),
                         ),
                         title: Text(
@@ -248,7 +239,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    icon: Icon(Icons.edit, color: Colors.blue),
+                                    icon: Icon(Icons.edit, color: Colors.black87),
                                     onPressed: () => _showEditDialog(comment),
                                     tooltip: 'edit'.tr(),
                                   ),
@@ -276,7 +267,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
         onPressed: _showAddDialog,
         icon: Icon(Icons.add),
         label: Text('addTodo'.tr()),
-        backgroundColor: Colors.purple[700],
+        backgroundColor: Colors.black,
       ),
     );
   }

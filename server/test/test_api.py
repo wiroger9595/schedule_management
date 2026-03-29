@@ -1,7 +1,7 @@
 import requests
 import json
 
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://localhost:7800"
 
 def test_create_schedule():
     print("--- 測試新增行程 ---")
