@@ -222,5 +222,9 @@
   "physicalLocation": "實體地點",
   "onlineMeetingLink": "會議連結",
   "onlineMeetingLinkHint": "例如：https://meet.google.com/...",
-  "openLink": "開啟連結"
+  "openLink": "開啟連結",
+  "reminder2hTitle": "即將開始：{title}",
+  "reminder2hBody": "「{title}」將在 2 小時後開始",
+  "reminder1hTitle": "快要開始了：{title}",
+  "reminder1hBody": "「{title}」將在 1 小時後開始，請準備出發！"
 }

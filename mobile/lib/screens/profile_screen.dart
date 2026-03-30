@@ -57,19 +57,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  String _getDefaultSendingName(String? code) {
-    switch (code) {
-      case 'line':
-        return 'Line';
-      case 'sms':
-        return 'notificationSMSShort'.tr();
-      case 'email':
-        return 'Email';
-      default:
-        return code ?? 'Line'; // Default fallback
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -173,10 +160,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildInfoCard(
                       'language'.tr(),
                       _getLanguageName(_user!['language']),
-                    ),
-                    _buildInfoCard(
-                      'defaultNotificationMethod'.tr() ?? '預設通知方式',
-                      _getDefaultSendingName(_user!['default_sending']),
                     ),
                   ],
                 ),

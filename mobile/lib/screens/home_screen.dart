@@ -308,48 +308,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final now = DateTime.now();
       final startTime = schedule.startTime;
+      final args = {'title': schedule.title};
 
-      // 24 hours before
-      final reminder24h = startTime.subtract(Duration(hours: 24));
-      if (reminder24h.isAfter(now)) {
-        await notificationService.scheduleNotification(
-          id: schedule.id.hashCode,
-          title: '行程提醒: ${schedule.title}',
-          body: '您的行程將在 24 小時後開始',
-          scheduledTime: reminder24h,
-        );
-      }
-
-      // 3 hours before
-      final reminder3h = startTime.subtract(Duration(hours: 3));
-      if (reminder3h.isAfter(now)) {
-        await notificationService.scheduleNotification(
-          id: schedule.id.hashCode + 1,
-          title: '行程準備: ${schedule.title}',
-          body: '您的行程將在 3 小時後開始',
-          scheduledTime: reminder3h,
-        );
-      }
-
-      // 2 hours before - Attend / Cancel Prompt
+      // 2 hours before
       final reminder2h = startTime.subtract(Duration(hours: 2));
       if (reminder2h.isAfter(now)) {
         await notificationService.scheduleNotification(
-          id: schedule.id.hashCode + 3, // Unique ID offset
-          title: '行程即將開始: ${schedule.title}',
-          body: '您的行程將在 2 小時後開始，請問是否確定出席？請開啟 App 確認或取消。',
+          id: schedule.id.hashCode,
+          title: 'reminder2hTitle'.tr(namedArgs: args),
+          body: 'reminder2hBody'.tr(namedArgs: args),
           scheduledTime: reminder2h,
         );
       }
 
-      // 30 minutes before
-      final reminder30m = startTime.subtract(Duration(minutes: 30));
-      if (reminder30m.isAfter(now)) {
+      // 1 hour before
+      final reminder1h = startTime.subtract(Duration(hours: 1));
+      if (reminder1h.isAfter(now)) {
         await notificationService.scheduleNotification(
-          id: schedule.id.hashCode + 2,
-          title: '行程即將開始: ${schedule.title}',
-          body: '您的行程將在 30 分鐘後開始，請準備出發！',
-          scheduledTime: reminder30m,
+          id: schedule.id.hashCode + 1,
+          title: 'reminder1hTitle'.tr(namedArgs: args),
+          body: 'reminder1hBody'.tr(namedArgs: args),
+          scheduledTime: reminder1h,
         );
       }
     }

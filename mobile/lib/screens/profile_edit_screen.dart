@@ -1,17 +1,14 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'dart:convert';
 import '../services/api_service.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/form_validators.dart';
 import '../widgets/user_avatar.dart';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -28,7 +25,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late TextEditingController _phoneController;
   late TextEditingController _lineIdController;
   String _selectedLanguage = 'zh-TW';
-  String _defaultSending = 'line';
   Uint8List? _imageBytes;
   String? _imageFileName;
   bool _isLoading = false;
@@ -40,7 +36,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _phoneController = TextEditingController(text: widget.user['phone']);
     _lineIdController = TextEditingController(text: widget.user['line_id']);
     _selectedLanguage = widget.user['language'] ?? 'zh-TW';
-    _defaultSending = widget.user['default_sending'] ?? 'line';
   }
 
   @override
@@ -116,7 +111,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         'line_id':
             _lineIdController.text.isNotEmpty ? _lineIdController.text : null,
         'language': _selectedLanguage,
-        'default_sending': _defaultSending,
       });
 
       if (mounted) {
@@ -277,24 +271,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             ),
             SizedBox(height: 16),
 
-            // 預設通知方式
-            DropdownButtonFormField<String>(
-              value: _defaultSending,
-              decoration: InputDecoration(
-                labelText: 'defaultNotificationMethod'.tr() ?? '預設通知方式',
-                prefixIcon: Icon(Icons.notifications),
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                DropdownMenuItem(value: 'line', child: Text('Line')),
-                DropdownMenuItem(
-                    value: 'sms', child: Text('notificationSMSShort'.tr())),
-                DropdownMenuItem(value: 'email', child: Text('Email')),
-              ],
-              onChanged: (value) {
-                setState(() => _defaultSending = value!);
-              },
-            ),
             SizedBox(height: 32),
 
             // 儲存按鈕
