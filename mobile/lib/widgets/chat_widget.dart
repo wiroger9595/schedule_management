@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../screens/location_picker_screen.dart';
 
@@ -23,13 +24,16 @@ class ChatWidgetState extends State<ChatWidget> {
       []; // Changed to Widget to support different message types
   bool _isLoading = false;
   final ScrollController _scrollController = ScrollController();
-  Map<String, dynamic>? _currentContext; // Persist context
+  Map<String, dynamic>? _currentContext;
+  // Full conversation history sent to AI — keeps track of what was actually said
+  final List<Map<String, String>> _conversationHistory = [];
 
   void clearChat() {
     setState(() {
       _controller.clear();
       _messages.clear();
       _currentContext = null;
+      _conversationHistory.clear();
       _showMentionList = false;
       _isLoading = false;
       _messages.add(ChatMessage(text: "對話與記憶已清空，請重新輸入您的行程資訊。", isUser: false));
@@ -252,6 +256,8 @@ class ChatWidgetState extends State<ChatWidget> {
     if (messageText.isEmpty && !forceCreate) return;
 
     if (!forceCreate) {
+      // Record user turn in conversation history before sending
+      _conversationHistory.add({'role': 'user', 'content': messageText});
       setState(() {
         _messages.add(ChatMessage(text: messageText, isUser: true));
         _isLoading = true;
@@ -268,10 +274,9 @@ class ChatWidgetState extends State<ChatWidget> {
       final apiService = ApiService();
 
       // Get current location (best effort) or use overridden ones
-      Position? position;
       double? finalLat = overrideLat;
       double? finalLon = overrideLon;
-      
+
       if (finalLat == null || finalLon == null) {
         try {
           bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -282,21 +287,22 @@ class ChatWidgetState extends State<ChatWidget> {
             }
             if (permission != LocationPermission.denied &&
                 permission != LocationPermission.deniedForever) {
-              position = await Geolocator.getCurrentPosition(
-                timeLimit: Duration(seconds: 5),
+              final position = await Geolocator.getCurrentPosition(
+                locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
               );
-              finalLat = position?.latitude;
-              finalLon = position?.longitude;
+              finalLat = position.latitude;
+              finalLon = position.longitude;
             }
           }
         } catch (e) {
-          print("Error getting location for chat: $e");
+          debugPrint('Error getting location for chat: $e');
         }
       }
 
       final data = await apiService.chatWithAI(
-        forceCreate ? "Confirm" : messageText,
+        forceCreate ? 'Confirm' : messageText,
         currentContext: _currentContext,
+        conversationHistory: _conversationHistory,
         forceCreate: forceCreate,
         confirmLocation: forceCreate,
         latitude: finalLat,
@@ -304,13 +310,19 @@ class ChatWidgetState extends State<ChatWidget> {
       );
 
       if (mounted) {
+        final aiReply = data['ai_reply'] as String? ?? '';
+        // Record AI turn in conversation history
+        if (aiReply.isNotEmpty) {
+          _conversationHistory.add({'role': 'assistant', 'content': aiReply});
+        }
+
         setState(() {
-          _currentContext = data['updated_data']; // Update context
+          _currentContext = data['updated_data'];
 
           if (data['conflict'] != null) {
             // Conflict Detected
             _messages.add(
-              ChatMessage(text: data['ai_reply'] ?? 'timeConflict'.tr(), isUser: false),
+              ChatMessage(text: aiReply.isNotEmpty ? aiReply : 'timeConflict'.tr(), isUser: false),
             );
             _messages.add(
               ConflictMessage(
@@ -325,60 +337,70 @@ class ChatWidgetState extends State<ChatWidget> {
               ),
             );
           } else if (data['needs_location_confirm'] == true) {
-            // Location confirmation required
-            _messages.add(
-              ChatMessage(text: data['ai_reply'] ?? '請確認地點是否正確：', isUser: false),
-            );
-            _messages.add(
-              LocationConfirmMessage(
-                onConfirm: () => _sendMessage(forceCreate: true),
-                onChange: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          LocationPickerScreen(
-                            initialLat: data['location_details']?['lat'],
-                            initialLon: data['location_details']?['lon'],
-                          ),
-                    ),
-                  );
+            _messages.add(ChatMessage(text: aiReply, isUser: false));
 
-                  if (result != null && result is Map<String, dynamic>) {
-                    final lat = result['latitude'];
-                    final lon = result['longitude'];
-                    final address = result['address'];
+            final candidates = data['location_candidates'] as List<dynamic>?;
 
+            if (candidates != null && candidates.length > 1) {
+              // Multiple candidates — show a selectable list
+              _messages.add(
+                LocationCandidatesMessage(
+                  candidates: candidates.cast<Map<String, dynamic>>(),
+                  onSelect: (candidate) {
+                    final lat = (candidate['lat'] as num?)?.toDouble();
+                    final lon = (candidate['lon'] as num?)?.toDouble();
+                    final name = candidate['name'] as String? ?? '';
+                    _conversationHistory.add({'role': 'user', 'content': '我選擇地點：$name'});
                     setState(() {
-                      _messages.add(ChatMessage(text: "已手動選擇地點：$address", isUser: true));
+                      _messages.add(ChatMessage(text: '已選擇地點：$name', isUser: true));
+                      _currentContext ??= {};
+                      _currentContext!['location'] = name;
+                      _currentContext!['latitude'] = lat;
+                      _currentContext!['longitude'] = lon;
                     });
-
-                    // Update the context with the new address so backend uses it
+                    _sendMessage(forceCreate: true, overrideLat: lat, overrideLon: lon);
+                  },
+                  onPickMap: () => _pickFromMap(data),
+                ),
+              );
+            } else {
+              // Single high-confidence match — show card with address + confirm/reject
+              final det = data['location_details'] as Map<String, dynamic>?;
+              final detName = det?['name'] as String? ?? '';
+              final detAddress = det?['address'] as String? ?? '';
+              final detLat = (det?['lat'] as num?)?.toDouble();
+              final detLon = (det?['lon'] as num?)?.toDouble();
+              _messages.add(
+                LocationConfirmMessage(
+                  name: detName,
+                  address: detAddress,
+                  lat: detLat,
+                  lon: detLon,
+                  onConfirm: () {
+                    _conversationHistory.add({'role': 'user', 'content': '確認地點：$detName'});
+                    _sendMessage(forceCreate: true, overrideLat: detLat, overrideLon: detLon);
+                  },
+                  onReject: () {
+                    // Clear location from context so AI asks again
                     _currentContext ??= {};
-                    _currentContext!['location'] = address;
-                    _currentContext!['latitude'] = lat;
-                    _currentContext!['longitude'] = lon;
-
-                    // Immediately dispatch the save request with the fixed location
-                    final newPosData = {
-                      'latitude': lat,
-                      'longitude': lon,
-                    };
-                    
-                    _sendMessage(
-                      forceCreate: true,
-                      overrideLat: newPosData['latitude'],
-                      overrideLon: newPosData['longitude'],
-                    );
-                  }
-                },
-              ),
-            );
+                    _currentContext!.remove('location');
+                    _sendMessage(text: '找到的地點「$detName」不正確，請問您可以提供更詳細的地址嗎？');
+                  },
+                  onChange: () => _pickFromMap(data),
+                ),
+              );
+            }
           } else {
-            // Normal reply
-            _messages.add(
-              ChatMessage(text: data['ai_reply'] ?? '', isUser: false),
-            );
+            // Normal reply or schedule created
+            if (data['schedule'] != null) {
+              final scheduleTitle = (data['updated_data']?['title'] as String?) ?? '';
+              final successMsg = aiReply.isNotEmpty
+                  ? aiReply
+                  : '✅ 行程${scheduleTitle.isNotEmpty ? "「$scheduleTitle」" : ""}已建立！';
+              _messages.add(ChatMessage(text: successMsg, isUser: false));
+            } else if (aiReply.isNotEmpty) {
+              _messages.add(ChatMessage(text: aiReply, isUser: false));
+            }
           }
 
           _isLoading = false;
@@ -395,6 +417,33 @@ class ChatWidgetState extends State<ChatWidget> {
         _messages.add(ChatMessage(text: '抱歉，發生錯誤：$e', isUser: false));
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _pickFromMap(Map<String, dynamic> data) async {
+    final det = data['location_details'] ?? (data['location_candidates'] as List?)?.first;
+    final navigator = Navigator.of(context); // capture before async gap
+    final result = await navigator.push(
+      MaterialPageRoute(
+        builder: (context) => LocationPickerScreen(
+          initialLat: (det?['lat'] as num?)?.toDouble(),
+          initialLon: (det?['lon'] as num?)?.toDouble(),
+        ),
+      ),
+    );
+    if (result != null && result is Map<String, dynamic> && mounted) {
+      final lat = (result['latitude'] as num?)?.toDouble();
+      final lon = (result['longitude'] as num?)?.toDouble();
+      final address = result['address'] as String? ?? result['name'] as String? ?? '';
+      _conversationHistory.add({'role': 'user', 'content': '我手動在地圖選擇地點：$address'});
+      setState(() {
+        _messages.add(ChatMessage(text: '已手動選擇地點：$address', isUser: true));
+        _currentContext ??= {};
+        _currentContext!['location'] = address;
+        _currentContext!['latitude'] = lat;
+        _currentContext!['longitude'] = lon;
+      });
+      _sendMessage(forceCreate: true, overrideLat: lat, overrideLon: lon);
     }
   }
 
@@ -537,7 +586,7 @@ class ChatMessage extends StatelessWidget {
   final String text;
   final bool isUser;
 
-  ChatMessage({required this.text, required this.isUser});
+  const ChatMessage({super.key, required this.text, required this.isUser});
 
   @override
   Widget build(BuildContext context) {
@@ -587,11 +636,18 @@ class ChatMessage extends StatelessWidget {
   }
 }
 
-class ConflictMessage extends StatelessWidget {
+class ConflictMessage extends StatefulWidget {
   final VoidCallback onConfirm;
   final VoidCallback onChange;
 
-  ConflictMessage({required this.onConfirm, required this.onChange});
+  const ConflictMessage({super.key, required this.onConfirm, required this.onChange});
+
+  @override
+  State<ConflictMessage> createState() => _ConflictMessageState();
+}
+
+class _ConflictMessageState extends State<ConflictMessage> {
+  bool _tapped = false;
 
   @override
   Widget build(BuildContext context) {
@@ -603,7 +659,10 @@ class ConflictMessage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton(
-                onPressed: onChange,
+                onPressed: _tapped ? null : () {
+                  setState(() => _tapped = true);
+                  widget.onChange();
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.grey[300],
                   foregroundColor: Colors.black,
@@ -611,7 +670,10 @@ class ConflictMessage extends StatelessWidget {
                 child: Text('changeTime'.tr()),
               ),
               ElevatedButton(
-                onPressed: onConfirm,
+                onPressed: _tapped ? null : () {
+                  setState(() => _tapped = true);
+                  widget.onConfirm();
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -626,38 +688,157 @@ class ConflictMessage extends StatelessWidget {
   }
 }
 
-class LocationConfirmMessage extends StatelessWidget {
-  final VoidCallback onConfirm;
-  final VoidCallback onChange;
+/// Shows a selectable list of location candidates returned by the validation tool.
+Future<void> _openInGoogleMaps(double? lat, double? lon, String? name) async {
+  if (lat == null || lon == null) return;
+  final query = Uri.encodeComponent(name ?? '$lat,$lon');
+  final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query&center=$lat,$lon');
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
 
-  LocationConfirmMessage({required this.onConfirm, required this.onChange});
+class LocationCandidatesMessage extends StatelessWidget {
+  final List<Map<String, dynamic>> candidates;
+  final void Function(Map<String, dynamic>) onSelect;
+  final VoidCallback onPickMap;
+
+  const LocationCandidatesMessage({
+    super.key,
+    required this.candidates,
+    required this.onSelect,
+    required this.onPickMap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 40.0),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton(
-                onPressed: onChange,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey[300],
-                  foregroundColor: Colors.black,
+          ...candidates.map((c) {
+            final lat = (c['lat'] as num?)?.toDouble();
+            final lon = (c['lon'] as num?)?.toDouble();
+            final name = c['name'] as String? ?? '';
+            return Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                leading: const Icon(Icons.location_on, color: Colors.black54),
+                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(c['address'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  icon: const Icon(Icons.open_in_new, size: 18, color: Colors.blue),
+                  tooltip: 'Google Maps で確認',
+                  onPressed: () => _openInGoogleMaps(lat, lon, name),
                 ),
-                child: Text('changeLocation'.tr()),
+                onTap: () => onSelect(c),
               ),
-              ElevatedButton(
-                onPressed: onConfirm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
+            );
+          }),
+          TextButton.icon(
+            onPressed: onPickMap,
+            icon: const Icon(Icons.map, size: 16),
+            label: Text('changeLocation'.tr()),
+            style: TextButton.styleFrom(foregroundColor: Colors.black54),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LocationConfirmMessage extends StatefulWidget {
+  final VoidCallback onConfirm;
+  final VoidCallback onChange;
+  final VoidCallback? onReject;
+  final String? name;
+  final String? address;
+  final double? lat;
+  final double? lon;
+
+  const LocationConfirmMessage({
+    super.key,
+    required this.onConfirm,
+    required this.onChange,
+    this.onReject,
+    this.name,
+    this.address,
+    this.lat,
+    this.lon,
+  });
+
+  @override
+  State<LocationConfirmMessage> createState() => _LocationConfirmMessageState();
+}
+
+class _LocationConfirmMessageState extends State<LocationConfirmMessage> {
+  bool _tapped = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.name != null || widget.address != null)
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.location_on, color: Colors.black54),
+                title: Text(widget.name ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: widget.address != null && widget.address!.isNotEmpty
+                    ? Text(widget.address!, maxLines: 2, overflow: TextOverflow.ellipsis)
+                    : null,
+                trailing: widget.lat != null && widget.lon != null
+                    ? IconButton(
+                        icon: const Icon(Icons.open_in_new, size: 18, color: Colors.blue),
+                        tooltip: '在 Google Maps 確認',
+                        onPressed: () => _openInGoogleMaps(widget.lat, widget.lon, widget.name),
+                      )
+                    : null,
+              ),
+            ),
+          Row(
+            children: [
+              if (widget.onReject != null)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: OutlinedButton(
+                      onPressed: _tapped ? null : () {
+                        setState(() => _tapped = true);
+                        widget.onReject!();
+                      },
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red[700]),
+                      child: const Text('不是這裡'),
+                    ),
+                  ),
                 ),
-                child: Text('confirmLocation'.tr()),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: ElevatedButton(
+                    onPressed: _tapped ? null : () {
+                      setState(() => _tapped = true);
+                      widget.onConfirm();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text('confirmLocation'.tr()),
+                  ),
+                ),
               ),
             ],
+          ),
+          TextButton.icon(
+            onPressed: _tapped ? null : widget.onChange,
+            icon: const Icon(Icons.map, size: 16),
+            label: Text('changeLocation'.tr()),
+            style: TextButton.styleFrom(foregroundColor: Colors.black54),
           ),
         ],
       ),

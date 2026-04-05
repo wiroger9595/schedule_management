@@ -138,6 +138,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> chatWithAI(String message,
       {Map<String, dynamic>? currentContext,
+      List<Map<String, String>>? conversationHistory,
       bool forceCreate = false,
       bool confirmLocation = false,
       double? latitude,
@@ -145,6 +146,8 @@ class ApiService {
     final body = {
       'message': message,
       if (currentContext != null) 'current_data': currentContext,
+      if (conversationHistory != null && conversationHistory.isNotEmpty)
+        'conversation_history': conversationHistory,
       'force_create': forceCreate,
       'confirm_location': confirmLocation,
       'latitude': latitude,
@@ -290,16 +293,45 @@ class ApiService {
     }
   }
 
+  Future<void> updateFcmToken(String token) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/me/fcm-token'),
+      headers: await getHeaders(),
+      body: jsonEncode({'fcm_token': token}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update FCM token');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getMyInvitations() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/users/me/invitations'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Failed to load invitations');
+    }
+  }
+
+  Future<void> respondToInvitation(String attendId, String action) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/me/invitations/$attendId/respond?action=$action'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to respond to invitation');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> searchPlaces(
-      String query, double? lat, double? lon,
-      {double? zoom}) async {
+      String query, double? lat, double? lon) async {
     final headers = await getHeaders();
     String url = '$baseUrl/estimate/search?q=$query';
     if (lat != null && lon != null) {
       url += '&lat=$lat&lon=$lon';
-    }
-    if (zoom != null) {
-      url += '&zoom=$zoom';
     }
 
     final response = await http.get(

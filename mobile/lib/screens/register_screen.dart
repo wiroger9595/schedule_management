@@ -25,33 +25,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _formKey.currentState!.save();
       setState(() => isLoading = true);
       try {
-        bool success = await _authService.register(email, password, fullName);
-        if (success) {
+        await _authService.register(email, password, fullName);
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('註冊成功，請登入')),
           );
           Navigator.pop(context);
-        } else {
-             // Basic registration failed
-             setState(() {
-                 _emailError = '註冊失敗，該信箱可能已被使用';
-             });
         }
       } catch (e) {
-          // Check if error message contains "already registered" keywords if possible,
-          // but usually the service just returns false or throws.
-          // For now, if it throws, we might still want to show snackbar for network errors,
-          // but if it's a 400 from API for duplicate email, AuthService might throw.
-          // Let's assume generic error for now, but prioritize email error if likely.
-          if (e.toString().contains("400") || e.toString().contains("registered")) {
-               setState(() {
-                 _emailError = 'emailAlreadyRegistered'.tr();
-               });
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('註冊錯誤: $e')),
-            );
-          }
+        final msg = e.toString().replaceFirst('Exception: ', '');
+        final isEmailTaken = msg.toLowerCase().contains('already registered') ||
+            msg.toLowerCase().contains('email');
+        if (isEmailTaken) {
+          setState(() => _emailError = '此信箱已被註冊，請直接登入');
+        } else {
+          setState(() => _emailError = msg);
+        }
       } finally {
         setState(() => isLoading = false);
       }

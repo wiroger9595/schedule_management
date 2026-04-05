@@ -57,6 +57,46 @@ class _MapScreenState extends State<MapScreen> {
       _currentPosition = position;
     });
 
+    // If coords are missing but location name exists, geocode on-the-fly
+    if ((_schedule.latitude == null || _schedule.longitude == null) &&
+        _schedule.location != null && _schedule.location!.isNotEmpty) {
+      print('No destination coordinates, geocoding from location name: ${_schedule.location}');
+      try {
+        final apiService = ApiService();
+        final places = await apiService.searchPlaces(_schedule.location!, null, null);
+        if (places.isNotEmpty && mounted) {
+          final lat = (places.first['lat'] as num?)?.toDouble();
+          final lon = (places.first['lon'] as num?)?.toDouble();
+          if (lat != null && lon != null) {
+            setState(() {
+              _schedule = Schedule(
+                id: _schedule.id,
+                title: _schedule.title,
+                description: _schedule.description,
+                startTime: _schedule.startTime,
+                endTime: _schedule.endTime,
+                location: _schedule.location,
+                transportMode: _schedule.transportMode,
+                status: _schedule.status,
+                latitude: lat,
+                longitude: lon,
+                isOnline: _schedule.isOnline,
+                attendIds: _schedule.attendIds,
+                attends: _schedule.attends,
+                cancelReason: _schedule.cancelReason,
+                contactName: _schedule.contactName,
+                contactEmail: _schedule.contactEmail,
+                contactPhone: _schedule.contactPhone,
+                contactLineId: _schedule.contactLineId,
+              );
+            });
+          }
+        }
+      } catch (e) {
+        print('On-the-fly geocoding failed: $e');
+      }
+    }
+
     if (_schedule.latitude == null || _schedule.longitude == null) {
       print('No destination coordinates found');
       return;

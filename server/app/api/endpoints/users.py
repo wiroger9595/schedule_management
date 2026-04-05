@@ -1,14 +1,108 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
-from sqlmodel import Session
-from typing import List
+from pydantic import BaseModel
+from sqlmodel import Session, select
+from typing import List, Optional
 from ...db.database import get_session
 from ...models.user import User
+from ...models.attend import attend
+from ...models.schedule import Schedule
 from ...repositories.user_repository import UserRepository
 from ...schemas.user import UserUpdate, ProfilePictureUpdate
 from .auth import get_current_user
 from datetime import datetime
 
 router = APIRouter()
+
+
+class FCMTokenUpdate(BaseModel):
+    fcm_token: str
+
+
+@router.post("/me/fcm-token")
+def update_fcm_token(
+    data: FCMTokenUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Register or refresh the device FCM token for push notifications."""
+    repo = UserRepository(session)
+    current_user.fcm_token = data.fcm_token
+    repo.update(current_user)
+    return {"ok": True}
+
+
+@router.get("/me/invitations")
+def get_my_invitations(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """
+    Return all pending invitations for the current user.
+    An invitation is an attend record where status='P' and user_id = current user.
+    """
+    stmt = (
+        select(attend, Schedule)
+        .join(Schedule, attend.schedule_id == Schedule.schedule_id)
+        .where(attend.user_id == current_user.user_id, attend.status == "P")
+    )
+    rows = session.exec(stmt).all()
+
+    result = []
+    for att, schedule in rows:
+        # Look up inviter name
+        inviter = session.get(User, schedule.user_id) if schedule.user_id else None
+        result.append({
+            "attend_id": att.attend_id,
+            "schedule_id": schedule.schedule_id,
+            "title": schedule.title,
+            "start_time": schedule.meeting_start_time.isoformat() if schedule.meeting_start_time else None,
+            "location": schedule.meeting_location,
+            "inviter_name": inviter.full_name if inviter else "某人",
+        })
+    return result
+
+
+@router.post("/me/invitations/{attend_id}/respond")
+def respond_to_invitation(
+    attend_id: str,
+    action: str,  # "accept" or "decline"
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Accept or decline a pending invitation."""
+    if action not in ("accept", "decline"):
+        raise HTTPException(status_code=400, detail="action must be 'accept' or 'decline'")
+
+    att = session.exec(select(attend).where(attend.attend_id == attend_id)).first()
+    if not att:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    if att.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Not your invitation")
+
+    att.status = "AT" if action == "accept" else "NG"
+    att.updated_at = datetime.now()
+    session.add(att)
+
+    # Push notification to schedule creator
+    schedule = session.exec(
+        select(Schedule).where(Schedule.schedule_id == att.schedule_id)
+    ).first()
+
+    if schedule:
+        creator = session.get(User, schedule.user_id) if schedule.user_id else None
+        if creator and creator.fcm_token:
+            from ...services.push_service import push_service
+            verb = "確認參與" if action == "accept" else "拒絕參與"
+            push_service.send(
+                token=creator.fcm_token,
+                title=f"{current_user.full_name or '受邀者'} {verb}了活動",
+                body=schedule.title,
+                data={"schedule_id": schedule.schedule_id, "type": "rsvp_response"},
+            )
+
+    session.commit()
+    return {"ok": True, "status": att.status}
+
 
 @router.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):

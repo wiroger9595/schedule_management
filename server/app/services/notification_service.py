@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 from .email_service import email_service
+from .push_service import push_service
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,26 @@ class NotificationService:
             name = contact.nick_name or "Unknown User"
 
             if contact.contact_user_id:
-                # Attendee is a registered user — send RSVP invitation email
+                # Attendee is a registered user — send push + RSVP email
                 user = users_map.get(contact.contact_user_id)
+
+                # Push notification (in-app)
+                if user and user.fcm_token:
+                    start_str = ""
+                    if hasattr(schedule, "meeting_start_time") and schedule.meeting_start_time:
+                        start_str = schedule.meeting_start_time.strftime("%m/%d %H:%M")
+                    push_service.send(
+                        token=user.fcm_token,
+                        title=f"{inviter_name} 邀請您參加活動",
+                        body=f"{schedule.title}{'  ' + start_str if start_str else ''}",
+                        data={
+                            "type": "invitation",
+                            "attend_id": attendee.attend_id,
+                            "schedule_id": str(schedule.schedule_id),
+                        },
+                    )
+                    print(f"[PUSH] Sent invite push to user '{name}'")
+
                 user_email = user.email if user else contact.email
                 if user_email:
                     print(f"[RSVP EMAIL] Sending RSVP invite to user '{name}' ({user_email})")

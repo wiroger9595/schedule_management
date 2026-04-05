@@ -53,6 +53,9 @@ class User(SQLModel, table=True):
     # line_user_id VARCHAR(255) NULL (Unique ID from Line Platform)
     line_user_id: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True, unique=True))
 
+    # fcm_token — Firebase Cloud Messaging device token for push notifications
+    fcm_token: Optional[str] = Field(default=None, sa_column=Column(String(512), nullable=True))
+
     # created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     created_at: datetime = Field(
         default_factory=datetime.now,

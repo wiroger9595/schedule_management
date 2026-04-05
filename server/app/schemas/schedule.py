@@ -72,6 +72,7 @@ class ChatRequest(BaseModel):
     confirm_location: bool = False
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    conversation_history: Optional[List[dict]] = None  # [{role, content}, ...]
 
 
 class ChatResponse(BaseModel):
@@ -82,4 +83,5 @@ class ChatResponse(BaseModel):
     conflict: Optional[dict] = None
     needs_location_confirm: bool = False
     location_details: Optional[dict] = None
+    location_candidates: Optional[List[dict]] = None  # multiple candidates for user to pick
 

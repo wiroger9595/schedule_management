@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -128,6 +129,19 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  Future<void> _registerFcmToken() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission();
+      final token = await messaging.getToken();
+      if (token != null) {
+        await ApiService().updateFcmToken(token);
+      }
+    } catch (e) {
+      debugPrint('FCM token registration failed: $e');
+    }
+  }
+
   Future<bool> login(String email, String password) async {
     _isLoading = true;
     notifyListeners();
@@ -137,6 +151,7 @@ class AuthProvider with ChangeNotifier {
       _lastLoginTime = DateTime.now();
       _isLoggedIn = true;
       await fetchUserProfile();
+      _registerFcmToken();
     }
 
     _isLoading = false;
@@ -148,11 +163,16 @@ class AuthProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    bool success = await _authService.register(email, password, name);
-
-    _isLoading = false;
-    notifyListeners();
-    return success;
+    try {
+      await _authService.register(email, password, name);
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (_) {
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<bool> googleLogin() async {
@@ -165,6 +185,7 @@ class AuthProvider with ChangeNotifier {
         _lastLoginTime = DateTime.now();
         _isLoggedIn = true;
         await fetchUserProfile();
+        _registerFcmToken();
       }
       return success;
     } finally {

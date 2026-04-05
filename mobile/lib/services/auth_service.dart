@@ -145,7 +145,7 @@ class AuthService {
     }
   }
 
-  Future<bool> register(String email, String password, String fullName) async {
+  Future<void> register(String email, String password, String fullName) async {
     final response = await http.post(
       Uri.parse('${ApiService.baseUrl}/auth/register'),
       headers: {'Content-Type': 'application/json'},
@@ -155,7 +155,14 @@ class AuthService {
         'full_name': fullName,
       }),
     );
-    return response.statusCode == 200;
+    if (response.statusCode != 200) {
+      String detail = '註冊失敗（${response.statusCode}）';
+      try {
+        final body = jsonDecode(response.body);
+        if (body['detail'] != null) detail = body['detail'].toString();
+      } catch (_) {}
+      throw Exception(detail);
+    }
   }
 
   Future<bool> login(String email, String password) async {

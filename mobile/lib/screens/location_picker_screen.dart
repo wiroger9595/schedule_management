@@ -481,7 +481,7 @@ class __SearchOverlayState extends State<_SearchOverlay> {
       final lat = widget.currentCameraPosition?.latitude;
       final lon = widget.currentCameraPosition?.longitude;
       // Search with current map center bias
-      final results = await _apiService.searchPlaces(query, lat, lon, zoom: widget.currentZoom);
+      final results = await _apiService.searchPlaces(query, lat, lon);
       
       if (mounted) {
         setState(() {

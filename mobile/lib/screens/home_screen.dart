@@ -631,54 +631,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleCancelSchedule(Schedule schedule) async {
-    final reasonController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
     final confirmed = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('cancelSchedule'.tr()),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(schedule.title,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: reasonController,
-                autofocus: true,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'cancelReason'.tr(),
-                  hintText: 'cancelReasonHint'.tr(),
-                  border: const OutlineInputBorder(),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty)
-                        ? 'cancelReasonRequired'.tr()
-                        : null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('cancel'.tr()),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              Navigator.pop(ctx, reasonController.text.trim());
-            },
-            child: Text('confirm'.tr()),
-          ),
-        ],
-      ),
+      builder: (ctx) => _CancelDialog(scheduleTitle: schedule.title),
     );
 
     if (confirmed == null || !mounted) return;
@@ -836,5 +791,85 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     }
+  }
+}
+
+/// Separate StatefulWidget dialog so the FocusNode is requested AFTER
+/// the dialog is fully mounted — fixes Chinese IME input on iOS/Android.
+class _CancelDialog extends StatefulWidget {
+  final String scheduleTitle;
+  const _CancelDialog({required this.scheduleTitle});
+
+  @override
+  State<_CancelDialog> createState() => _CancelDialogState();
+}
+
+class _CancelDialogState extends State<_CancelDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _reasonController = TextEditingController();
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Request focus after the dialog is fully rendered so IME initializes correctly
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('cancelSchedule'.tr()),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.scheduleTitle,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _reasonController,
+              focusNode: _focusNode,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'cancelReason'.tr(),
+                hintText: 'cancelReasonHint'.tr(),
+                border: const OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty)
+                      ? 'cancelReasonRequired'.tr()
+                      : null,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('cancel'.tr()),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red, foregroundColor: Colors.white),
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            Navigator.pop(context, _reasonController.text.trim());
+          },
+          child: Text('confirm'.tr()),
+        ),
+      ],
+    );
   }
 }

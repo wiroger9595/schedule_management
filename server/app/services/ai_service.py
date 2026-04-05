@@ -17,7 +17,7 @@ class AIService:
             api_key=self.api_key,
             base_url="https://api.cerebras.ai/v1"
         )
-        self.model_name = 'llama3.1-8b'
+        self.model_name = 'qwen-3-235b-a22b-instruct-2507'
     
     def extract_schedule_info(self, user_message: str) -> Dict:
         """
@@ -109,98 +109,118 @@ class AIService:
         return msg
     
     
-    def process_conversation(self, user_message: str, current_context: dict = None) -> dict:
+    def process_conversation(self, user_message: str, current_context: dict = None,
+                             conversation_history: list = None) -> dict:
         """
         處理對話，判斷資訊是否完整，並回傳更新後的狀態與回應。
-        支持多輪對話，當資訊不足時會詢問用戶。
+        支持多輪對話，完整對話歷史作為 messages[] 傳給 AI。
         """
         if current_context is None:
             current_context = {}
-        
-        # 取得今天日期供 AI 參考
+        if conversation_history is None:
+            conversation_history = []
+
         today = datetime.now()
         today_str = today.strftime("%Y-%m-%d %A")
-        
-        # 定義 Prompt，教 AI 如何當一個秘書
-        prompt = f"""你是一個專業的行程管理助理。你的目標是從對話中收集建立行程所需的資訊。
 
-【必要資訊】：
-1. title (做什麼事/標題) - 例如：打棒球、開會、吃飯
-2. start_time (什麼時候，格式 YYYY-MM-DD HH:MM:SS) - 例如：2026-02-17 10:00:00
-3. location (在哪裡) - 例如：河濱公園、信義區、台北101
-4. participants (聯絡人，必須以 @ 開頭，以 list 格式) - 例如：["@阿明", "@阿甘", "@小新"]
+        system_prompt = f"""你是行程助理，負責從對話中收集資訊並建立行程。
+今天日期：{today_str}
 
-【非必要資訊】：
-無
+# 必填欄位
+- title：做什麼（例：打棒球、與客戶開會）
+- start_time：YYYY-MM-DDTHH:MM:SS（必須有時分，不能省略）
+- location：具體地點（例：信義威秀、星巴克內湖店）
 
-【今天日期】：{today_str}
+# 選填欄位
+- participants：有提到人名才填，格式 ["@名字"]，沒提到就填 []
+- description：簡短備註
 
-【目前已知資訊 (JSON)】：
-{json.dumps(current_context, ensure_ascii=False, indent=2)}
+# 時間規則
+- 只說時間沒說日期（「下午六點」「晚上八點」）→ 直接用今天日期補全，不追問
+- 說了日期但沒說幾點（「明天」「星期五」）→ start_time 設 null，追問時間
+- 早上=08:xx、中午=12:00、下午=14:xx、傍晚=17:xx、晚上=19:xx（取合理整點）
 
-【使用者最新輸入】：
-"{user_message}"
+# 地點規則
+- 連鎖品牌未指定分店（「星巴克」「麥當勞」）→ location 設 null，追問哪家分店
+- 模糊描述（「附近」「公司旁邊」）→ 追問確切地點
 
-【任務】：
-1. 將「使用者最新輸入」與「目前已知資訊」合併更新
-2. 時間處理 (start_time) **[極度重要]**：
-   - 如果用戶說「下星期一」、「明天」，請計算實際日期
-   - 如果只說時間（早上10點）沒說日期，如果已有日期就用已知日期，否則假設是今天
-   - **防呆檢查**：如果對話中【完全沒有】提到任何具體的時間點，【絕對不可以自己發明或假設時間】（也不要使用範例中的時間），你必須將 start_time 設為 null 或空字串，將 "start_time" 加入 missing_fields 清單，is_complete 設為 false，並在 reply 中親切詢問確切時間。
-3. 地點處理 (location) **[極度重要]**：
-   - 仔細尋找表示地點的關鍵字，如「在」、「去」、「到」後面的名詞
-   - 例如：「去台北101吃飯」-> location: "台北101"
-   - 例如：「明天台中出差」-> location: "台中"
-   - **防呆檢查**：如果用戶提供的地點是連鎖品牌或模糊地名（例如只說「星巴克」、「麥當勞」、「7-11」、「路易莎」），**必須**將該地點視為「不完整」，並強制在 missing_fields 中放入 "location_branch"，且 is_complete 設為 false。
-   - 然後在 reply 中親切詢問確切的分店，例如：「請問是哪一家星巴克呢？（例如：內湖店、文湖店）」
-   - 如果用戶已經提供了確切分店或地址（例如「星巴克內湖店」、「復興北路的麥當勞」），則視為地點完整。
-4. 聯絡人處理 (participants) **[極度重要]**：
-   - 如果訊息中完全沒提到任何人，請設定為空列表 `[]`，絕對禁止使用範例中的名字（如阿明、阿甘、小新）！
-   - 聯絡人名稱前面**必須要有 @ 符號**（例如：「和 @小明 開會」、「約 @Robert 吃飯」）
-   - 如果用戶對話中提到人名但**沒有使用 @ 符號**，請將其視為無效，並設定為空列表 `[]`
-5. 如果使用者修改了之前的資訊（例如改時間、改地點），請覆蓋舊資訊
-6. 檢查「必要資訊」是否都齊全（包含檢查地點是否夠明確）
-7. 如果不齊全：
-   - reply 中用親切的語氣詢問缺少的資訊
-   - 優先檢查並詢問 participants，提示用戶：「請使用 @ 符號指定聯絡人（例如：和 @小明 開會）」
-   - 若是缺少具體分店，請明確詢問分店名稱
-   - 一次最多問 1-2 個最重要的缺少項目
-8. 如果齊全：
-   - reply 請回傳確認訊息，格式如下：
-     「已確認行程：
-     目的：[title]
-     時間：[start_time 的人類易讀格式，例如 2月17日 星期一 早上10:00]
-     地點：[location]
-     人員：[participants 用逗號分隔]」
+# 完成條件
+is_complete = true 的唯一條件：title、start_time、location 三者皆不為 null
 
-請回傳純 JSON 格式，不要用 Markdown 包裝，格式如下：
+# 輸出格式（純 JSON）
 {{
-    "updated_data": {{
-        "title": "打棒球",
-        "start_time": "2026-02-17 10:00:00",
-        "location": "河濱公園",
-        "participants": ["@阿明", "@阿甘", "@小新"]
-    }},
-    "missing_fields": [],  // 缺少的欄位名稱清單，例如 ["location", "start_time"]
-    "is_complete": true,   // 是否所有必要資訊都有了
-    "reply": "已確認行程：\\n目的：打棒球\\n時間：2月17日 星期一 早上10:00\\n地點：河濱公園\\n人員：@阿明, @阿甘, @小新"
+  "_thought": "一句話說明目前缺少什麼",
+  "updated_data": {{"title": null, "start_time": null, "location": null, "participants": [], "description": null}},
+  "missing_fields": [],
+  "is_complete": false,
+  "reply": "給用戶的回覆"
 }}
-"""
+
+# 範例
+
+輸入：「明天下午三點在台北車站跟阿明開會」
+輸出：
+{{
+  "_thought": "title=開會、start_time=明天15:00、location=台北車站、participants=阿明，全部齊全",
+  "updated_data": {{"title": "與阿明開會", "start_time": "TOMORROW_DATE_T15:00:00", "location": "台北車站", "participants": ["@阿明"], "description": null}},
+  "missing_fields": [],
+  "is_complete": true,
+  "reply": "好的，已記錄明天下午三點在台北車站與阿明開會！"
+}}
+
+輸入：「下午兩點去剪頭髮」
+輸出：
+{{
+  "_thought": "title=剪頭髮、start_time=今天14:00，但沒說哪間髮廊",
+  "updated_data": {{"title": "剪頭髮", "start_time": "TODAY_DATE_T14:00:00", "location": null, "participants": [], "description": null}},
+  "missing_fields": ["location"],
+  "is_complete": false,
+  "reply": "請問要去哪間髮廊呢？"
+}}
+
+輸入：「星期六想去星巴克喝咖啡」
+輸出：
+{{
+  "_thought": "title=喝咖啡、日期可算出但沒說幾點、星巴克未指定分店",
+  "updated_data": {{"title": "星巴克喝咖啡", "start_time": null, "location": null, "participants": [], "description": null}},
+  "missing_fields": ["start_time", "location"],
+  "is_complete": false,
+  "reply": "請問星期六幾點去，以及是哪家星巴克分店呢？"
+}}"""
+
+        # 當前已知資訊注入為 system 訊息，讓 AI 有可靠的結構化錨點
+        context_injection = {
+            "role": "system",
+            "content": f"【目前已收集的行程資訊】：\n{json.dumps(current_context, ensure_ascii=False, indent=2)}"
+        }
+
+        # 只保留最近 10 輪（避免 token 爆炸）
+        trimmed_history = conversation_history[-20:] if len(conversation_history) > 20 else conversation_history
+
+        messages = (
+            [{"role": "system", "content": system_prompt}]
+            + trimmed_history
+            + [context_injection,
+               {"role": "user", "content": user_message}]
+        )
 
         try:
             # 呼叫 AI API
             response = self.client.chat.completions.create(
                 model=self.model_name,
-                messages=[
-                    {"role": "system", "content": "You are a helpful JSON extraction assistant."},
-                    {"role": "user", "content": prompt}
-                ],
+                messages=messages,
                 temperature=0.1,
                 response_format={"type": "json_object"},
                 timeout=15.0
             )
             
             clean_text = response.choices[0].message.content.strip()
+            # Strip markdown code fences that some models add despite json_object format
+            if clean_text.startswith("```"):
+                clean_text = clean_text.split("```")[1]
+                if clean_text.startswith("json"):
+                    clean_text = clean_text[4:]
+                clean_text = clean_text.strip()
             result = json.loads(clean_text)
             
             # 確保回傳格式正確
@@ -212,6 +232,41 @@ class AIService:
                 result["is_complete"] = False
             if "reply" not in result:
                 result["reply"] = "我不太確定，可以再說一次嗎？"
+                
+            # [新增] 實體防呆校驗層 Python Validation Layer
+            updated_data = result["updated_data"]
+            start_time = updated_data.get("start_time")
+            location = updated_data.get("location")
+            title = updated_data.get("title")
+            
+            # 檢查欄位是否有效 (如果是空字串、null、或者是像 'null' 的字串)
+            is_start_time_missing = not start_time or str(start_time).lower() == 'null'
+            is_location_missing = not location or str(location).lower() == 'null'
+            is_title_missing = not title or str(title).lower() == 'null'
+            
+            missing_items = []
+            
+            if is_title_missing:
+                missing_items.append("做什麼")
+                if "title" not in result["missing_fields"]: result["missing_fields"].append("title")
+            
+            if is_start_time_missing:
+                missing_items.append("幾點幾分")
+                if "start_time" not in result["missing_fields"]: result["missing_fields"].append("start_time")
+                    
+            if is_location_missing:
+                missing_items.append("哪裡")
+                if "location" not in result["missing_fields"]: result["missing_fields"].append("location")
+            
+            # 如果發現有漏，但 AI 卻說 is_complete = True，我們強制覆寫阻止它建立行程
+            if missing_items and result["is_complete"]:
+                result["is_complete"] = False
+                items_str = '、'.join(missing_items)
+                
+                # 如果 AI 的 reply 已經有在問問題了，就保留 AI 的 reply，否則幫它代打
+                if "?" not in result["reply"] and "？" not in result["reply"]:
+                    result["reply"] = f"好的！不過為了完成行程，還需要知道「{items_str}」喔！請問預計安排在什麼時候、哪裡呢？"
+
                 
             return result
             

@@ -17,6 +17,9 @@ samples, guidance on mobile development, and a full API reference.
 
 星期六下午約 ＠小明 ＠mimi 去彰化燒瓶子聚會
 
+鹿港天后宮
+
+下午六點
 # 手機啟動方式
 
 模擬器開啟

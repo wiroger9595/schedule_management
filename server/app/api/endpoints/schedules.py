@@ -15,6 +15,7 @@ from ...services.here_service import HereService
 from ...services.notification_service import notification_service
 from ...utils.text_validator import validate_schedule_message
 from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse
+from ...services.schedule_graph import schedule_graph
 from .auth import get_current_user
 
 router = APIRouter()
@@ -566,86 +567,96 @@ def chat_schedule(
     current_user: User = Depends(get_current_user)
 ):
     user_message = request.message.strip()
-    current_context = request.current_data
-    
-    # 1. 呼叫 AI 進行多輪對話處理
-    ai_result = ai_service.process_conversation(user_message, current_context)
-    
-    updated_data = ai_result.get("updated_data", {})
-    is_complete = ai_result.get("is_complete", False)
-    ai_reply = ai_result.get("reply", "")
-    
+    current_context = request.current_data or {}
+
     saved_schedule = None
 
-    # 2. 如果資訊完整，直接寫入資料庫
+    # ── confirm_location=True: user already approved a location ──────────────
+    # Skip the graph entirely. Re-running AI on "確認地點：XX" confuses the model.
+    if request.confirm_location:
+        updated_data = current_context
+        is_complete = True
+        ai_reply = ""
+        needs_location_confirm = False
+        location_candidates: list = []
+        location_details = None
+    else:
+        # ── Run LangGraph: collect_info → validate_location ──────────────────
+        graph_state = schedule_graph.invoke({
+            "user_message": user_message,
+            "conversation_history": request.conversation_history or [],
+            "current_data": current_context,
+            "user_lat": request.latitude,
+            "user_lon": request.longitude,
+            # defaults for output fields
+            "updated_data": {},
+            "missing_fields": [],
+            "is_complete": False,
+            "reply": "",
+            "location_result": None,
+            "needs_location_confirm": False,
+            "location_candidates": [],
+            "location_details": None,
+        })
+
+        updated_data = graph_state["updated_data"]
+        is_complete = graph_state["is_complete"]
+        ai_reply = graph_state["reply"]
+        needs_location_confirm = graph_state["needs_location_confirm"]
+        location_candidates = graph_state["location_candidates"]
+        location_details = graph_state["location_details"]
+
+        # ── Return early if location needs user input ─────────────────────────
+        if needs_location_confirm:
+            return ChatResponse(
+                ai_reply=ai_reply,
+                updated_data=updated_data,
+                is_complete=is_complete,
+                needs_location_confirm=True,
+                location_candidates=location_candidates if location_candidates else None,
+                location_details=location_details,
+            )
+
+        # ── Still gathering info — return AI reply ────────────────────────────
+        if not is_complete:
+            return ChatResponse(
+                ai_reply=ai_reply,
+                updated_data=updated_data,
+                is_complete=False,
+            )
+
+    # ── is_complete=True — proceed to DB creation ────────────────────────────
     if is_complete:
         try:
             print(f"DEBUG [chat]: is_complete=True, updated_data={updated_data}")
-            
-            # 轉換時間字串為 datetime 物件
+
             start_time_str = updated_data.get("start_time")
             print(f"DEBUG [chat]: start_time_str={start_time_str}")
-            
+
             if not start_time_str:
-                print("DEBUG [chat]: ERROR - start_time is missing from AI response!")
                 return ChatResponse(
-                    ai_reply=ai_reply + "\n\n(系統提示：AI 未回傳開始時間，行程未建立)",
+                    ai_reply="請問行程預計安排在什麼時間呢？",
                     updated_data=updated_data,
-                    is_complete=False
+                    is_complete=False,
                 )
-                
-            participants = updated_data.get("participants", [])
-            if not participants or (isinstance(participants, list) and len(participants) == 0) or (isinstance(participants, str) and not participants.strip()):
-                print("DEBUG [chat]: ERROR - participants is missing from AI response!")
-                return ChatResponse(
-                    ai_reply=ai_reply + "\n\n(系統提示：您尚未指定聯絡人，請使用 @ 標記指定您的聯絡人，例如：和 @小明 開會)",
-                    updated_data=updated_data,
-                    is_complete=False
-                )
-            
+
             start_time = datetime.fromisoformat(start_time_str)
-            
-            # 預設結束時間為 1 小時後，如果沒有指定
+
             end_time_str = updated_data.get("end_time")
             if end_time_str:
                 end_time = datetime.fromisoformat(end_time_str)
             else:
-                end_time = start_time.replace(hour=start_time.hour + 1) # Default 1 hour
+                end_time = start_time.replace(hour=start_time.hour + 1)
 
-            # --- 地點二次確認邏輯 ---
             location_name = updated_data.get("location")
             location_lat = None
             location_lon = None
-            location_details = None
 
             if location_name:
-                # Get location coordinates and details
-                places = HereService.search_places(
-                    location_name,
-                    lat=request.latitude,
-                    lon=request.longitude
-                )
-                if places:
-                    first_place = places[0]
-                    location_lat = first_place.get("lat")
-                    location_lon = first_place.get("lon")
-                    location_details = {
-                        "name": first_place.get("name"),
-                        "address": first_place.get("address"),
-                        "lat": location_lat,
-                        "lon": location_lon
-                    }
-                    
-                    # If we need confirmation and haven't gotten it yet
-                    if not request.confirm_location:
-                        print(f"DEBUG [chat]: Pausing for location confirmation: {location_details}")
-                        return ChatResponse(
-                            ai_reply=f"我為您找到了「{location_details['name']}」（{location_details['address']}）。請問這個地點正確嗎？",
-                            updated_data=updated_data,
-                            is_complete=True, # AI Logic complete
-                            needs_location_confirm=True,
-                            location_details=location_details
-                        )
+                # confirm_location=True: frontend passes coords of the chosen place
+                if request.latitude and request.longitude:
+                    location_lat = request.latitude
+                    location_lon = request.longitude
 
             repo = ScheduleRepository(session)
 
@@ -694,6 +705,7 @@ def chat_schedule(
             saved_schedule_obj = repo.create(new_schedule)
             saved_schedule = saved_schedule_obj.dict()
             print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
+            ai_reply = f"✅ 已為您建立行程「{updated_data.get('title', '未命名行程')}」！"
             
             # 如果有參與者，這邊處理 attend 表
             participants = updated_data.get("participants", [])

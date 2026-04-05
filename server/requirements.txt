@@ -14,7 +14,7 @@ asyncpg
 redis
 python-jose[cryptography]
 passlib
-bcrypt<4.0.0
+bcrypt>=4.0.1
 python-multipart
 email-validator
 openai
@@ -23,3 +23,6 @@ psycopg2-binary
 arrow
 line-bot-sdk
 shortuuid
+langgraph>=0.2.0
+langchain-core>=0.2.0
+firebase-admin>=6.0.0

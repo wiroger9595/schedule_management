@@ -37,7 +37,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('codeSentToEmail'.tr())),
+        SnackBar(content: Text('若此信箱已註冊，驗證碼已寄出，請檢查收件匣')),
       );
       setState(() => _step = 1);
     } catch (e) {

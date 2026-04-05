@@ -63,10 +63,10 @@ def get_nearby_pois(lat: float, lon: float, radius: int = 300):
         return []
 
 @router.get("/search")
-def search_places(q: str, lat: Optional[float] = None, lon: Optional[float] = None, zoom: Optional[float] = None):
-    """Search for places by name"""
+def search_places(q: str, lat: Optional[float] = None, lon: Optional[float] = None):
+    """Search for places by name with coordinate sanity check and Nominatim fallback"""
     try:
-        places = HereService.search_places(q, lat, lon, zoom)
+        places = HereService.search_places_enhanced(q, lat, lon)
         return places
     except Exception as e:
         print(f"Error in search endpoint: {e}")

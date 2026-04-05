@@ -138,25 +138,16 @@ def forgot_password(data: ForgotPasswordRequest, session: Session = Depends(get_
     
     repo = UserRepository(session)
     user = repo.get_by_email(email)
-    if not user:
-        # Avoid leaking user existence, just return success or generic message
-        # But for UX in this stage, maybe return 404? 
-        # Best practice: return 200 "If email exists, code sent"
-        # For simplicity here: return 404 if not found to help debugging
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Generate 6 digit code
-    import random
-    code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-    
-    # Save to Redis
-    redis_client.set_reset_code(email, code)
-    
-    # Send Email
-    from ...services.email_service import email_service
-    email_service.send_reset_code(email, code)
-    
-    return {"msg": "Reset code sent"}
+
+    # Always return 200 — do not leak whether email is registered
+    if user:
+        import random
+        code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+        redis_client.set_reset_code(email, code)
+        from ...services.email_service import email_service
+        email_service.send_reset_code(email, code)
+
+    return {"msg": "若此信箱已註冊，驗證碼已寄出"}
 
 @router.post("/reset-password")
 def reset_password(data: ResetPasswordRequest, session: Session = Depends(get_session)):

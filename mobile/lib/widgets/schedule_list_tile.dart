@@ -99,18 +99,58 @@ class ScheduleListTile extends StatelessWidget {
                         final name = attendee['nick_name'] ??
                             attendee['name'] ??
                             '?';
+                        final status = attendee['status'] as String? ?? 'P';
+                        final confirmed = status == 'AT';
+                        final declined = status == 'NG';
                         return Tooltip(
-                          message: name,
-                          child: CircleAvatar(
-                            radius: 12,
-                            backgroundColor: Colors.grey[300],
-                            child: Text(
-                              name.isNotEmpty ? name[0] : '?',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.black87,
+                          message: confirmed
+                              ? '$name（已確認）'
+                              : declined
+                                  ? '$name（已拒絕）'
+                                  : '$name（待回覆）',
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              CircleAvatar(
+                                radius: 12,
+                                backgroundColor: confirmed
+                                    ? Colors.green[100]
+                                    : declined
+                                        ? Colors.red[100]
+                                        : Colors.grey[300],
+                                child: Text(
+                                  name.isNotEmpty ? name[0] : '?',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.black87,
+                                  ),
+                                ),
                               ),
-                            ),
+                              if (confirmed)
+                                Positioned(
+                                  right: -2,
+                                  bottom: -2,
+                                  child: Container(
+                                    decoration: const BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle),
+                                    child: const Icon(Icons.check,
+                                        size: 8, color: Colors.white),
+                                  ),
+                                )
+                              else if (declined)
+                                Positioned(
+                                  right: -2,
+                                  bottom: -2,
+                                  child: Container(
+                                    decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle),
+                                    child: const Icon(Icons.close,
+                                        size: 8, color: Colors.white),
+                                  ),
+                                ),
+                            ],
                           ),
                         );
                       }).toList(),
