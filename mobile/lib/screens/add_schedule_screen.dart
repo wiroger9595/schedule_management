@@ -270,8 +270,8 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   void _selectSearchResult(Map<String, dynamic> place) {
     setState(() {
       _locationController.text = place['name'] ?? '';
-      latitude = place['latitude'];
-      longitude = place['longitude'];
+      latitude = (place['lat'] ?? place['latitude']) as double?;
+      longitude = (place['lon'] ?? place['longitude']) as double?;
       _locationSearchResults.clear(); // Hide the list after selection
       // Clear focus to close the keyboard
       FocusScope.of(context).unfocus();
@@ -331,7 +331,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               transportMode: transportMode,
               attends: selectedContacts.map((c) {
                 return {
-                  'user_id': c['contact_user_id'] ?? c['user_id'],
+                  'user_id': c['contact_user_id'], // Only invited user's id; null if unlinked
                   'contact_id': c['id'],
                   'name': c['nick_name'] ?? c['name'] ?? c['full_name'],
                   'email': c['email'],
@@ -369,7 +369,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             'longitude': _isOnline ? null : longitude,
             'attends': selectedContacts.map((c) {
               return {
-                'user_id': c['contact_user_id'] ?? c['user_id'],
+                'user_id': c['contact_user_id'], // Only invited user's id; null if unlinked
                 'contact_id': c['id'] ?? c['contact_id'], // 'id' is now the contact_id due to normalization
                 'name': c['nick_name'] ?? c['name'] ?? c['full_name'],
                 'email': c['email'],

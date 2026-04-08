@@ -51,11 +51,11 @@ class _TabbedDashboardScreenState extends State<TabbedDashboardScreen> with Sing
       appBar: AppBar(
         title: TabBar(
           controller: _tabController,
-          labelColor: Colors.black,
-          unselectedLabelColor: Colors.grey,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
           indicatorSize: TabBarIndicatorSize.label,
           indicatorWeight: 3.0,
-          indicatorColor: Colors.black,
+          indicatorColor: Colors.white,
           isScrollable: true,
           labelPadding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           tabs: [
@@ -67,10 +67,6 @@ class _TabbedDashboardScreenState extends State<TabbedDashboardScreen> with Sing
             ),
           ],
         ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: IconThemeData(color: Colors.black87),
       ),
       drawer: AppDrawer(onLogout: _logout),
       body: TabBarView(

@@ -1,8 +1,21 @@
 import os
 import smtplib
+from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import TYPE_CHECKING
+
+
+def _fmt_time(value, fmt="%Y-%m-%d %H:%M") -> str:
+    """Accept datetime or ISO string, return formatted string."""
+    if not value:
+        return "未定"
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return value
+    return value.strftime(fmt)
 
 if TYPE_CHECKING:
     from typing import Any
@@ -67,8 +80,8 @@ class EmailService:
             msg['To'] = email
             msg['Subject'] = f"活動邀請: {schedule.title}"
 
-            start_time_str = schedule.meeting_start_time.strftime("%Y-%m-%d %H:%M") if schedule.meeting_start_time else "未定"
-            end_time_str = schedule.meeting_end_time.strftime("%Y-%m-%d %H:%M") if schedule.meeting_end_time else "未定"
+            start_time_str = _fmt_time(schedule.meeting_start_time)
+            end_time_str = _fmt_time(schedule.meeting_end_time)
             location_str = schedule.meeting_location or "未定"
             desc_str = schedule.description or "無"
 
@@ -130,8 +143,8 @@ class EmailService:
         accept_url = f"{base_url}/schedules/rsvp?token={attend_id}&action=accept"
         decline_url = f"{base_url}/schedules/rsvp?token={attend_id}&action=decline"
 
-        start_time_str = schedule.meeting_start_time.strftime("%Y-%m-%d %H:%M") if schedule.meeting_start_time else "未定"
-        end_time_str = schedule.meeting_end_time.strftime("%Y-%m-%d %H:%M") if schedule.meeting_end_time else "未定"
+        start_time_str = _fmt_time(schedule.meeting_start_time)
+        end_time_str = _fmt_time(schedule.meeting_end_time)
         location_str = schedule.meeting_location or "未定"
 
         if not self.enabled:
@@ -200,8 +213,8 @@ class EmailService:
         發送邀請未註冊用戶加入平台的 email
         """
         register_url = os.getenv("REGISTER_URL", "https://schedule-management-mu.vercel.app/register")
-        start_time_str = schedule.meeting_start_time.strftime("%Y-%m-%d %H:%M") if schedule.meeting_start_time else "未定"
-        end_time_str = schedule.meeting_end_time.strftime("%Y-%m-%d %H:%M") if schedule.meeting_end_time else "未定"
+        start_time_str = _fmt_time(schedule.meeting_start_time)
+        end_time_str = _fmt_time(schedule.meeting_end_time)
         location_str = schedule.meeting_location or "未定"
 
         if not self.enabled:

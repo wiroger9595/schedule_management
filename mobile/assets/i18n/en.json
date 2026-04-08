@@ -226,5 +226,6 @@
   "reminder2hTitle": "Upcoming: {title}",
   "reminder2hBody": "Your schedule \"{title}\" starts in 2 hours.",
   "reminder1hTitle": "Starting Soon: {title}",
-  "reminder1hBody": "Your schedule \"{title}\" starts in 1 hour. Get ready!"
+  "reminder1hBody": "Your schedule \"{title}\" starts in 1 hour. Get ready!",
+  "invitations": "Invitations"
 }

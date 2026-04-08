@@ -204,7 +204,7 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
             title: Row(
               children: [
-                const Text('活動邀請'),
+                Text('invitations'.tr()),
                 if (_inviteCount > 0) ...[
                   const SizedBox(width: 8),
                   Container(

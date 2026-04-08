@@ -547,32 +547,31 @@ class _HomeScreenState extends State<HomeScreen> {
             itemCount: filteredSchedules.length,
             itemBuilder: (context, index) {
               final schedule = filteredSchedules[index];
-              return ScheduleListTile(
-                schedule: schedule,
-                onTap: () {
-                  if (schedule.status == ScheduleStatus.cancel) {
-                    // Do nothing for cancelled schedules
-                    return;
-                  }
+              return GestureDetector(
+                onLongPress: () => _confirmDeleteSchedule(schedule),
+                child: ScheduleListTile(
+                  schedule: schedule,
+                  onTap: () {
+                    if (schedule.status == ScheduleStatus.cancel) {
+                      return;
+                    }
 
-                  final now = DateTime.now();
-                  if (schedule.startTime.isBefore(now) &&
-                      schedule.status != ScheduleStatus.attend) {
-                    // Past schedule interaction (Pending, ComingSoon, NotAttended)
-                    _showPastScheduleActionDialog(schedule);
-                  } else {
-                    // Normal navigation
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => MapScreen(schedule: schedule),
-                      ),
-                    ).then((_) {
-                      // Refresh schedules in case they were edited in the MapScreen
-                      _refreshSchedules();
-                    });
-                  }
-                },
+                    final now = DateTime.now();
+                    if (schedule.startTime.isBefore(now) &&
+                        schedule.status != ScheduleStatus.attend) {
+                      _showPastScheduleActionDialog(schedule);
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MapScreen(schedule: schedule),
+                        ),
+                      ).then((_) {
+                        _refreshSchedules();
+                      });
+                    }
+                  },
+                ),
               );
             },
           );
@@ -655,6 +654,45 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('cancelFailed'.tr(namedArgs: {'error': e.toString()}))),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteSchedule(Schedule schedule) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('刪除行程'),
+        content: Text('確定要刪除「${schedule.title}」？\n此操作無法復原，相關邀請記錄也會一併刪除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ApiService().deleteSchedule(schedule.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('「${schedule.title}」已刪除')),
+        );
+        _refreshSchedules();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('刪除失敗：$e')),
         );
       }
     }

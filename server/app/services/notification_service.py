@@ -41,9 +41,10 @@ class NotificationService:
 
                 # Push notification (in-app)
                 if user and user.fcm_token:
+                    from .email_service import _fmt_time
                     start_str = ""
                     if hasattr(schedule, "meeting_start_time") and schedule.meeting_start_time:
-                        start_str = schedule.meeting_start_time.strftime("%m/%d %H:%M")
+                        start_str = _fmt_time(schedule.meeting_start_time, "%m/%d %H:%M")
                     push_service.send(
                         token=user.fcm_token,
                         title=f"{inviter_name} 邀請您參加活動",

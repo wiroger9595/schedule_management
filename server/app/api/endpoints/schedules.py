@@ -342,6 +342,32 @@ def rsvp_schedule(token: str, action: str, session: Session = Depends(get_sessio
     return {"message": f"您已拒絕「{schedule.title}」的邀請，活動建立者已收到通知。", "status": "declined"}
 
 
+@router.delete("/{schedule_id}")
+def delete_schedule(
+    schedule_id: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Delete a schedule and all related attend records."""
+    from sqlmodel import delete as sql_delete
+    from ...models.attend import attend
+
+    repo = ScheduleRepository(session)
+    schedule = repo.get_by_schedule_id(schedule_id)
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if schedule.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Delete attend records first (FK constraint)
+    session.exec(sql_delete(attend).where(attend.schedule_id == schedule_id))
+    session.delete(schedule)
+    session.commit()
+
+    return {"ok": True}
+
+
 @router.put("/{schedule_id}/status")
 @router.patch("/{schedule_id}/status")
 def update_schedule_status(schedule_id: str, status_data: StatusUpdate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -653,8 +679,13 @@ def chat_schedule(
             location_lon = None
 
             if location_name:
-                # confirm_location=True: frontend passes coords of the chosen place
-                if request.latitude and request.longitude:
+                # confirm_location=True: coords come from context (set by frontend on selection)
+                ctx_lat = updated_data.get("latitude") or updated_data.get("lat")
+                ctx_lon = updated_data.get("longitude") or updated_data.get("lon")
+                if ctx_lat and ctx_lon:
+                    location_lat = float(ctx_lat)
+                    location_lon = float(ctx_lon)
+                elif request.latitude and request.longitude:
                     location_lat = request.latitude
                     location_lon = request.longitude
 

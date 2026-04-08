@@ -226,5 +226,6 @@
   "reminder2hTitle": "即將開始：{title}",
   "reminder2hBody": "「{title}」將在 2 小時後開始",
   "reminder1hTitle": "快要開始了：{title}",
-  "reminder1hBody": "「{title}」將在 1 小時後開始，請準備出發！"
+  "reminder1hBody": "「{title}」將在 1 小時後開始，請準備出發！",
+  "invitations": "活動邀請"
 }

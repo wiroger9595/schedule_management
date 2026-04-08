@@ -277,7 +277,8 @@ class ChatWidgetState extends State<ChatWidget> {
       double? finalLat = overrideLat;
       double? finalLon = overrideLon;
 
-      if (finalLat == null || finalLon == null) {
+      // Only get GPS if we don't have an explicit location override (selected place)
+      if (overrideLat == null && overrideLon == null && (finalLat == null || finalLon == null)) {
         try {
           bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
           if (serviceEnabled) {

@@ -115,8 +115,8 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) {
         setState(() {
           _allEstimates = allData;
-          _updateSelectedMode(_selectedMode);
         });
+        _updateSelectedMode(_selectedMode, persist: false);
 
         if (_isLate) {
           _showLateDialog();
@@ -178,7 +178,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _updateSelectedMode(String mode) {
+  void _updateSelectedMode(String mode, {bool persist = true}) {
     if (_allEstimates.containsKey(mode)) {
       final data = _allEstimates[mode];
       setState(() {
@@ -190,6 +190,14 @@ class _MapScreenState extends State<MapScreen> {
         );
         _isLate = arrivalTime.isAfter(_schedule.startTime);
       });
+
+      // Only persist when user manually selects a mode (not on initial load)
+      if (persist) {
+        ApiService().updateSchedule(_schedule.id, {'transport_mode': mode}).catchError((e) {
+          debugPrint('Failed to save transport_mode: $e');
+          return _schedule;
+        });
+      }
     }
   }
 
@@ -385,12 +393,9 @@ class _MapScreenState extends State<MapScreen> {
     );
 
     if (result != null && result is Schedule) {
-      print(
-        'DEBUG: MapScreen received update: ${result.latitude}, ${result.longitude}',
-      );
       setState(() {
         _schedule = result;
-        _selectedMode = _schedule.transportMode ?? 'car';
+        _selectedMode = _schedule.transportMode;
       });
       _checkLocationAndTravel(); // Refresh map and estimates
     }
@@ -409,11 +414,10 @@ class _MapScreenState extends State<MapScreen> {
           if (_currentPosition != null) ...[
             GoogleMap(
               initialCameraPosition: CameraPosition(
-                target: LatLng(
-                  _currentPosition!.latitude,
-                  _currentPosition!.longitude,
-                ),
-                zoom: 14,
+                target: _schedule.latitude != null && _schedule.longitude != null
+                    ? LatLng(_schedule.latitude!, _schedule.longitude!)
+                    : LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                zoom: 15,
               ),
               onMapCreated: (GoogleMapController controller) {
                 _controller.complete(controller);
@@ -618,7 +622,7 @@ class _MapScreenState extends State<MapScreen> {
                                             ),
                                             SizedBox(height: 4),
                                             Text(
-                                              '${duration} min',
+                                              '$duration min',
                                               style: TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 color: isSelected

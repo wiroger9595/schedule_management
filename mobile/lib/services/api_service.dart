@@ -83,6 +83,20 @@ class ApiService {
     }
   }
 
+  Future<void> deleteSchedule(String id) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/schedules/$id'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    } else if (response.statusCode != 200) {
+      throw Exception('刪除失敗 (${response.statusCode})');
+    }
+  }
+
   Future<void> updateStatus(String id, String status,
       {String? cancelReason}) async {
     final body = {
@@ -309,10 +323,12 @@ class ApiService {
       Uri.parse('$baseUrl/users/me/invitations'),
       headers: await getHeaders(),
     );
+    // ignore: avoid_print
+    print('[Invitations] status=${response.statusCode} body=${response.body}');
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
     } else {
-      throw Exception('Failed to load invitations');
+      throw Exception('邀請載入失敗 (${response.statusCode}): ${response.body}');
     }
   }
 

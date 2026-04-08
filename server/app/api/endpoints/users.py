@@ -38,27 +38,56 @@ def get_my_invitations(
 ):
     """
     Return all pending invitations for the current user.
-    An invitation is an attend record where status='P' and user_id = current user.
+    Matches via attend.user_id OR contact.contact_user_id (handles cases where
+    attend.user_id was never set but the contact is linked to this user).
     """
+    from ...models.contact import Contact
+    from sqlalchemy import or_
+
     stmt = (
         select(attend, Schedule)
         .join(Schedule, attend.schedule_id == Schedule.schedule_id)
-        .where(attend.user_id == current_user.user_id, attend.status == "P")
+        .outerjoin(Contact, attend.contact_id == Contact.id)
+        .where(
+            or_(
+                attend.user_id == current_user.user_id,
+                Contact.contact_user_id == current_user.user_id,
+            ),
+            attend.status.in_(["P", "AT", "NG"]),
+            # Exclude schedules the user created themselves
+            Schedule.user_id != current_user.user_id,
+        )
     )
     rows = session.exec(stmt).all()
 
     result = []
+    seen = set()
+    needs_commit = False
     for att, schedule in rows:
-        # Look up inviter name
-        inviter = session.get(User, schedule.user_id) if schedule.user_id else None
+        if att.attend_id in seen:
+            continue
+        seen.add(att.attend_id)
+
+        # Back-fill attend.user_id so future queries are faster
+        if att.user_id is None:
+            att.user_id = current_user.user_id
+            session.add(att)
+            needs_commit = True
+
+        inviter = session.exec(select(User).where(User.user_id == schedule.user_id)).first() if schedule.user_id else None
         result.append({
             "attend_id": att.attend_id,
             "schedule_id": schedule.schedule_id,
             "title": schedule.title,
-            "start_time": schedule.meeting_start_time.isoformat() if schedule.meeting_start_time else None,
+            "start_time": schedule.meeting_start_time if isinstance(schedule.meeting_start_time, str) else (schedule.meeting_start_time.isoformat() if schedule.meeting_start_time else None),
             "location": schedule.meeting_location,
             "inviter_name": inviter.full_name if inviter else "某人",
+            "status": att.status,
         })
+
+    if needs_commit:
+        session.commit()
+
     return result
 
 
@@ -89,7 +118,7 @@ def respond_to_invitation(
     ).first()
 
     if schedule:
-        creator = session.get(User, schedule.user_id) if schedule.user_id else None
+        creator = session.exec(select(User).where(User.user_id == schedule.user_id)).first() if schedule.user_id else None
         if creator and creator.fcm_token:
             from ...services.push_service import push_service
             verb = "確認參與" if action == "accept" else "拒絕參與"

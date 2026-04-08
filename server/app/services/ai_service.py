@@ -124,7 +124,7 @@ class AIService:
         today_str = today.strftime("%Y-%m-%d %A")
 
         system_prompt = f"""你是行程助理，負責從對話中收集資訊並建立行程。
-今天日期：{today_str}
+現在時間：{today.strftime("%Y-%m-%d %H:%M")}（{today_str}）
 
 # 必填欄位
 - title：做什麼（例：打棒球、與客戶開會）
@@ -136,6 +136,7 @@ class AIService:
 - description：簡短備註
 
 # 時間規則
+- 相對時間（「X小時後」「X分鐘後」「半小時後」）→ 用現在時間直接計算，例如現在 14:00 說「三小時後」= 17:00
 - 只說時間沒說日期（「下午六點」「晚上八點」）→ 直接用今天日期補全，不追問
 - 說了日期但沒說幾點（「明天」「星期五」）→ start_time 設 null，追問時間
 - 早上=08:xx、中午=12:00、下午=14:xx、傍晚=17:xx、晚上=19:xx（取合理整點）
