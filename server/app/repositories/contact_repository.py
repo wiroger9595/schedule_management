@@ -37,25 +37,6 @@ class ContactRepository:
         return contact
         
     def delete(self, contact: Contact) -> None:
-        from sqlmodel import select, or_, delete as sql_delete
-        from ..models.schedule import Schedule
-        from ..models.attend import attend
-        
-        # 尋找所有該聯絡人有參與的行程 (不論是主聯絡人還是參與者)
-        stmt = select(Schedule).outerjoin(attend, Schedule.schedule_id == attend.schedule_id).where(
-            or_(
-                Schedule.contact_id == contact.id,
-                attend.contact_id == contact.id
-            )
-        ).distinct()
-        
-        schedules_to_delete = self.session.exec(stmt).all()
-        for schedule in schedules_to_delete:
-            self.session.delete(schedule)
-            
-        # 清除所有殘存的 attend 記錄 (保險起見)
-        self.session.exec(sql_delete(attend).where(attend.contact_id == contact.id))
-        
         self.session.delete(contact)
         self.session.commit()
 

@@ -119,6 +119,12 @@ class _InvitationsScreenState extends State<InvitationsScreen>
         ),
       ),
       drawer: AppDrawer(onLogout: _logout),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'ai_chat',
+        onPressed: () => Navigator.pushNamed(context, '/home'),
+        backgroundColor: Colors.black,
+        child: const Icon(Icons.smart_toy_outlined, color: Colors.white),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

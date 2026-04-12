@@ -178,6 +178,13 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  bool get _isInternational {
+    final lat = _schedule.latitude;
+    final lon = _schedule.longitude;
+    if (lat == null || lon == null) return false;
+    return lat < 21.5 || lat > 25.5 || lon < 119.5 || lon > 122.5;
+  }
+
   void _updateSelectedMode(String mode, {bool persist = true}) {
     if (_allEstimates.containsKey(mode)) {
       final data = _allEstimates[mode];
@@ -556,8 +563,8 @@ class _MapScreenState extends State<MapScreen> {
                     _buildAttendeeSection(),
                     SizedBox(height: 8),
 
-                    // Mode Selection Row
-                    SingleChildScrollView(
+                    // Mode Selection Row (hidden for international destinations)
+                    if (!_isInternational) SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: _allEstimates.isEmpty
                           ? Padding(
@@ -646,10 +653,10 @@ class _MapScreenState extends State<MapScreen> {
                             ),
                     ),
 
-                    Divider(height: 24),
+                    if (!_isInternational) Divider(height: 24),
 
-                    // Status Row
-                    Row(
+                    // Status Row (hidden for international destinations)
+                    if (!_isInternational) Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Column(

@@ -70,9 +70,12 @@ class ChatRequest(BaseModel):
     current_data: Optional[dict] = None
     force_create: bool = False
     confirm_location: bool = False
+    confirm_delete: bool = False  # user confirmed delete action
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     conversation_history: Optional[List[dict]] = None  # [{role, content}, ...]
+    schedule_id: Optional[str] = None  # set after schedule created — triggers update instead of create
+    schedule_list: Optional[List[dict]] = None  # user's schedules for AI edit/delete context
 
 
 class ChatResponse(BaseModel):
@@ -84,4 +87,6 @@ class ChatResponse(BaseModel):
     needs_location_confirm: bool = False
     location_details: Optional[dict] = None
     location_candidates: Optional[List[dict]] = None  # multiple candidates for user to pick
+    confirm_delete: Optional[dict] = None  # {id, title, start_time} — prompts delete confirmation UI
+    schedule_deleted: bool = False  # true after successful delete
 

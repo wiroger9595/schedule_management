@@ -166,6 +166,14 @@ class _AppDrawerState extends State<AppDrawer> {
             },
           ),
           ListTile(
+            leading: Icon(Icons.smart_toy_outlined, color: Colors.blueAccent),
+            title: Text('aiChat'.tr()),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/home');
+            },
+          ),
+          ListTile(
             leading: Icon(Icons.list_alt, color: Colors.black87),
             title: Text('mySchedules'.tr()),
             onTap: () {

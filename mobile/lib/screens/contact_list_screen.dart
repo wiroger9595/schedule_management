@@ -245,10 +245,10 @@ class _ContactListScreenState extends State<ContactListScreen> {
                 if (context.mounted && result['is_valid'] == false) {
                   setState(() {
                     final dup = result['duplicate_field'];
-                    if (dup == 'phone') {
-                      phoneError = 'phoneExists'.tr();
-                    } else if (dup == 'email') {
-                      emailError = 'emailExists'.tr();
+                    if (dup == 'phone' || dup == 'self_phone') {
+                      phoneError = dup == 'self_phone' ? '不能填入自己的電話' : 'phoneExists'.tr();
+                    } else if (dup == 'email' || dup == 'self_email') {
+                      emailError = dup == 'self_email' ? '不能填入自己的 Email' : 'emailExists'.tr();
                     } else if (dup == 'line') {
                       lineError = 'lineExists'.tr();
                     }
@@ -451,11 +451,13 @@ class _ContactListScreenState extends State<ContactListScreen> {
                     if (context.mounted && result['is_valid'] == false) {
                       setState(() {
                         final dup = result['duplicate_field'];
-                        if (dup == 'phone')
-                          phoneError = 'phoneExists'.tr();
-                        else if (dup == 'email')
-                          emailError = 'emailExists'.tr();
-                        else if (dup == 'line') lineError = 'lineExists'.tr();
+                        if (dup == 'phone' || dup == 'self_phone') {
+                          phoneError = dup == 'self_phone' ? '不能填入自己的電話' : 'phoneExists'.tr();
+                        } else if (dup == 'email' || dup == 'self_email') {
+                          emailError = dup == 'self_email' ? '不能填入自己的 Email' : 'emailExists'.tr();
+                        } else if (dup == 'line') {
+                          lineError = 'lineExists'.tr();
+                        }
                       });
                     }
                   } catch (_) {}
@@ -1119,85 +1121,85 @@ class _ContactListScreenState extends State<ContactListScreen> {
               : ListView.builder(
                   itemCount: contacts.length,
                   itemBuilder: (context, index) {
-                    // Re-declare contact to fix scope issue
-                    final contact = contacts[index];
-                    final id = contact['id'] as int;
-                    final isSelected = selectedContactIds.contains(id);
+                        // Re-declare contact to fix scope issue
+                        final contact = contacts[index];
+                        final id = contact['id'] as int;
+                        final isSelected = selectedContactIds.contains(id);
 
-                    return ListTile(
-                      onLongPress: () {
-                        if (!isSelectionMode) {
-                          _toggleSelectionMode();
-                          _toggleContactSelection(id);
-                        }
-                      },
-                      onTap: () {
-                        if (isSelectionMode) {
-                          _toggleContactSelection(id);
-                        } else {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  ContactHistoryScreen(contact: contact),
-                            ),
-                          );
-                        }
-                      },
-                      leading: isSelectionMode
-                          ? Checkbox(
-                              value: isSelected,
-                              onChanged: (bool? value) {
-                                _toggleContactSelection(id);
-                              },
-                            )
-                          : CircleAvatar(
-                              backgroundImage: contact['profile_image_path'] !=
-                                      null
-                                  ? NetworkImage(contact['profile_image_path'])
-                                  : null,
-                              backgroundColor: Colors.grey[200],
-                              child: contact['profile_image_path'] == null
-                                  ? Icon(Icons.person, color: Colors.grey[500])
-                                  : null,
-                            ),
-                      title: Text(contact['nick_name'] ?? 'Unknown'),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (contact['phone'] != null &&
-                              contact['phone'].isNotEmpty)
-                            Text(contact['phone']),
-                          if (contact['email'] != null &&
-                              contact['email'].isNotEmpty)
-                            Text(contact['email']),
-                          SizedBox(height: 4),
-                          Text(
-                              '預設通知: ${_getNotificationMethodLabel(contact['default_notification_method'])}',
-                              style: TextStyle(
-                                  color: Colors.grey[600], fontSize: 12)),
-                        ],
-                      ),
-                      trailing: isSelectionMode
-                          ? null
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.edit, color: Colors.black87),
-                                  onPressed: () => _showEditDialog(contact),
+                        return ListTile(
+                          onLongPress: () {
+                            if (!isSelectionMode) {
+                              _toggleSelectionMode();
+                              _toggleContactSelection(id);
+                            }
+                          },
+                          onTap: () {
+                            if (isSelectionMode) {
+                              _toggleContactSelection(id);
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      ContactHistoryScreen(contact: contact),
                                 ),
-                                IconButton(
-                                  icon: Icon(Icons.delete, color: Colors.grey),
-                                  onPressed: () {
-                                    _deleteContact(contact['id'].toString());
+                              );
+                            }
+                          },
+                          leading: isSelectionMode
+                              ? Checkbox(
+                                  value: isSelected,
+                                  onChanged: (bool? value) {
+                                    _toggleContactSelection(id);
                                   },
+                                )
+                              : CircleAvatar(
+                                  backgroundImage: contact['profile_image_path'] !=
+                                          null
+                                      ? NetworkImage(contact['profile_image_path'])
+                                      : null,
+                                  backgroundColor: Colors.grey[200],
+                                  child: contact['profile_image_path'] == null
+                                      ? Icon(Icons.person, color: Colors.grey[500])
+                                      : null,
                                 ),
-                              ],
-                            ),
-                    );
-                  },
-                ),
+                          title: Text(contact['nick_name'] ?? 'Unknown'),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (contact['phone'] != null &&
+                                  contact['phone'].isNotEmpty)
+                                Text(contact['phone']),
+                              if (contact['email'] != null &&
+                                  contact['email'].isNotEmpty)
+                                Text(contact['email']),
+                              SizedBox(height: 4),
+                              Text(
+                                  '預設通知: ${_getNotificationMethodLabel(contact['default_notification_method'])}',
+                                  style: TextStyle(
+                                      color: Colors.grey[600], fontSize: 12)),
+                            ],
+                          ),
+                          trailing: isSelectionMode
+                              ? null
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.edit, color: Colors.black87),
+                                      onPressed: () => _showEditDialog(contact),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.delete, color: Colors.grey),
+                                      onPressed: () {
+                                        _deleteContact(contact['id'].toString());
+                                      },
+                                    ),
+                                  ],
+                                ),
+                        );
+                      },
+                    ),
       floatingActionButton: isSelectionMode
           ? null
           : FloatingActionButton(

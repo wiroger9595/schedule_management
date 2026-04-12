@@ -27,6 +27,7 @@ class ChatWidgetState extends State<ChatWidget> {
   Map<String, dynamic>? _currentContext;
   // Full conversation history sent to AI — keeps track of what was actually said
   final List<Map<String, String>> _conversationHistory = [];
+  List<Map<String, dynamic>> _scheduleList = [];
 
   void clearChat() {
     setState(() {
@@ -38,6 +39,7 @@ class ChatWidgetState extends State<ChatWidget> {
       _isLoading = false;
       _messages.add(ChatMessage(text: "對話與記憶已清空，請重新輸入您的行程資訊。", isUser: false));
     });
+    _loadScheduleList();
   }
 
   List<dynamic> _contacts = [];
@@ -49,6 +51,19 @@ class ChatWidgetState extends State<ChatWidget> {
   void initState() {
     super.initState();
     _loadContacts();
+    _loadScheduleList();
+  }
+
+  Future<void> _loadScheduleList() async {
+    try {
+      final apiService = ApiService();
+      final schedules = await apiService.getSchedules();
+      if (mounted) {
+        setState(() {
+          _scheduleList = schedules.map((s) => s.toJson()).toList();
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadContacts() async {
@@ -251,7 +266,7 @@ class ChatWidgetState extends State<ChatWidget> {
     );
   }
 
-  Future<void> _sendMessage({String? text, bool forceCreate = false, double? overrideLat, double? overrideLon}) async {
+  Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, double? overrideLat, double? overrideLon}) async {
     final messageText = text ?? _controller.text.trim();
     if (messageText.isEmpty && !forceCreate) return;
 
@@ -306,8 +321,10 @@ class ChatWidgetState extends State<ChatWidget> {
         conversationHistory: _conversationHistory,
         forceCreate: forceCreate,
         confirmLocation: forceCreate,
+        confirmDelete: confirmDelete,
         latitude: finalLat,
         longitude: finalLon,
+        scheduleList: _scheduleList,
       );
 
       if (mounted) {
@@ -318,9 +335,43 @@ class ChatWidgetState extends State<ChatWidget> {
         }
 
         setState(() {
-          _currentContext = data['updated_data'];
+          _currentContext = data['updated_data'] != null
+              ? Map<String, dynamic>.from(data['updated_data'])
+              : _currentContext;
+          // Keep schedule_id in context after creation so follow-up messages trigger update
+          if (data['schedule'] != null && data['schedule']['id'] != null) {
+            _currentContext ??= {};
+            _currentContext!['schedule_id'] = data['schedule']['id'];
+          }
 
-          if (data['conflict'] != null) {
+          if (data['schedule_deleted'] == true) {
+            // Schedule deleted successfully — refresh list
+            if (aiReply.isNotEmpty) _messages.add(ChatMessage(text: aiReply, isUser: false));
+            _currentContext = null;
+            widget.onScheduleCreated();
+            _loadScheduleList();
+          } else if (data['confirm_delete'] != null) {
+            // Backend wants user to confirm deletion
+            final del = data['confirm_delete'] as Map<String, dynamic>;
+            if (aiReply.isNotEmpty) _messages.add(ChatMessage(text: aiReply, isUser: false));
+            _messages.add(
+              DeleteConfirmMessage(
+                title: del['title'] as String? ?? '',
+                startTime: del['start_time'] as String?,
+                onConfirm: () {
+                  _currentContext ??= {};
+                  _currentContext!['delete_schedule_id'] = del['id'];
+                  _sendMessage(confirmDelete: true);
+                },
+                onCancel: () {
+                  _currentContext = null;
+                  setState(() {
+                    _messages.add(ChatMessage(text: '已取消刪除。', isUser: false));
+                  });
+                },
+              ),
+            );
+          } else if (data['conflict'] != null) {
             // Conflict Detected
             _messages.add(
               ChatMessage(text: aiReply.isNotEmpty ? aiReply : 'timeConflict'.tr(), isUser: false),
@@ -414,8 +465,9 @@ class ChatWidgetState extends State<ChatWidget> {
         _scrollToBottom();
       }
     } catch (e) {
+      debugPrint('[ChatWidget] Error: $e');
       setState(() {
-        _messages.add(ChatMessage(text: '抱歉，發生錯誤：$e', isUser: false));
+        _messages.add(ChatMessage(text: '抱歉，系統暫時無法處理，請稍後再試。', isUser: false));
         _isLoading = false;
       });
     }
@@ -744,6 +796,102 @@ class LocationCandidatesMessage extends StatelessWidget {
             style: TextButton.styleFrom(foregroundColor: Colors.black54),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class DeleteConfirmMessage extends StatefulWidget {
+  final String title;
+  final String? startTime;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  const DeleteConfirmMessage({
+    super.key,
+    required this.title,
+    this.startTime,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  State<DeleteConfirmMessage> createState() => _DeleteConfirmMessageState();
+}
+
+class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
+  bool _tapped = false;
+
+  String? _formatTime(String? iso) {
+    if (iso == null) return null;
+    try {
+      final dt = DateTime.parse(iso);
+      return DateFormat('MM/dd HH:mm').format(dt);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final timeStr = _formatTime(widget.startTime);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Card(
+        color: Colors.red[50],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '確定要刪除「${widget.title}」嗎？',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              if (timeStr != null) ...[
+                const SizedBox(height: 4),
+                Text(timeStr, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _tapped ? null : () {
+                        setState(() => _tapped = true);
+                        widget.onCancel();
+                      },
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _tapped ? null : () {
+                        setState(() => _tapped = true);
+                        widget.onConfirm();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('確認刪除'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

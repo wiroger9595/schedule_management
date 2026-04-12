@@ -43,18 +43,23 @@ def get_my_invitations(
     """
     from ...models.contact import Contact
     from sqlalchemy import or_
+    from sqlalchemy.orm import aliased
+
+    LinkedUser = aliased(User)
 
     stmt = (
         select(attend, Schedule)
         .join(Schedule, attend.schedule_id == Schedule.schedule_id)
         .outerjoin(Contact, attend.contact_id == Contact.id)
+        .outerjoin(LinkedUser, Contact.email == LinkedUser.email)
         .where(
             or_(
                 attend.user_id == current_user.user_id,
                 Contact.contact_user_id == current_user.user_id,
+                # Fallback: contact email matches a registered user (look up via users table)
+                LinkedUser.user_id == current_user.user_id,
             ),
             attend.status.in_(["P", "AT", "NG"]),
-            # Exclude schedules the user created themselves
             Schedule.user_id != current_user.user_id,
         )
     )
@@ -73,6 +78,14 @@ def get_my_invitations(
             att.user_id = current_user.user_id
             session.add(att)
             needs_commit = True
+
+        # Back-fill contact.contact_user_id if matched by email
+        if att.contact_id:
+            contact_obj = session.exec(select(Contact).where(Contact.id == att.contact_id)).first()
+            if contact_obj and contact_obj.contact_user_id is None and contact_obj.email == current_user.email:
+                contact_obj.contact_user_id = current_user.user_id
+                session.add(contact_obj)
+                needs_commit = True
 
         inviter = session.exec(select(User).where(User.user_id == schedule.user_id)).first() if schedule.user_id else None
         result.append({

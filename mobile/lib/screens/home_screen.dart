@@ -488,104 +488,90 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       drawer: AppDrawer(onLogout: _logout),
-      body: Consumer<ScheduleProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading) {
-            return Center(child: CircularProgressIndicator());
-          }
-
-          if (provider.error != null) {
-            // Handle unauthorized via ErrorHandler if needed, basically same logic
-            // But simpler here: just show text
-            return Center(
-              child: Text(
-                '${'error'.tr()}: ${provider.error}',
-              ),
-            );
-          }
-
-          // Apply filters
-          final settingsProvider = context.watch<SettingsProvider>();
-          final filteredSchedules = provider.schedules.where((s) {
-            // Global status visibility (from Settings)
-            if (!settingsProvider.isVisible(s.status)) return false;
-            // Status Filter (from filter dialog)
-            if (_filterStatus != null && s.status != _filterStatus) {
-              return false;
-            }
-            // Location Filter
-            if (_filterLocation != null && _filterLocation!.isNotEmpty) {
-              if (s.location == null ||
-                  !s.location!.toLowerCase().contains(
-                        _filterLocation!.toLowerCase(),
-                      )) {
-                return false;
+      body: Stack(
+        children: [
+          Consumer<ScheduleProvider>(
+            builder: (context, provider, child) {
+              if (provider.isLoading) {
+                return Center(child: CircularProgressIndicator());
               }
-            }
-            // Date Range Filter
-            if (_filterStartDate != null && _filterEndDate != null) {
-              // Check if schedule overlaps or is within range? Usually just check start time.
-              // Let's check if start time is within the range [start, end + 1 day (exclusive)] to include end date fully.
-              final endOfDay = _filterEndDate!
-                  .add(Duration(days: 1))
-                  .subtract(Duration(milliseconds: 1));
-              if (s.startTime.isBefore(_filterStartDate!) ||
-                  s.startTime.isAfter(endOfDay)) {
-                return false;
+
+              if (provider.error != null) {
+                return Center(
+                  child: Text('${'error'.tr()}: ${provider.error}'),
+                );
               }
-            }
-            return true;
-          }).toList();
 
-          if (filteredSchedules.isEmpty) {
-            return Center(
-              child: Text('noSchedules'.tr()),
-            );
-          }
+              // Apply filters
+              final settingsProvider = context.watch<SettingsProvider>();
+              final filteredSchedules = provider.schedules.where((s) {
+                if (!settingsProvider.isVisible(s.status)) return false;
+                if (_filterStatus != null && s.status != _filterStatus) return false;
+                if (_filterLocation != null && _filterLocation!.isNotEmpty) {
+                  if (s.location == null ||
+                      !s.location!.toLowerCase().contains(_filterLocation!.toLowerCase())) {
+                    return false;
+                  }
+                }
+                if (_filterStartDate != null && _filterEndDate != null) {
+                  final endOfDay = _filterEndDate!
+                      .add(Duration(days: 1))
+                      .subtract(Duration(milliseconds: 1));
+                  if (s.startTime.isBefore(_filterStartDate!) ||
+                      s.startTime.isAfter(endOfDay)) {
+                    return false;
+                  }
+                }
+                return true;
+              }).toList();
 
-          return ListView.builder(
-            itemCount: filteredSchedules.length,
-            itemBuilder: (context, index) {
-              final schedule = filteredSchedules[index];
-              return GestureDetector(
-                onLongPress: () => _confirmDeleteSchedule(schedule),
-                child: ScheduleListTile(
-                  schedule: schedule,
-                  onTap: () {
-                    if (schedule.status == ScheduleStatus.cancel) {
-                      return;
-                    }
+              if (filteredSchedules.isEmpty) {
+                return Center(child: Text('noSchedules'.tr()));
+              }
 
-                    final now = DateTime.now();
-                    if (schedule.startTime.isBefore(now) &&
-                        schedule.status != ScheduleStatus.attend) {
-                      _showPastScheduleActionDialog(schedule);
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MapScreen(schedule: schedule),
-                        ),
-                      ).then((_) {
-                        _refreshSchedules();
-                      });
-                    }
-                  },
-                ),
+              return ListView.builder(
+                itemCount: filteredSchedules.length,
+                itemBuilder: (context, index) {
+                  final schedule = filteredSchedules[index];
+                  return GestureDetector(
+                    onLongPress: () => _confirmDeleteSchedule(schedule),
+                    child: ScheduleListTile(
+                      schedule: schedule,
+                      onTap: () {
+                        if (schedule.status == ScheduleStatus.cancel) return;
+
+                        final now = DateTime.now();
+                        if (schedule.startTime.isBefore(now) &&
+                            schedule.status != ScheduleStatus.attend) {
+                          _showPastScheduleActionDialog(schedule);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => MapScreen(schedule: schedule),
+                            ),
+                          ).then((_) {
+                            _refreshSchedules();
+                          });
+                        }
+                      },
+                    ),
+                  );
+                },
               );
             },
-          );
-        },
+          ),
+        ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: FloatingActionButton(
         heroTag: 'add_schedule',
         onPressed: () async {
           await AddActionSheet.show(context);
           _refreshSchedules();
         },
-        child: Icon(Icons.add),
         backgroundColor: Colors.black,
+        child: const Icon(Icons.add),
       ),
     );
   }

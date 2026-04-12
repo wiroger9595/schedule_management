@@ -33,12 +33,15 @@ class ScheduleState(TypedDict):
     current_data: dict
     user_lat: Optional[float]
     user_lon: Optional[float]
+    schedule_list: Optional[List[dict]]  # user's existing schedules for edit/delete
 
     # ── AI node outputs ──
     updated_data: dict
     missing_fields: List[str]
     is_complete: bool
     reply: str
+    intent: str                          # create | edit | delete
+    target_schedule_id: Optional[str]    # for edit/delete
 
     # ── Location validation outputs ──
     location_result: Optional[dict]
@@ -55,6 +58,7 @@ def collect_info_node(state: ScheduleState) -> ScheduleState:
         state["user_message"],
         state["current_data"],
         conversation_history=state["conversation_history"],
+        schedule_list=state.get("schedule_list"),
     )
     return {
         **state,
@@ -62,6 +66,8 @@ def collect_info_node(state: ScheduleState) -> ScheduleState:
         "missing_fields": ai_result.get("missing_fields", []),
         "is_complete": ai_result.get("is_complete", False),
         "reply": ai_result.get("reply", ""),
+        "intent": ai_result.get("intent", "create"),
+        "target_schedule_id": ai_result.get("target_schedule_id"),
     }
 
 
@@ -135,8 +141,9 @@ def validate_location_node(state: ScheduleState) -> ScheduleState:
 # ─────────────────────────── Routing ─────────────────────────────────────────
 
 def route_after_collect(state: ScheduleState) -> str:
-    """Run location validation only when all fields are collected."""
-    if state["is_complete"] and state["updated_data"].get("location"):
+    """Run location validation only for create intent when all fields are collected."""
+    intent = state.get("intent", "create")
+    if intent == "create" and state["is_complete"] and state["updated_data"].get("location"):
         return "validate_location"
     return END
 

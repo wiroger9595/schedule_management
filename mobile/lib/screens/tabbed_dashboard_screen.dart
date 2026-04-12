@@ -69,6 +69,12 @@ class _TabbedDashboardScreenState extends State<TabbedDashboardScreen> with Sing
         ),
       ),
       drawer: AppDrawer(onLogout: _logout),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'ai_chat',
+        onPressed: () => Navigator.pushNamed(context, '/home'),
+        backgroundColor: Colors.black,
+        child: const Icon(Icons.smart_toy_outlined, color: Colors.white),
+      ),
       body: TabBarView(
         controller: _tabController,
         children: [

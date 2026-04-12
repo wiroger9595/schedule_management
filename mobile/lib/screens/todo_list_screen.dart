@@ -263,12 +263,14 @@ class _TodoListScreenState extends State<TodoListScreen> {
                     );
                   },
                 ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddDialog,
-        icon: Icon(Icons.add),
-        label: Text('addTodo'.tr()),
-        backgroundColor: Colors.black,
-      ),
+      floatingActionButton: widget.isEmbedded
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _showAddDialog,
+              icon: Icon(Icons.add),
+              label: Text('addTodo'.tr()),
+              backgroundColor: Colors.black,
+            ),
     );
   }
 }

@@ -155,17 +155,28 @@ class ApiService {
       List<Map<String, String>>? conversationHistory,
       bool forceCreate = false,
       bool confirmLocation = false,
+      bool confirmDelete = false,
       double? latitude,
-      double? longitude}) async {
+      double? longitude,
+      List<Map<String, dynamic>>? scheduleList}) async {
+    final scheduleId = currentContext?['schedule_id'] as String?;
+    // Only strip schedule_id (sent as top-level field); keep delete_schedule_id in current_data
+    // so the confirm_delete path on the backend can read it
+    final contextWithoutId = currentContext != null
+        ? (Map<String, dynamic>.from(currentContext)..remove('schedule_id'))
+        : null;
     final body = {
       'message': message,
-      if (currentContext != null) 'current_data': currentContext,
+      if (contextWithoutId != null) 'current_data': contextWithoutId,
       if (conversationHistory != null && conversationHistory.isNotEmpty)
         'conversation_history': conversationHistory,
       'force_create': forceCreate,
       'confirm_location': confirmLocation,
+      'confirm_delete': confirmDelete,
       'latitude': latitude,
-      'longitude': longitude
+      'longitude': longitude,
+      if (scheduleId != null) 'schedule_id': scheduleId,
+      if (scheduleList != null && scheduleList.isNotEmpty) 'schedule_list': scheduleList,
     };
 
     final response = await http.post(

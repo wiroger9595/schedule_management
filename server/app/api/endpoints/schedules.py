@@ -597,6 +597,61 @@ def chat_schedule(
 
     saved_schedule = None
 
+    # ── confirm_delete=True: user confirmed deletion ──────────────────────────
+    if request.confirm_delete:
+        delete_id = current_context.get("delete_schedule_id")
+        if not delete_id:
+            return ChatResponse(ai_reply="找不到要刪除的行程。", updated_data=current_context, is_complete=False)
+        from sqlmodel import delete as sql_delete
+        repo = ScheduleRepository(session)
+        target = repo.get_by_schedule_id(delete_id)
+        if not target or target.user_id != current_user.user_id:
+            return ChatResponse(ai_reply="找不到行程或無權限刪除。", updated_data=current_context, is_complete=False)
+        session.execute(sql_delete(attend).where(attend.schedule_id == delete_id))
+        session.delete(target)
+        session.commit()
+        return ChatResponse(
+            ai_reply=f"✅ 已刪除行程「{target.title}」。",
+            updated_data={},
+            is_complete=True,
+            schedule_deleted=True,
+        )
+
+    # ── Pre-match schedules with Python keyword search ────────────────────────
+    # Reliable fuzzy matching before handing to AI — avoids AI missing titles
+    def _python_match_schedules(message: str, schedules: list) -> list:
+        """Return schedule list with matching ones tagged [最佳匹配]."""
+        if not schedules:
+            return schedules
+        # Strip common intent words to get the core keyword
+        stop_words = {"取消", "刪除", "刪掉", "移除", "更改", "修改", "調整", "把", "的", "行程",
+                      "活動", "我", "這個", "請", "幫我", "改到", "延後", "提早"}
+        words = [w for w in message if w not in stop_words and len(w.strip()) > 0]
+        keyword = "".join(words)  # full message minus stop words
+
+        tagged = []
+        for s in schedules:
+            title = s.get("title", "")
+            # Check if any 2+ char substring of keyword appears in title
+            matched = False
+            for length in range(len(keyword), 1, -1):
+                for start in range(len(keyword) - length + 1):
+                    chunk = keyword[start:start + length]
+                    if len(chunk) >= 2 and chunk in title:
+                        matched = True
+                        break
+                if matched:
+                    break
+            if matched:
+                s = dict(s)
+                s["_match"] = True
+                tagged.append(s)
+            else:
+                tagged.append(s)
+        return tagged
+
+    annotated_schedule_list = _python_match_schedules(user_message, request.schedule_list or [])
+
     # ── confirm_location=True: user already approved a location ──────────────
     # Skip the graph entirely. Re-running AI on "確認地點：XX" confuses the model.
     if request.confirm_location:
@@ -606,6 +661,8 @@ def chat_schedule(
         needs_location_confirm = False
         location_candidates: list = []
         location_details = None
+        intent = "create"
+        target_schedule_id = current_context.get("target_schedule_id")
     else:
         # ── Run LangGraph: collect_info → validate_location ──────────────────
         graph_state = schedule_graph.invoke({
@@ -614,11 +671,14 @@ def chat_schedule(
             "current_data": current_context,
             "user_lat": request.latitude,
             "user_lon": request.longitude,
+            "schedule_list": annotated_schedule_list,
             # defaults for output fields
             "updated_data": {},
             "missing_fields": [],
             "is_complete": False,
             "reply": "",
+            "intent": "create",
+            "target_schedule_id": None,
             "location_result": None,
             "needs_location_confirm": False,
             "location_candidates": [],
@@ -631,6 +691,30 @@ def chat_schedule(
         needs_location_confirm = graph_state["needs_location_confirm"]
         location_candidates = graph_state["location_candidates"]
         location_details = graph_state["location_details"]
+        intent = graph_state.get("intent", "create")
+        target_schedule_id = graph_state.get("target_schedule_id")
+
+        # ── Delete intent: return confirm prompt to frontend ──────────────────
+        if intent == "delete":
+            delete_ctx = dict(current_context)
+            delete_ctx["delete_schedule_id"] = target_schedule_id
+            # Find schedule details for display
+            confirm_info = None
+            if target_schedule_id:
+                repo = ScheduleRepository(session)
+                del_target = repo.get_by_schedule_id(target_schedule_id)
+                if del_target:
+                    confirm_info = {
+                        "id": target_schedule_id,
+                        "title": del_target.title,
+                        "start_time": del_target.meeting_start_time.isoformat() if isinstance(del_target.meeting_start_time, datetime) else str(del_target.meeting_start_time) if del_target.meeting_start_time else None,
+                    }
+            return ChatResponse(
+                ai_reply=ai_reply,
+                updated_data=delete_ctx,
+                is_complete=False,
+                confirm_delete=confirm_info,
+            )
 
         # ── Return early if location needs user input ─────────────────────────
         if needs_location_confirm:
@@ -657,22 +741,27 @@ def chat_schedule(
             print(f"DEBUG [chat]: is_complete=True, updated_data={updated_data}")
 
             start_time_str = updated_data.get("start_time")
-            print(f"DEBUG [chat]: start_time_str={start_time_str}")
+            print(f"DEBUG [chat]: intent={intent}, start_time_str={start_time_str}")
 
-            if not start_time_str:
+            # For create: start_time is mandatory. For edit: it may be absent (only other fields changed).
+            if not start_time_str and intent != "edit":
                 return ChatResponse(
                     ai_reply="請問行程預計安排在什麼時間呢？",
                     updated_data=updated_data,
                     is_complete=False,
                 )
 
-            start_time = datetime.fromisoformat(start_time_str)
-
-            end_time_str = updated_data.get("end_time")
-            if end_time_str:
-                end_time = datetime.fromisoformat(end_time_str)
+            if start_time_str:
+                start_time = datetime.fromisoformat(start_time_str)
+                end_time_str = updated_data.get("end_time")
+                if end_time_str:
+                    end_time = datetime.fromisoformat(end_time_str)
+                else:
+                    end_time = start_time.replace(hour=min(start_time.hour + 1, 23))
             else:
-                end_time = start_time.replace(hour=start_time.hour + 1)
+                # edit without time change — will be filled from existing record
+                start_time = None
+                end_time = None
 
             location_name = updated_data.get("location")
             location_lat = None
@@ -691,8 +780,8 @@ def chat_schedule(
 
             repo = ScheduleRepository(session)
 
-            # 3. 檢查衝突 (Conflict Detection)
-            if not request.force_create:
+            # 3. 檢查衝突 (Conflict Detection — only for create, skip for edit)
+            if not request.force_create and intent != "edit" and start_time:
                 conflicts = repo.find_overlapping(current_user.user_id, start_time, end_time)
                 if conflicts:
                     # Found conflicts (could be multiple)
@@ -714,29 +803,56 @@ def chat_schedule(
                         is_complete=True, # Logic complete, but blocked by conflict
                         conflict={
                             "title": base_conflict.title,
-                            "start_time": base_conflict.meeting_start_time.isoformat(),
+                            "start_time": base_conflict.meeting_start_time.isoformat() if isinstance(base_conflict.meeting_start_time, datetime) else str(base_conflict.meeting_start_time),
                             "end_time": base_conflict.meeting_end_time.isoformat() if base_conflict.meeting_end_time else None
                         }
                     )
 
-            # 建立 Schedule 物件
-            new_schedule = Schedule(
-                user_id=current_user.user_id,
-                title=updated_data.get("title", "未命名行程"),
-                description=updated_data.get('description', ''),
-                meeting_start_time=start_time,
-                meeting_end_time=end_time,
-                meeting_location=location_name,
-                location=location_name,
-                latitude=location_lat,
-                longitude=location_lon,
-                status=Status.PENDING.value
-            )
-
-            saved_schedule_obj = repo.create(new_schedule)
-            saved_schedule = saved_schedule_obj.dict()
-            print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
-            ai_reply = f"✅ 已為您建立行程「{updated_data.get('title', '未命名行程')}」！"
+            # ── Update existing schedule (chat edit intent or correction) ──────
+            effective_schedule_id = request.schedule_id or (target_schedule_id if intent == "edit" else None)
+            if effective_schedule_id:
+                existing = repo.get_by_schedule_id(effective_schedule_id)
+                if existing and existing.user_id == current_user.user_id:
+                    # Only update fields that were explicitly provided in updated_data
+                    if updated_data.get("title"): existing.title = updated_data["title"]
+                    if updated_data.get("description"): existing.description = updated_data["description"]
+                    if updated_data.get("start_time"):
+                        existing.meeting_start_time = start_time
+                        existing.meeting_end_time = end_time
+                    if location_name:
+                        existing.meeting_location = location_name
+                        existing.location = location_name
+                    if location_lat and location_lon:
+                        existing.latitude = location_lat
+                        existing.longitude = location_lon
+                    saved_schedule_obj = repo.update(existing)
+                    saved_schedule = saved_schedule_obj.dict()
+                    ai_reply = f"✅ 已為您更新行程「{existing.title}」！"
+                    print(f"DEBUG [chat]: Schedule updated ID={effective_schedule_id}")
+                else:
+                    return ChatResponse(
+                        ai_reply="找不到行程，無法修改。",
+                        updated_data=updated_data,
+                        is_complete=False,
+                    )
+            else:
+                # ── 建立 Schedule 物件 ─────────────────────────────────────────
+                new_schedule = Schedule(
+                    user_id=current_user.user_id,
+                    title=updated_data.get("title", "未命名行程"),
+                    description=updated_data.get('description', ''),
+                    meeting_start_time=start_time,
+                    meeting_end_time=end_time,
+                    meeting_location=location_name,
+                    location=location_name,
+                    latitude=location_lat,
+                    longitude=location_lon,
+                    status=Status.PENDING.value
+                )
+                saved_schedule_obj = repo.create(new_schedule)
+                saved_schedule = saved_schedule_obj.dict()
+                print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
+                ai_reply = f"✅ 已為您建立行程「{updated_data.get('title', '未命名行程')}」！"
             
             # 如果有參與者，這邊處理 attend 表
             participants = updated_data.get("participants", [])
@@ -792,7 +908,7 @@ def chat_schedule(
             import traceback
             traceback.print_exc()
             return ChatResponse(
-                ai_reply=f"資訊已收集完成，但在建立行程時發生錯誤：{str(e)}",
+                ai_reply="行程建立失敗，請稍後再試。",
                 updated_data=updated_data,
                 is_complete=True # 雖然失敗但邏輯上是對話結束
             )

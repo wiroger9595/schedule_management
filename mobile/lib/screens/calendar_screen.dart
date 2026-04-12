@@ -148,14 +148,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                 )
               : innerTabBarView,
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await AddActionSheet.show(context);
-          _loadSchedules();
-        },
-        child: Icon(Icons.add),
-        backgroundColor: Colors.black,
-      ),
+      floatingActionButton: widget.isEmbedded
+          ? null
+          : FloatingActionButton(
+              onPressed: () async {
+                await AddActionSheet.show(context);
+                _loadSchedules();
+              },
+              backgroundColor: Colors.black,
+              child: Icon(Icons.add),
+            ),
     );
   }
 

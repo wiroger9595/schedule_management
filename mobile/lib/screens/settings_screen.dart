@@ -88,6 +88,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: Text('settings'.tr()),
       ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'ai_chat',
+        onPressed: () => Navigator.pushNamed(context, '/home'),
+        backgroundColor: Colors.black,
+        child: const Icon(Icons.smart_toy_outlined, color: Colors.white),
+      ),
       body: ListView(
         children: [
           // ── Language section ──

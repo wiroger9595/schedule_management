@@ -86,6 +86,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
           ],
         ),
+        floatingActionButton: FloatingActionButton(
+          heroTag: 'ai_chat',
+          onPressed: () => Navigator.pushNamed(context, '/home'),
+          backgroundColor: Colors.black,
+          child: const Icon(Icons.smart_toy_outlined, color: Colors.white),
+        ),
         body: _isLoading
             ? Center(child: CircularProgressIndicator())
             : _user == null

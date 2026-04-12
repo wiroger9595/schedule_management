@@ -28,7 +28,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
   DateTime startTime = DateTime.now().add(Duration(hours: 1));
   DateTime? endTime;
   String? location;
-  String transportMode = 'walk';
+  String? transportMode = 'walk';
   double? latitude;
   double? longitude;
   bool _isOnline = false;
@@ -54,6 +54,15 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
     {'value': 'bike', 'label': 'bicycle'.tr()},
     {'value': 'walk', 'label': 'walkMode'.tr()},
   ];
+
+  /// Returns true when the selected location is outside Taiwan's bounding box.
+  bool get _isInternational {
+    if (latitude == null || longitude == null) return false;
+    const double latMin = 21.5, latMax = 25.5;
+    const double lonMin = 119.5, lonMax = 122.5;
+    return latitude! < latMin || latitude! > latMax ||
+           longitude! < lonMin || longitude! > lonMax;
+  }
 
   @override
   void initState() {
@@ -237,6 +246,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
           latitude = lat;
           longitude = lon;
           _locationController.text = pickedName;
+          if (_isInternational) transportMode = null;
         });
       } else {
         setState(() {
@@ -272,9 +282,10 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
       _locationController.text = place['name'] ?? '';
       latitude = (place['lat'] ?? place['latitude']) as double?;
       longitude = (place['lon'] ?? place['longitude']) as double?;
-      _locationSearchResults.clear(); // Hide the list after selection
-      // Clear focus to close the keyboard
+      _locationSearchResults.clear();
       FocusScope.of(context).unfocus();
+      // Reset transport mode when switching to an international location
+      if (_isInternational) transportMode = null;
     });
   }
 
@@ -328,7 +339,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
               longitude: _isOnline ? null : longitude,
               isOnline: _isOnline,
               status: ScheduleStatus.pending, // Use constant
-              transportMode: transportMode,
+              transportMode: transportMode ?? 'walk',
               attends: selectedContacts.map((c) {
                 return {
                   'user_id': c['contact_user_id'], // Only invited user's id; null if unlinked
@@ -489,21 +500,23 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
                 ),
               ),
               SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: transportMode,
-                decoration: InputDecoration(
-                  labelText: 'transportMode'.tr(),
-                  border: OutlineInputBorder(),
+              if (!_isInternational) ...[
+                DropdownButtonFormField<String>(
+                  value: transportMode,
+                  decoration: InputDecoration(
+                    labelText: 'transportMode'.tr(),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: transportModes.map((mode) {
+                    return DropdownMenuItem(
+                      value: mode['value'],
+                      child: Text(mode['label']!),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setState(() => transportMode = value),
                 ),
-                items: transportModes.map((mode) {
-                  return DropdownMenuItem(
-                    value: mode['value'],
-                    child: Text(mode['label']!),
-                  );
-                }).toList(),
-                onChanged: (value) => setState(() => transportMode = value!),
-              ),
-              SizedBox(height: 16),
+                SizedBox(height: 16),
+              ],
               // Online / Physical toggle
               Row(
                 children: [

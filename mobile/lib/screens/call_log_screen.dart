@@ -143,6 +143,12 @@ class _CallLogScreenState extends State<CallLogScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'ai_chat',
+        onPressed: () => Navigator.pushNamed(context, '/home'),
+        backgroundColor: Colors.black,
+        child: const Icon(Icons.smart_toy_outlined, color: Colors.white),
+      ),
       appBar: AppBar(
         title: Text('callLog'.tr()),
         actions: [
