@@ -32,7 +32,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print("Error loading comments: $e");
+      debugPrint("Error loading comments: $e");
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

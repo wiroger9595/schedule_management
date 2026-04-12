@@ -46,7 +46,7 @@ class _CallLogScreenState extends State<CallLogScreen> {
           _permissionDenied = false;
         });
       } catch (e) {
-        print('Error fetching call logs: $e');
+        debugPrint('Error fetching call logs: $e');
         setState(() {
           _isLoading = false;
           _permissionDenied = true;

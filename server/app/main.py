@@ -8,6 +8,7 @@ app = FastAPI(title="Schedule Management API")
 # CORS middleware
 origins = [
     "http://localhost:3000",
+    "http://localhost:5173",  # Vite dashboard dev server
     "http://localhost:8080",
     "https://schedule-management-mu.vercel.app",
 ]

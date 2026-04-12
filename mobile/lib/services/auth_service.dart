@@ -46,7 +46,7 @@ class AuthService {
       try {
         await _googleSignIn.signInSilently();
       } catch (e) {
-        print('GoogleSignIn initWeb (expected if not signed in): $e');
+        debugPrint('GoogleSignIn initWeb (expected if not signed in): $e');
       }
     }
   }
@@ -65,8 +65,8 @@ class AuthService {
 
       return await processGoogleAccount(account);
     } catch (e, stackTrace) {
-      print('Google sign-in error: $e');
-      print('Stack trace: $stackTrace');
+      debugPrint('Google sign-in error: $e');
+      debugPrint('Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -103,7 +103,7 @@ class AuthService {
         throw Exception('伺服器錯誤: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      print('Error processing Google account: $e');
+      debugPrint('Error processing Google account: $e');
       rethrow;
     }
   }
@@ -140,7 +140,7 @@ class AuthService {
         throw Exception('Apple Login Server Error: ${response.statusCode}');
       }
     } catch (e) {
-      print('Apple Error: $e');
+      debugPrint('Apple Error: $e');
       rethrow;
     }
   }
@@ -181,7 +181,7 @@ class AuthService {
         }
       }
     } catch (e) {
-      print('Login error: $e');
+      debugPrint('Login error: $e');
     }
     return false;
   }
@@ -195,7 +195,7 @@ class AuthService {
           headers: {'Authorization': 'Bearer $token'},
         );
       } catch (e) {
-        print("Logout error: $e");
+        debugPrint("Logout error: $e");
       }
     }
     await storage.delete(key: 'jwt_token');

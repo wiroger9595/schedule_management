@@ -36,7 +36,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('儲存失敗：$e')),
+          SnackBar(content: Text('saveFailed'.tr(namedArgs: {'error': e.toString()}))),
         );
       }
     }
@@ -90,7 +90,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                     onPressed: auth.isLoading ? null : _saveProfile,
                     child: auth.isLoading
                         ? CircularProgressIndicator(color: Colors.white)
-                        : Text('儲存', style: TextStyle(fontSize: 18)),
+                        : Text('save'.tr(), style: TextStyle(fontSize: 18)),
                   );
                 }
               ),

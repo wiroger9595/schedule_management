@@ -37,7 +37,7 @@ class ChatWidgetState extends State<ChatWidget> {
       _conversationHistory.clear();
       _showMentionList = false;
       _isLoading = false;
-      _messages.add(ChatMessage(text: "對話與記憶已清空，請重新輸入您的行程資訊。", isUser: false));
+      _messages.add(ChatMessage(text: 'chatCleared'.tr(), isUser: false));
     });
     _loadScheduleList();
   }
@@ -70,22 +70,22 @@ class ChatWidgetState extends State<ChatWidget> {
     try {
       final apiService = ApiService();
       final contacts = await apiService.getContacts();
-      print("Loaded contacts for mention: $contacts");
+      debugPrint("Loaded contacts for mention: $contacts");
       if (mounted) {
         setState(() {
           _contacts = contacts;
         });
       }
     } catch (e) {
-      print("Failed to load contacts for mention: $e");
+      debugPrint("Failed to load contacts for mention: $e");
       if (mounted) {
         if (e.toString().contains('Unauthorized')) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('登入憑證已過期，請重新登入')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('sessionExpiredRelogin'.tr())));
           Provider.of<AuthProvider>(context, listen: false).logout();
         } else {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('讀取聯絡人失敗: $e')));
+          ).showSnackBar(SnackBar(content: Text('loadContactsFailed'.tr(namedArgs: {'error': e.toString()}))));
         }
       }
     }
@@ -366,7 +366,7 @@ class ChatWidgetState extends State<ChatWidget> {
                 onCancel: () {
                   _currentContext = null;
                   setState(() {
-                    _messages.add(ChatMessage(text: '已取消刪除。', isUser: false));
+                    _messages.add(ChatMessage(text: 'deleteCancelled'.tr(), isUser: false));
                   });
                 },
               ),
@@ -402,9 +402,9 @@ class ChatWidgetState extends State<ChatWidget> {
                     final lat = (candidate['lat'] as num?)?.toDouble();
                     final lon = (candidate['lon'] as num?)?.toDouble();
                     final name = candidate['name'] as String? ?? '';
-                    _conversationHistory.add({'role': 'user', 'content': '我選擇地點：$name'});
+                    _conversationHistory.add({'role': 'user', 'content': 'selectedLocation'.tr(namedArgs: {'name': name})});
                     setState(() {
-                      _messages.add(ChatMessage(text: '已選擇地點：$name', isUser: true));
+                      _messages.add(ChatMessage(text: 'selectedLocation'.tr(namedArgs: {'name': name}), isUser: true));
                       _currentContext ??= {};
                       _currentContext!['location'] = name;
                       _currentContext!['latitude'] = lat;
@@ -429,14 +429,14 @@ class ChatWidgetState extends State<ChatWidget> {
                   lat: detLat,
                   lon: detLon,
                   onConfirm: () {
-                    _conversationHistory.add({'role': 'user', 'content': '確認地點：$detName'});
+                    _conversationHistory.add({'role': 'user', 'content': 'confirmLocation'.tr() + '：$detName'});
                     _sendMessage(forceCreate: true, overrideLat: detLat, overrideLon: detLon);
                   },
                   onReject: () {
                     // Clear location from context so AI asks again
                     _currentContext ??= {};
                     _currentContext!.remove('location');
-                    _sendMessage(text: '找到的地點「$detName」不正確，請問您可以提供更詳細的地址嗎？');
+                    _sendMessage(text: 'locationNotCorrect'.tr(namedArgs: {'name': detName}));
                   },
                   onChange: () => _pickFromMap(data),
                 ),
@@ -448,7 +448,7 @@ class ChatWidgetState extends State<ChatWidget> {
               final scheduleTitle = (data['updated_data']?['title'] as String?) ?? '';
               final successMsg = aiReply.isNotEmpty
                   ? aiReply
-                  : '✅ 行程${scheduleTitle.isNotEmpty ? "「$scheduleTitle」" : ""}已建立！';
+                  : '✅ ${scheduleTitle.isNotEmpty ? 'scheduleCreatedWithTitle'.tr(namedArgs: {'title': scheduleTitle}) : 'scheduleCreated'.tr()}';
               _messages.add(ChatMessage(text: successMsg, isUser: false));
             } else if (aiReply.isNotEmpty) {
               _messages.add(ChatMessage(text: aiReply, isUser: false));
@@ -467,7 +467,7 @@ class ChatWidgetState extends State<ChatWidget> {
     } catch (e) {
       debugPrint('[ChatWidget] Error: $e');
       setState(() {
-        _messages.add(ChatMessage(text: '抱歉，系統暫時無法處理，請稍後再試。', isUser: false));
+        _messages.add(ChatMessage(text: 'systemError'.tr(), isUser: false));
         _isLoading = false;
       });
     }
@@ -488,9 +488,9 @@ class ChatWidgetState extends State<ChatWidget> {
       final lat = (result['latitude'] as num?)?.toDouble();
       final lon = (result['longitude'] as num?)?.toDouble();
       final address = result['address'] as String? ?? result['name'] as String? ?? '';
-      _conversationHistory.add({'role': 'user', 'content': '我手動在地圖選擇地點：$address'});
+      _conversationHistory.add({'role': 'user', 'content': 'manualSelectedLocation'.tr(namedArgs: {'address': address})});
       setState(() {
-        _messages.add(ChatMessage(text: '已手動選擇地點：$address', isUser: true));
+        _messages.add(ChatMessage(text: 'manualSelectedLocation'.tr(namedArgs: {'address': address}), isUser: true));
         _currentContext ??= {};
         _currentContext!['location'] = address;
         _currentContext!['latitude'] = lat;
@@ -611,7 +611,7 @@ class ChatWidgetState extends State<ChatWidget> {
                     if (_contacts.isNotEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('成功載入 ${_contacts.length} 位聯絡人！'),
+                          content: Text('contactsLoaded'.tr(namedArgs: {'count': _contacts.length.toString()})),
                         ),
                       );
                     }
@@ -851,7 +851,7 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '確定要刪除「${widget.title}」嗎？',
+                      'confirmDeleteTitle'.tr(namedArgs: {'title': widget.title}),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -870,7 +870,7 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
                         setState(() => _tapped = true);
                         widget.onCancel();
                       },
-                      child: const Text('取消'),
+                      child: Text('cancel'.tr()),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -884,7 +884,7 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
                       ),
-                      child: const Text('確認刪除'),
+                      child: Text('confirmDelete'.tr()),
                     ),
                   ),
                 ],
@@ -943,7 +943,7 @@ class _LocationConfirmMessageState extends State<LocationConfirmMessage> {
                 trailing: widget.lat != null && widget.lon != null
                     ? IconButton(
                         icon: const Icon(Icons.open_in_new, size: 18, color: Colors.blue),
-                        tooltip: '在 Google Maps 確認',
+                        tooltip: 'confirmOnGoogleMaps'.tr(),
                         onPressed: () => _openInGoogleMaps(widget.lat, widget.lon, widget.name),
                       )
                     : null,
@@ -961,7 +961,7 @@ class _LocationConfirmMessageState extends State<LocationConfirmMessage> {
                         widget.onReject!();
                       },
                       style: OutlinedButton.styleFrom(foregroundColor: Colors.red[700]),
-                      child: const Text('不是這裡'),
+                      child: Text('notHere'.tr()),
                     ),
                   ),
                 ),

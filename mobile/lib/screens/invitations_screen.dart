@@ -75,7 +75,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
       if (mounted) {
         setState(() => _responding.remove(attendId));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失敗：$e')),
+          SnackBar(content: Text('operationFailed'.tr(namedArgs: {'error': e.toString()}))),
         );
       }
     }
@@ -136,7 +136,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
                       const SizedBox(height: 12),
                       Text(_error!, style: const TextStyle(color: Colors.red)),
                       const SizedBox(height: 16),
-                      ElevatedButton(onPressed: _load, child: const Text('重試')),
+                      ElevatedButton(onPressed: _load, child: Text('retry'.tr())),
                     ],
                   ),
                 )
@@ -240,7 +240,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
                   child: OutlinedButton(
                     onPressed: isResponding ? null : () => _respond(attendId, 'decline'),
                     style: OutlinedButton.styleFrom(foregroundColor: Colors.red[700]),
-                    child: const Text('拒絕'),
+                    child: Text('decline'.tr()),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -255,7 +255,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
                         ? const SizedBox(
                             width: 16, height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('確認參與'),
+                        : Text('confirmAttend'.tr()),
                   ),
                 ),
               ]),

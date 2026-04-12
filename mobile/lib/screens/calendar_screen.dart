@@ -4,9 +4,6 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../models/schedule.dart';
-import 'dart:convert';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
 import '../widgets/add_action_sheet.dart';
 import 'map_screen.dart';
@@ -45,37 +42,28 @@ class _CalendarScreenState extends State<CalendarScreen>
   Future<void> _loadSchedules() async {
     try {
       final apiService = ApiService();
-      final headers = await apiService.getHeaders();
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/schedules'),
-        headers: headers,
-      );
+      final schedules = await apiService.getSchedules();
+      Map<DateTime, List<Schedule>> scheduleMap = {};
 
-      if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
-        Map<DateTime, List<Schedule>> scheduleMap = {};
+      for (var schedule in schedules) {
+        DateTime date = DateTime(
+          schedule.startTime.year,
+          schedule.startTime.month,
+          schedule.startTime.day,
+        );
 
-        for (var item in data) {
-          Schedule schedule = Schedule.fromJson(item);
-          DateTime date = DateTime(
-            schedule.startTime.year,
-            schedule.startTime.month,
-            schedule.startTime.day,
-          );
-
-          if (scheduleMap[date] == null) {
-            scheduleMap[date] = [];
-          }
-          scheduleMap[date]!.add(schedule);
+        if (scheduleMap[date] == null) {
+          scheduleMap[date] = [];
         }
-
-        setState(() {
-          _schedules = scheduleMap;
-          _isLoading = false;
-        });
+        scheduleMap[date]!.add(schedule);
       }
+
+      setState(() {
+        _schedules = scheduleMap;
+        _isLoading = false;
+      });
     } catch (e) {
-      print('Error loading schedules: $e');
+      debugPrint('Error loading schedules: $e');
       setState(() {
         _isLoading = false;
       });

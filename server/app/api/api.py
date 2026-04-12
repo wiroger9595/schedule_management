@@ -6,6 +6,7 @@ from .endpoints.contacts import router as contacts_router
 from .endpoints.estimate import router as estimate_router
 from .endpoints.line import router as line_router
 from .endpoints.comments import router as comments_router
+from .endpoints.admin import router as admin_router
 
 api_router = APIRouter()
 
@@ -16,3 +17,4 @@ api_router.include_router(contacts_router, prefix="/contacts", tags=["contacts"]
 api_router.include_router(estimate_router, prefix="/estimate", tags=["estimate"])
 api_router.include_router(line_router, prefix="/line", tags=["line"])
 api_router.include_router(comments_router, prefix="/comments", tags=["comments"])
+api_router.include_router(admin_router, prefix="/admin", tags=["admin"])

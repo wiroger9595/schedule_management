@@ -49,7 +49,7 @@ class _ContactPickerState extends State<ContactPicker> {
       }
     } catch (e) {
       setState(() => isLoading = false);
-      print('Error loading contacts: $e');
+      debugPrint('Error loading contacts: $e');
     }
   }
 

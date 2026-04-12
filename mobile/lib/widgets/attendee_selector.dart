@@ -123,11 +123,11 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
           });
         }
       } else {
-        print('Failed to load contacts: ${response.statusCode}');
+        debugPrint('Failed to load contacts: ${response.statusCode}');
         if (mounted) setState(() => _isLoadingContacts = false);
       }
     } catch (e) {
-      print('Error loading contacts: $e');
+      debugPrint('Error loading contacts: $e');
       if (mounted) setState(() => _isLoadingContacts = false);
     }
   }
@@ -203,7 +203,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
       if (mounted) {
         setState(() => _isCreating = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('建立失敗: $e')),
+          SnackBar(content: Text('createFailed'.tr(namedArgs: {'error': e.toString()}))),
         );
       }
     }

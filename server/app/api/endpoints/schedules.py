@@ -661,8 +661,16 @@ def chat_schedule(
         needs_location_confirm = False
         location_candidates: list = []
         location_details = None
-        intent = "create"
-        target_schedule_id = current_context.get("target_schedule_id")
+        # If pending edit, resume edit intent instead of creating
+        pending_edit_id = current_context.get("_pending_edit_schedule_id")
+        if pending_edit_id:
+            intent = "edit"
+            target_schedule_id = pending_edit_id
+            # Clean internal key from updated_data before processing
+            updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
+        else:
+            intent = "create"
+            target_schedule_id = current_context.get("target_schedule_id")
     else:
         # ── Run LangGraph: collect_info → validate_location ──────────────────
         graph_state = schedule_graph.invoke({
@@ -768,17 +776,53 @@ def chat_schedule(
             location_lon = None
 
             if location_name:
-                # confirm_location=True: coords come from context (set by frontend on selection)
+                # If coords already confirmed (confirm_location or explicit lat/lon), use them directly
                 ctx_lat = updated_data.get("latitude") or updated_data.get("lat")
                 ctx_lon = updated_data.get("longitude") or updated_data.get("lon")
                 if ctx_lat and ctx_lon:
                     location_lat = float(ctx_lat)
                     location_lon = float(ctx_lon)
-                elif request.latitude and request.longitude:
+                elif request.confirm_location and request.latitude and request.longitude:
                     location_lat = request.latitude
                     location_lon = request.longitude
+                else:
+                    # Run validate_location — for chain stores (星巴克, 麥當勞) this returns
+                    # multiple candidates; let user pick the right branch
+                    loc_result = HereService.validate_location(
+                        location_name,
+                        lat=request.latitude,
+                        lon=request.longitude,
+                    )
+                    if loc_result["needs_selection"] or (loc_result["best"] is None):
+                        candidates_clean = [
+                            {"name": c["name"], "address": c["address"],
+                             "lat": c["lat"], "lon": c["lon"]}
+                            for c in loc_result.get("candidates", [])
+                        ]
+                        # Store intent context so after user selects, we resume edit
+                        edit_ctx = dict(updated_data)
+                        edit_ctx["_pending_edit_schedule_id"] = effective_schedule_id or target_schedule_id
+                        if candidates_clean:
+                            return ChatResponse(
+                                ai_reply=f"我找到了幾個「{location_name}」，請選擇正確的分店：",
+                                updated_data=edit_ctx,
+                                is_complete=False,
+                                needs_location_confirm=True,
+                                location_candidates=candidates_clean,
+                            )
+                        else:
+                            return ChatResponse(
+                                ai_reply=f"找不到「{location_name}」，請提供更詳細的地址。",
+                                updated_data=updated_data,
+                                is_complete=False,
+                            )
+                    elif loc_result["best"]:
+                        best = loc_result["best"]
+                        location_lat = best["lat"]
+                        location_lon = best["lon"]
 
             repo = ScheduleRepository(session)
+            effective_schedule_id = request.schedule_id or (target_schedule_id if intent == "edit" else None)
 
             # 3. 檢查衝突 (Conflict Detection — only for create, skip for edit)
             if not request.force_create and intent != "edit" and start_time:
@@ -809,7 +853,6 @@ def chat_schedule(
                     )
 
             # ── Update existing schedule (chat edit intent or correction) ──────
-            effective_schedule_id = request.schedule_id or (target_schedule_id if intent == "edit" else None)
             if effective_schedule_id:
                 existing = repo.get_by_schedule_id(effective_schedule_id)
                 if existing and existing.user_id == current_user.user_id:
@@ -822,6 +865,15 @@ def chat_schedule(
                     if location_name:
                         existing.meeting_location = location_name
                         existing.location = location_name
+                        # Geocode new location for edit (skip if coords already provided)
+                        if not (location_lat and location_lon):
+                            try:
+                                coords = HereService.get_coordinates(location_name)
+                                if coords:
+                                    location_lat = coords[0]
+                                    location_lon = coords[1]
+                            except Exception as e:
+                                print(f"[chat edit] geocoding failed: {e}")
                     if location_lat and location_lon:
                         existing.latitude = location_lat
                         existing.longitude = location_lon

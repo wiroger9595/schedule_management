@@ -28,7 +28,7 @@ class AuthProvider with ChangeNotifier {
       // as it might be a race condition with a pending request or storage write.
       if (_lastLoginTime != null && 
           DateTime.now().difference(_lastLoginTime!).inSeconds < 5) {
-        print('Ignoring 401 due to recent login (race condition guard)');
+        debugPrint('Ignoring 401 due to recent login (race condition guard)');
         return;
       }
       // Trigger logout when a 401 is encountered globally
@@ -57,7 +57,7 @@ class AuthProvider with ChangeNotifier {
               await fetchUserProfile();
             }
           } catch (e) {
-            print('Error processing Google login from listener: $e');
+            debugPrint('Error processing Google login from listener: $e');
           } finally {
             _isLoading = false;
             notifyListeners();
@@ -91,10 +91,10 @@ class AuthProvider with ChangeNotifier {
         // Token is invalid or expired
         await logout();
       } else {
-        print('Error fetching profile: ${response.statusCode}');
+        debugPrint('Error fetching profile: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error fetching profile: $e');
+      debugPrint('Error fetching profile: $e');
     }
   }
 
@@ -122,7 +122,7 @@ class AuthProvider with ChangeNotifier {
         throw Exception('Failed to update profile: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error updating profile: $e');
+      debugPrint('Error updating profile: $e');
       _isLoading = false;
       notifyListeners();
       throw e;

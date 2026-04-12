@@ -398,8 +398,8 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
             widget.schedule!.id,
             scheduleData,
           );
-          print(
-            'DEBUG: AddScheduleScreen popping with updated schedule: ${updatedSchedule.latitude}, ${updatedSchedule.longitude}',
+          debugPrint(
+            'AddScheduleScreen popping with updated schedule: ${updatedSchedule.latitude}, ${updatedSchedule.longitude}',
           );
           _updateWidget(
             _titleController.text,

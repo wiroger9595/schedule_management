@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/schedule.dart';
 import '../models/todo_comment.dart';
@@ -223,7 +224,8 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> createContact(
-      String name, String phone, String email, String lineId) async {
+      String name, String phone, String email, String lineId,
+      {String? contactUserId}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/contacts/'),
       headers: await getHeaders(),
@@ -232,6 +234,7 @@ class ApiService {
         'phone': phone,
         'email': email,
         'line_id': lineId,
+        if (contactUserId != null) 'contact_user_id': contactUserId,
       }),
     );
     if (response.statusCode == 200 || response.statusCode == 201) {
@@ -243,6 +246,89 @@ class ApiService {
     } else {
       final error = jsonDecode(response.body);
       throw Exception(error['detail'] ?? 'Failed to create contact');
+    }
+  }
+
+  Future<Map<String, dynamic>> updateContact(
+      int id, Map<String, dynamic> data) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/contacts/$id'),
+      headers: await getHeaders(),
+      body: jsonEncode(data),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to update contact');
+    }
+  }
+
+  Future<void> deleteContact(int id) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/contacts/$id'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    } else if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Failed to delete contact');
+    }
+  }
+
+  Future<void> deleteContacts(List<int> ids) async {
+    final headers = await getHeaders();
+    final responses = await Future.wait(
+      ids.map((id) => http.delete(
+        Uri.parse('$baseUrl/contacts/$id'),
+        headers: headers,
+      )),
+    );
+    final failed = responses.where(
+      (r) => r.statusCode != 200 && r.statusCode != 204,
+    );
+    if (failed.isNotEmpty) {
+      throw Exception('Failed to delete ${failed.length} contacts');
+    }
+  }
+
+  Future<Map<String, dynamic>> getMyProfile() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/users/me'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(utf8.decode(response.bodyBytes));
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    } else {
+      throw Exception('Failed to load profile');
+    }
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile(
+      Map<String, dynamic> data) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/users/me'),
+      headers: await getHeaders(),
+      body: jsonEncode(data),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(utf8.decode(response.bodyBytes));
+    } else if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    } else {
+      throw Exception('Failed to update profile: ${response.statusCode}');
     }
   }
 
@@ -334,8 +420,7 @@ class ApiService {
       Uri.parse('$baseUrl/users/me/invitations'),
       headers: await getHeaders(),
     );
-    // ignore: avoid_print
-    print('[Invitations] status=${response.statusCode} body=${response.body}');
+    debugPrint('[Invitations] status=${response.statusCode} body=${response.body}');
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
     } else {

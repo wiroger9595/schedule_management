@@ -2,8 +2,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'profile_edit_screen.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -26,20 +24,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isLoading = true);
     try {
       final apiService = ApiService();
-      final headers = await apiService.getHeaders();
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/users/me'),
-        headers: headers,
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _user = jsonDecode(response.body);
-          _isLoading = false;
-        });
-      }
+      final user = await apiService.getMyProfile();
+      setState(() {
+        _user = user;
+        _isLoading = false;
+      });
     } catch (e) {
-      print('Error loading user info: $e');
+      debugPrint('Error loading user info: $e');
       setState(() => _isLoading = false);
     }
   }

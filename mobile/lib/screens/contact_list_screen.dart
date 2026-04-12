@@ -1,7 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../services/api_service.dart';
@@ -81,21 +79,12 @@ class _ContactListScreenState extends State<ContactListScreen> {
   Future<void> fetchContacts() async {
     setState(() => isLoading = true);
     try {
-      final headers = await apiService.getHeaders();
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/contacts/'),
-        headers: headers,
-      );
-
-      if (response.statusCode == 200) {
-        if (!mounted) return;
-        setState(() {
-          contacts = jsonDecode(response.body);
-          isLoading = false;
-        });
-      } else {
-        throw Exception('Failed to load contacts');
-      }
+      final result = await apiService.getContacts();
+      if (!mounted) return;
+      setState(() {
+        contacts = result.cast<Map<String, dynamic>>();
+        isLoading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => isLoading = false);
@@ -114,36 +103,15 @@ class _ContactListScreenState extends State<ContactListScreen> {
     String? defaultNotificationMethod,
   }) async {
     try {
-      final headers = await apiService.getHeaders();
-      final body = {
-        'nick_name': name,
-        'phone': phone,
-        'email': email,
-        'line_id': lineId,
-        'contact_user_id': contactUserId,
-        'default_notification_method': defaultNotificationMethod ?? 'mobile',
-      };
-
-      final response = await http.post(
-        Uri.parse('${ApiService.baseUrl}/contacts/'),
-        headers: headers,
-        body: jsonEncode(body),
-      );
-
-      if (response.statusCode == 200) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Contact added successfully')));
-        fetchContacts(); // Refresh list
-      } else {
-        if (!mounted) return;
-        final error = jsonDecode(response.body)['detail'];
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed: $error')));
-      }
+      await apiService.createContact(name, phone, email, lineId,
+          contactUserId: contactUserId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Contact added successfully')));
+      fetchContacts();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -159,35 +127,20 @@ class _ContactListScreenState extends State<ContactListScreen> {
     String? defaultNotificationMethod,
   ) async {
     try {
-      final headers = await apiService.getHeaders();
-      final body = {
+      await apiService.updateContact(int.parse(id), {
         'nick_name': name,
         'phone': phone,
         'email': email,
         'line_id': lineId,
         'default_notification_method': defaultNotificationMethod ?? 'mobile',
-      };
-
-      final response = await http.put(
-        Uri.parse('${ApiService.baseUrl}/contacts/$id/'),
-        headers: headers,
-        body: jsonEncode(body),
-      );
-
-      if (response.statusCode == 200) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Contact updated successfully')));
-        fetchContacts(); // Refresh list
-      } else {
-        if (!mounted) return;
-        final error = jsonDecode(response.body)['detail'];
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed: $error')));
-      }
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Contact updated successfully')));
+      fetchContacts();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -979,16 +932,16 @@ class _ContactListScreenState extends State<ContactListScreen> {
       builder: (context) => AlertDialog(
         title: Text('deleteContact'.tr()),
         content: Text(
-            '確定要刪除這 ${selectedContactIds.length} 位聯絡人嗎？\n注意：這些聯絡人參與的行程記錄也會一併被刪除，此動作無法復原。'),
+            'confirmDeleteContact'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('取消'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
-            child: Text('刪除', style: TextStyle(color: Colors.white)),
+            child: Text('delete'.tr(), style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -997,35 +950,11 @@ class _ContactListScreenState extends State<ContactListScreen> {
     if (confirmed == true) {
       setState(() => isLoading = true);
       try {
-        final headers = await apiService.getHeaders();
-        // Use Future.wait to delete concurrently
-        final deleteFutures = selectedContactIds.map((id) {
-          return http.delete(
-            Uri.parse('${ApiService.baseUrl}/contacts/$id'),
-            headers: headers,
-          );
-        });
-
-        final responses = await Future.wait(deleteFutures);
-
-        // CHeck if all successful (or handled individually).
-        // For simplicity, if any fail, we might want to know, but we'll refresh regardless.
+        await apiService.deleteContacts(selectedContactIds.toList());
         if (!mounted) return;
-
-        bool allSuccess = responses.every(
-          (r) => r.statusCode == 200 || r.statusCode == 204,
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('deleteContactBatch'.tr(namedArgs: {'count': selectedContactIds.length.toString()}))),
         );
-
-        if (allSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('成功刪除 ${selectedContactIds.length} 位聯絡人')),
-          );
-        } else {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('someDeleteFailed'.tr())));
-        }
-
         setState(() {
           isSelectionMode = false;
           selectedContactIds.clear();
@@ -1036,7 +965,7 @@ class _ContactListScreenState extends State<ContactListScreen> {
         setState(() => isLoading = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('刪除失敗: $e')));
+        ).showSnackBar(SnackBar(content: Text('deleteScheduleFailed'.tr(namedArgs: {'error': e.toString()}))));
       }
     }
   }
@@ -1046,16 +975,16 @@ class _ContactListScreenState extends State<ContactListScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('deleteContact'.tr()),
-        content: Text('確定要刪除這位聯絡人嗎？\n注意：此聯絡人參與的行程記錄也會一併被刪除，此動作無法復原。'),
+        content: Text('confirmDeleteContact'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('取消'),
+            child: Text('cancel'.tr()),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
-            child: Text('刪除', style: TextStyle(color: Colors.white)),
+            child: Text('delete'.tr(), style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1064,17 +993,8 @@ class _ContactListScreenState extends State<ContactListScreen> {
     if (confirmed != true) return;
 
     try {
-      final headers = await apiService.getHeaders();
-      final response = await http.delete(
-        Uri.parse('${ApiService.baseUrl}/contacts/$friendId'),
-        headers: headers,
-      );
-
-      if (response.statusCode == 200) {
-        fetchContacts(); // Refresh
-      } else {
-        throw Exception('Failed to delete');
-      }
+      await apiService.deleteContact(int.parse(friendId));
+      fetchContacts();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

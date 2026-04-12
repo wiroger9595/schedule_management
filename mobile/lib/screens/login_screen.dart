@@ -28,13 +28,13 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('登入失敗，請檢查帳號密碼')),
+            SnackBar(content: Text('loginFailed'.tr())),
           );
         }
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('連線錯誤: $e')),
+          SnackBar(content: Text('connectionError'.tr(namedArgs: {'error': e.toString()}))),
         );
       }
     }
@@ -111,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(height: 16),
                   TextButton(
                     onPressed: () => Navigator.pushNamed(context, '/register'),
-                    child: Text('還沒有帳號？立即註冊'),
+                    child: Text('noAccountRegister'.tr()),
                   ),
                   Divider(),
                   Text('quickLogin'.tr()),

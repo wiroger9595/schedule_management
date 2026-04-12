@@ -53,7 +53,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   onScheduleCreated: () {
                     // When a schedule is created, we can show a snackbar or navigate to My Schedules
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('行程已成功建立！(Schedule Created!)')),
+                      SnackBar(content: Text('scheduleCreatedSuccess'.tr())),
                     );
                   },
                 ),

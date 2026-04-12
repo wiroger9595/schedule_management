@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Start periodic check if not running
     _statusCheckTimer?.cancel();
     _statusCheckTimer = Timer.periodic(Duration(minutes: 1), (timer) {
-      print('--- Timer Tick: Checking Schedules (Every 1 Min) ---');
+      debugPrint('--- Timer Tick: Checking Schedules (Every 1 Min) ---');
       _checkScheduleArrivals(scheduleProvider.schedules);
       _checkComingSoon(scheduleProvider.schedules);
       _checkUpcomingReminders(scheduleProvider.schedules);
@@ -155,22 +155,22 @@ class _HomeScreenState extends State<HomeScreen> {
       final inWindow = minutes > -60 && minutes < 120;
 
       if (inWindow) {
-        print('Check ComingSoon match: ${s.title} | Diff: ${minutes}m');
+        debugPrint('Check ComingSoon match: ${s.title} | Diff: ${minutes}m');
       }
 
       return inWindow;
     }).toList();
 
-    print(
+    debugPrint(
         'Found ${comingSoonSchedules.length} schedules to update to Coming Soon');
 
     for (var schedule in comingSoonSchedules) {
-      print('Updating status to Coming Soon for ${schedule.title}');
+      debugPrint('Updating status to Coming Soon for ${schedule.title}');
       try {
         await apiService.updateStatus(schedule.id, ScheduleStatus.comingSoon);
         statusUpdated = true;
       } catch (e) {
-        print('Failed to auto-update status: $e');
+        debugPrint('Failed to auto-update status: $e');
       }
     }
 
@@ -214,18 +214,18 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     } catch (e) {
-      print('Location error: $e');
+      debugPrint('Location error: $e');
     }
 
     if (position == null) return;
 
     final apiService = ApiService();
 
-    print('Found ${targetSchedules.length} started schedules to check.');
+    debugPrint('Found ${targetSchedules.length} started schedules to check.');
 
     for (var schedule in targetSchedules) {
       if (schedule.latitude == null || schedule.longitude == null) {
-        print('Skipping ${schedule.title}: No location data (lat/lon is null)');
+        debugPrint('Skipping ${schedule.title}: No location data (lat/lon is null)');
         continue;
       }
 
@@ -262,16 +262,16 @@ class _HomeScreenState extends State<HomeScreen> {
           final latestAllowedTime = referenceTime.add(Duration(minutes: 15));
 
           if (estimatedArrivalTime.isAfter(latestAllowedTime)) {
-            print(
+            debugPrint(
                 'Schedule ${schedule.title}: Estimated arrival $estimatedArrivalTime is past allowed time $latestAllowedTime. Marking Not Attended.');
             newStatus = ScheduleStatus.notAttended;
           } else {
-            print(
+            debugPrint(
                 'Schedule ${schedule.title}: Can still make it. Est arrival $estimatedArrivalTime.');
             continue; // Still give them time
           }
         } catch (e) {
-          print('Failed to get travel estimate for ${schedule.title}: $e');
+          debugPrint('Failed to get travel estimate for ${schedule.title}: $e');
           // Fallback to strict 30-minute rule if API fails
           final minutesLate = now.difference(referenceTime).inMinutes;
           if (minutesLate > 30) {
@@ -282,12 +282,12 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      print('Updating status to $newStatus for ${schedule.title}');
+      debugPrint('Updating status to $newStatus for ${schedule.title}');
       try {
         await apiService.updateStatus(schedule.id, newStatus);
         statusUpdated = true;
       } catch (e) {
-        print('Failed to auto-update status: $e');
+        debugPrint('Failed to auto-update status: $e');
       }
     }
 
@@ -649,17 +649,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('刪除行程'),
-        content: Text('確定要刪除「${schedule.title}」？\n此操作無法復原，相關邀請記錄也會一併刪除。'),
+        title: Text('deleteSchedule'.tr()),
+        content: Text('confirmDeleteSchedule'.tr(namedArgs: {'title': schedule.title})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text('cancel'.tr()),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('刪除'),
+            child: Text('delete'.tr()),
           ),
         ],
       ),
@@ -671,14 +671,14 @@ class _HomeScreenState extends State<HomeScreen> {
       await ApiService().deleteSchedule(schedule.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('「${schedule.title}」已刪除')),
+          SnackBar(content: Text('scheduleDeleted'.tr(namedArgs: {'title': schedule.title}))),
         );
         _refreshSchedules();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刪除失敗：$e')),
+          SnackBar(content: Text('deleteScheduleFailed'.tr(namedArgs: {'error': e.toString()}))),
         );
       }
     }

@@ -28,7 +28,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await _authService.register(email, password, fullName);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('註冊成功，請登入')),
+            SnackBar(content: Text('registerSuccess'.tr())),
           );
           Navigator.pop(context);
         }

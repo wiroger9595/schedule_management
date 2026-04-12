@@ -60,7 +60,7 @@ class _MapScreenState extends State<MapScreen> {
     // If coords are missing but location name exists, geocode on-the-fly
     if ((_schedule.latitude == null || _schedule.longitude == null) &&
         _schedule.location != null && _schedule.location!.isNotEmpty) {
-      print('No destination coordinates, geocoding from location name: ${_schedule.location}');
+      debugPrint('No destination coordinates, geocoding from location name: ${_schedule.location}');
       try {
         final apiService = ApiService();
         final places = await apiService.searchPlaces(_schedule.location!, null, null);
@@ -93,12 +93,12 @@ class _MapScreenState extends State<MapScreen> {
           }
         }
       } catch (e) {
-        print('On-the-fly geocoding failed: $e');
+        debugPrint('On-the-fly geocoding failed: $e');
       }
     }
 
     if (_schedule.latitude == null || _schedule.longitude == null) {
-      print('No destination coordinates found');
+      debugPrint('No destination coordinates found');
       return;
     }
 
@@ -123,7 +123,7 @@ class _MapScreenState extends State<MapScreen> {
         }
       }
     } catch (e) {
-      print('Travel estimation error: $e');
+      debugPrint('Travel estimation error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not get travel time: $e')),
@@ -135,8 +135,8 @@ class _MapScreenState extends State<MapScreen> {
           _controller.isCompleted &&
           _schedule.latitude != null &&
           _schedule.longitude != null) {
-        print(
-          "DEBUG: Fitting bounds to current=${position.latitude},${position.longitude} and dest=${_schedule.latitude},${_schedule.longitude}",
+        debugPrint(
+          "Fitting bounds to current=${position.latitude},${position.longitude} and dest=${_schedule.latitude},${_schedule.longitude}",
         );
         final controller = await _controller.future;
         // Fit bounds logic...
@@ -172,7 +172,7 @@ class _MapScreenState extends State<MapScreen> {
             ),
           );
         } catch (e) {
-          print("Camera update error: $e");
+          debugPrint("Camera update error: $e");
         }
       }
     }

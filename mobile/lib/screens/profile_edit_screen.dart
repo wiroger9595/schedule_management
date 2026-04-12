@@ -123,7 +123,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('儲存失敗：$e')));
+        ).showSnackBar(SnackBar(content: Text('saveFailed'.tr(namedArgs: {'error': e.toString()}))));
       }
     } finally {
       setState(() => _isLoading = false);

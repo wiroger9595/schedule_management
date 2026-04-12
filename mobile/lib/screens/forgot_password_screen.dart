@@ -37,13 +37,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('若此信箱已註冊，驗證碼已寄出，請檢查收件匣')),
+        SnackBar(content: Text('codeSentSuccess'.tr())),
       );
       setState(() => _step = 1);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('發送失敗: $e')),
+        SnackBar(content: Text('sendFailed'.tr(namedArgs: {'error': e.toString()}))),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -64,13 +64,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('密碼重置成功，請重新登入')),
+        SnackBar(content: Text('passwordResetSuccess'.tr())),
       );
       Navigator.pop(context); // Go back to login screen
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('重置失敗: $e')),
+        SnackBar(content: Text('resetFailed'.tr(namedArgs: {'error': e.toString()}))),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -89,7 +89,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (_step == 0) ...[
-                Text('請輸入您的註冊信箱，我們將發送驗證碼給您。', style: TextStyle(fontSize: 16)),
+                Text('forgotPasswordDesc'.tr(), style: TextStyle(fontSize: 16)),
                 SizedBox(height: 24),
                 TextFormField(
                   controller: _emailController,
@@ -115,7 +115,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                 ),
               ] else if (_step == 1) ...[
-                 Text('驗證碼已發送至 ${_emailController.text}。', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                 Text('codeSentTo'.tr(namedArgs: {'email': _emailController.text}), style: TextStyle(fontSize: 14, color: Colors.grey)),
                  SizedBox(height: 24),
                  TextFormField(
                   controller: _codeController,
@@ -138,7 +138,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       setState(() => _step = 2);
                     }
                   },
-                  child: Text('下一步'),
+                  child: Text('next'.tr()),
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -146,10 +146,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 SizedBox(height: 16),
                 TextButton(
                   onPressed: () => setState(() => _step = 0),
-                  child: Text('重新發送驗證碼 / 更換信箱'),
+                  child: Text('resendOrChange'.tr()),
                 ),
               ] else if (_step == 2) ...[
-                Text('請輸入您的新密碼。', style: TextStyle(fontSize: 16)),
+                Text('enterNewPasswordDesc'.tr(), style: TextStyle(fontSize: 16)),
                 SizedBox(height: 24),
                 TextFormField(
                   controller: _passwordController,
@@ -193,7 +193,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 SizedBox(height: 16),
                 TextButton(
                   onPressed: () => setState(() => _step = 1),
-                  child: Text('上一步'),
+                  child: Text('back'.tr()),
                 ),
               ],
             ],

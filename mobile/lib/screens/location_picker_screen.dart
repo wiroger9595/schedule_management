@@ -116,7 +116,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       }
     } catch (e) {
       // Ignore errors for silent background check
-      print("Error fetching nearby POI on tap: $e");
+      debugPrint("Error fetching nearby POI on tap: $e");
     }
   }
 
@@ -490,7 +490,7 @@ class __SearchOverlayState extends State<_SearchOverlay> {
         });
       }
     } catch (e) {
-      print("Search failed: $e");
+      debugPrint("Search failed: $e");
       if (mounted) {
         setState(() {
           _isLoading = false;
