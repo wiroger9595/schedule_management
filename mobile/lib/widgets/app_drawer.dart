@@ -1,4 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -111,61 +112,6 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
           ),
           ListTile(
-            leading: Icon(Icons.person, color: Colors.black87),
-            title: Text('profile'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ProfileScreen()),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.phone, color: Colors.green),
-            title: Text('callLog'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => CallLogScreen()),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.checklist, color: Colors.teal),
-            title: Text('todoList'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 1)),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.calendar_month, color: Colors.orange),
-            title: Text('calendar'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 0)),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.people, color: Colors.black87),
-            title: Text('myContacts'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ContactListScreen()),
-              );
-            },
-          ),
-          ListTile(
             leading: Icon(Icons.smart_toy_outlined, color: Colors.blueAccent),
             title: Text('aiChat'.tr()),
             onTap: () {
@@ -181,6 +127,28 @@ class _AppDrawerState extends State<AppDrawer> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => HomeScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.calendar_month, color: Colors.orange),
+            title: Text('calendar'.tr()),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 0)),
+              );
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.checklist, color: Colors.teal),
+            title: Text('todoList'.tr()),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 1)),
               );
             },
           ),
@@ -237,6 +205,40 @@ class _AppDrawerState extends State<AppDrawer> {
               _loadInviteCount(); // Refresh badge after returning
             },
           ),
+          ListTile(
+            leading: Icon(Icons.people, color: Colors.black87),
+            title: Text('myContacts'.tr()),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ContactListScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.person, color: Colors.black87),
+            title: Text('profile'.tr()),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ProfileScreen()),
+              );
+            },
+          ),
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+            ListTile(
+              leading: Icon(Icons.phone, color: Colors.green),
+              title: Text('callLog'.tr()),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => CallLogScreen()),
+                );
+              },
+            ),
           ListTile(
             leading: Icon(Icons.settings, color: Colors.black87),
             title: Text('settings'.tr()),
