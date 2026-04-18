@@ -177,16 +177,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                  final lon = place['lon'] as double;
                  final pos = LatLng(lat, lon);
                  _selectLocation(pos, place['name'], place['address'] ?? '');
-                 
-                 // Close the search bottom sheet
-                 Navigator.pop(context);
-                 
-                 // Immediately return the result to AddScheduleScreen
-                 Navigator.pop(context, {
-                    'latitude': lat,
-                    'longitude': lon,
-                    'name': place['name'],
-                    'address': place['address'] ?? '',
+
+                 // Close the search bottom sheet first, then pop LocationPickerScreen
+                 // after the frame to avoid double-pop animation conflict.
+                 Navigator.of(context).pop();
+                 WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                       Navigator.of(context).pop({
+                          'latitude': lat,
+                          'longitude': lon,
+                          'name': place['name'],
+                          'address': place['address'] ?? '',
+                       });
+                    }
                  });
               }
            },

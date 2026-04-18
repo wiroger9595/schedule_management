@@ -586,13 +586,66 @@ def update_schedule(
     print(f"DEBUG: update_schedule returning: {result}")
     return result
 
+@router.post("/reindex", response_model=dict)
+def reindex_embeddings(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """重建用戶所有行程的 embedding。首次部署或更換 embedding 模型後使用。"""
+    from ...services.embedding_service import EmbeddingService
+    repo = ScheduleRepository(session)
+    schedules = repo.get_by_user_id(current_user.user_id)
+    success, failed = 0, 0
+    for s in schedules:
+        try:
+            emb = EmbeddingService.embed_schedule(
+                s.title or "",
+                s.meeting_location or "",
+                s.description or "",
+            )
+            repo.upsert_embedding(s.schedule_id, emb)
+            success += 1
+        except Exception as e:
+            print(f"[reindex] {s.schedule_id} failed: {e}")
+            failed += 1
+    print(f"[reindex] user={current_user.user_id} success={success} failed={failed}")
+    return {"success": success, "failed": failed, "total": len(schedules)}
+
+
+@router.post("/chat/clear")
+def clear_chat_history(current_user: User = Depends(get_current_user)):
+    """清除用戶的 AI 對話紀錄與行程 context（對應 Flutter clearChat）"""
+    from ...core.redis_client import redis_client
+    user_id = str(current_user.user_id)
+    redis_client.clear_chat_history(user_id)
+    redis_client.clear_chat_context(user_id)
+    return {"ok": True}
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat_schedule(
     request: ChatRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
+    from ...core.redis_client import redis_client
+
     user_message = request.message.strip()
+    user_id = str(current_user.user_id)
+
+    # ── Rate limit: 每10秒最多3次 AI 請求 ────────────────────────────────────
+    if not request.confirm_delete and not request.confirm_location and not request.confirm_past_edit:
+        if not redis_client.check_ai_rate_limit(user_id):
+            return ChatResponse(
+                ai_reply="請求太頻繁，請稍等一下再繼續。",
+                updated_data=request.current_data or {},
+                is_complete=False,
+            )
+
+    # ── 從 Redis 讀取 server-side history，Flutter 帶的 history 為備用 ────────
+    server_history = redis_client.get_chat_history(user_id)
+    conversation_history = server_history if server_history else (request.conversation_history or [])
+
     current_context = request.current_data or {}
 
     saved_schedule = None
@@ -616,6 +669,54 @@ def chat_schedule(
             is_complete=True,
             schedule_deleted=True,
         )
+
+    # ── Person hint extractor: detect contact name in message ────────────────
+    def _extract_person_hint(message: str) -> Optional[str]:
+        """Extract person name hint from patterns like 與X、和X、跟X before 見面/行程/etc."""
+        import re
+        NON_NAMES = {"我", "你", "他", "她", "他們", "大家", "朋友", "同事", "家人",
+                     "老闆", "客戶", "大家", "你們", "我們"}
+        patterns = [
+            r'[與和跟找]([A-Za-z\u4e00-\u9fff]{1,6})(?:見面|開會|吃飯|談|碰面|的行程|的時間|的地點|的約)',
+            r'[與和跟找]([A-Za-z\u4e00-\u9fff]{1,6})(?:\s|$|，|,|。|！|？)',
+        ]
+        for pat in patterns:
+            m = re.search(pat, message)
+            if m:
+                name = m.group(1).strip()
+                if name and name not in NON_NAMES:
+                    return name
+        return None
+
+    def _check_person_in_contacts(user_id: str, person_hint: str, session) -> bool:
+        """Return True if a contact with nick_name containing person_hint exists."""
+        from ...models.contact import Contact
+        from sqlmodel import select as _select
+        c = session.exec(
+            _select(Contact).where(
+                Contact.user_id == user_id,
+                Contact.nick_name.ilike(f"%{person_hint}%"),
+            )
+        ).first()
+        return c is not None
+
+    def _fmt_schedule_summary(obj) -> str:
+        """Format saved schedule into a full info summary for user confirmation."""
+        lines = []
+        lines.append(f"📋 行程名稱：{obj.title or '未命名'}")
+        if obj.meeting_start_time:
+            _t = arrow.get(obj.meeting_start_time).to("Asia/Taipei")
+            _h = _t.hour
+            _p = "上午" if 6 <= _h < 12 else "中午" if 12 <= _h < 14 else "下午" if 14 <= _h < 18 else "晚上" if 18 <= _h < 22 else "深夜"
+            _ts = f"{_t.month}月{_t.day}日（{_t.format('ddd', locale='zh_TW')}）{_p}{_h}點"
+            if getattr(obj, 'meeting_end_time', None):
+                _et = arrow.get(obj.meeting_end_time).to("Asia/Taipei")
+                _ep = "上午" if 6 <= _et.hour < 12 else "中午" if 12 <= _et.hour < 14 else "下午" if 14 <= _et.hour < 18 else "晚上" if 18 <= _et.hour < 22 else "深夜"
+                _ts += f"到{'（'+_ep+'）' if _ep != _p else ''}{_et.hour}點"
+            lines.append(f"🕐 時間：{_ts}")
+        if getattr(obj, 'meeting_location', None):
+            lines.append(f"📍 地點：{obj.meeting_location}")
+        return "\n".join(lines)
 
     # ── Pre-match schedules with Python keyword search ────────────────────────
     # Reliable fuzzy matching before handing to AI — avoids AI missing titles
@@ -652,10 +753,113 @@ def chat_schedule(
 
     annotated_schedule_list = _python_match_schedules(user_message, request.schedule_list or [])
 
+    # ── Hybrid Search + Reranking ─────────────────────────────────────────────
+    # 語意搜尋 + 關鍵字結果合併，依 cosine 分數重排，過濾低相關行程
+    try:
+        from ...services.embedding_service import EmbeddingService
+        from ...repositories.schedule_repository import ScheduleRepository as _Repo
+        _repo = _Repo(session)
+        query_emb = EmbeddingService.embed(user_message)
+        semantic_results = _repo.semantic_search(user_id, query_emb, top_k=10)
+
+        # {schedule_id: similarity_score}
+        similarity_map = {s.schedule_id: score for s, score in semantic_results}
+        semantic_ids = set(similarity_map.keys())
+        SIMILARITY_THRESHOLD = 0.3
+
+        # Flutter 傳來的原始清單 id — 這些行程一律保留，不過濾
+        original_ids = {s.get("schedule_id") or s.get("id", "") for s in (request.schedule_list or [])}
+
+        final_list = []
+        for s in annotated_schedule_list:
+            sid = s.get("schedule_id") or s.get("id", "")
+            sim = similarity_map.get(sid, 0.0)
+            is_keyword_match = s.get("_match", False)
+
+            if sid in semantic_ids or is_keyword_match:
+                s = dict(s)
+                s["_match"] = True
+                s["_similarity"] = round(sim, 4)
+
+            # 只過濾「語意補充進來的歷史行程」中分數不足的項目。
+            # Flutter 傳來的原始清單（original_ids）一律保留，確保 AI 能看到所有行程。
+            is_original = sid in original_ids
+            has_embedding = sid in similarity_map
+            should_filter = (not is_original) and has_embedding and (not is_keyword_match) and (sim < SIMILARITY_THRESHOLD)
+            if not should_filter:
+                final_list.append(s)
+
+        # 補上語意搜尋找到但不在原清單的歷史行程（分數須達標）
+        existing_ids = {s.get("schedule_id") or s.get("id", "") for s in final_list}
+        for s_obj, score in semantic_results:
+            if s_obj.schedule_id not in existing_ids and score >= SIMILARITY_THRESHOLD:
+                s_dict = s_obj.dict()
+                s_dict["_match"] = True
+                s_dict["_similarity"] = round(score, 4)
+                final_list.append(s_dict)
+
+        # Rerank：_match 優先，同層依 similarity 降序
+        final_list.sort(
+            key=lambda x: (1 if x.get("_match") else 0, x.get("_similarity", 0.0)),
+            reverse=True,
+        )
+        annotated_schedule_list = final_list
+        print(f"[hybrid_search] query='{user_message[:20]}' "
+              f"results={len(final_list)} semantic_hits={len(semantic_ids)}")
+    except Exception as _sem_err:
+        print(f"[semantic_search] skipped (non-critical): {_sem_err}")
+        # PostgreSQL transaction 可能已進入 aborted 狀態，必須 rollback
+        # 否則後續同一 session 的所有操作都會失敗（InFailedSqlTransaction）
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
+    # ── Contact semantic search + User memory retrieval ──────────────────────
+    # 在 hybrid search 之後，把聯絡人語意結果和記憶片段注入 AI context
+    _contact_hints: list = []
+    _memory_snippets: list = []
+    try:
+        from ...services.embedding_service import EmbeddingService as _ES
+        from ...repositories.schedule_repository import ScheduleRepository as _Repo2
+        _repo2 = _Repo2(session)
+        _qemb = _ES.embed(user_message)
+
+        # 聯絡人語意搜尋
+        _contact_hints = _repo2.semantic_search_contacts(user_id, _qemb, top_k=4, min_similarity=0.4)
+
+        # 用戶記憶搜尋
+        _memory_snippets = _repo2.search_user_memory(user_id, _qemb, top_k=3, min_similarity=0.45)
+
+        if _contact_hints:
+            print(f"[contact_search] matches={[c['nick_name'] for c in _contact_hints]}")
+        if _memory_snippets:
+            print(f"[memory_search] hits={len(_memory_snippets)}")
+    except Exception as _cs_err:
+        print(f"[contact/memory search] skipped (non-critical): {_cs_err}")
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
+    # ── Affirmative text reply when location confirm is pending ──────────────
+    # User typed "是的" / "對" instead of clicking the card button.
+    # Detect and treat as confirm_location=True using stored coords.
+    _AFFIRMATIVE = {"是", "是的", "對", "好", "確認", "確定", "ok", "OK", "yes", "沒錯", "正確", "行", "可以"}
+    _pending_lat = current_context.get("_pending_confirm_lat")
+    _pending_lon = current_context.get("_pending_confirm_lon")
+    if (user_message.strip() in _AFFIRMATIVE and _pending_lat and _pending_lon):
+        request = request.model_copy(update={
+            "confirm_location": True,
+            "latitude": _pending_lat,
+            "longitude": _pending_lon,
+        })
+
     # ── confirm_location=True: user already approved a location ──────────────
     # Skip the graph entirely. Re-running AI on "確認地點：XX" confuses the model.
     if request.confirm_location:
-        updated_data = current_context
+        # Strip all internal _ keys (including _pending_confirm_*)
+        updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
         is_complete = True
         ai_reply = ""
         needs_location_confirm = False
@@ -666,32 +870,75 @@ def chat_schedule(
         if pending_edit_id:
             intent = "edit"
             target_schedule_id = pending_edit_id
-            # Clean internal key from updated_data before processing
-            updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
         else:
             intent = "create"
             target_schedule_id = current_context.get("target_schedule_id")
     else:
+        # ── Semantic Router: 本地預分類 intent（減少 AI 呼叫）────────────────
+        pre_intent: str | None = None
+        try:
+            from ...services.semantic_router_service import semantic_router
+            route_result = semantic_router.route(user_message)
+            if route_result["confidence"] >= 0.55:  # 高信心才預注入
+                pre_intent = route_result["intent"]
+                print(f"[SemanticRouter] pre_intent={pre_intent} conf={route_result['confidence']}")
+        except Exception:
+            pass
+
         # ── Run LangGraph: collect_info → validate_location ──────────────────
-        graph_state = schedule_graph.invoke({
-            "user_message": user_message,
-            "conversation_history": request.conversation_history or [],
-            "current_data": current_context,
-            "user_lat": request.latitude,
-            "user_lon": request.longitude,
-            "schedule_list": annotated_schedule_list,
-            # defaults for output fields
-            "updated_data": {},
-            "missing_fields": [],
-            "is_complete": False,
-            "reply": "",
-            "intent": "create",
-            "target_schedule_id": None,
-            "location_result": None,
-            "needs_location_confirm": False,
-            "location_candidates": [],
-            "location_details": None,
-        })
+        try:
+            graph_state = schedule_graph.invoke({
+                "user_message": user_message,
+                "conversation_history": conversation_history,
+                "current_data": {
+                    **current_context,
+                    **({"_pre_intent": pre_intent} if pre_intent else {}),
+                    **({"_contact_hints": _contact_hints} if _contact_hints else {}),
+                    **({"_memory_snippets": _memory_snippets} if _memory_snippets else {}),
+                },
+                "user_lat": request.latitude,
+                "user_lon": request.longitude,
+                "schedule_list": annotated_schedule_list,
+                # defaults for output fields
+                "updated_data": {},
+                "missing_fields": [],
+                "is_complete": False,
+                "reply": "",
+                "intent": "create",
+                "target_schedule_id": None,
+                "location_result": None,
+                "needs_location_confirm": False,
+                "location_candidates": [],
+                "location_details": None,
+            })
+        except RuntimeError as _rt_err:
+            if "AI_RATE_LIMITED" in str(_rt_err):
+                return ChatResponse(
+                    ai_reply="系統目前很忙，請稍後幾秒再試 🙏",
+                    updated_data=current_context,
+                    is_complete=False,
+                )
+            import traceback; traceback.print_exc()
+            return ChatResponse(
+                ai_reply="AI 處理失敗，請重新發送訊息。",
+                updated_data=current_context,
+                is_complete=False,
+            )
+        except Exception as _graph_err:
+            print(f"[chat] graph error: {_graph_err}")
+            import traceback; traceback.print_exc()
+            err_str = str(_graph_err)
+            if "429" in err_str or "queue_exceeded" in err_str or "rate" in err_str.lower():
+                return ChatResponse(
+                    ai_reply="系統目前很忙，請稍後幾秒再試 🙏",
+                    updated_data=current_context,
+                    is_complete=False,
+                )
+            return ChatResponse(
+                ai_reply="AI 處理失敗，請重新發送訊息。",
+                updated_data=current_context,
+                is_complete=False,
+            )
 
         updated_data = graph_state["updated_data"]
         is_complete = graph_state["is_complete"]
@@ -704,6 +951,13 @@ def chat_schedule(
 
         # ── Delete intent: return confirm prompt to frontend ──────────────────
         if intent == "delete":
+            # Validate mentioned person exists in contacts
+            _ph = _extract_person_hint(user_message)
+            if _ph and not _check_person_in_contacts(user_id, _ph, session):
+                return ChatResponse(
+                    ai_reply=f"聯絡人中沒有「{_ph}」，請確認名稱是否正確。",
+                    updated_data={}, is_complete=False,
+                )
             delete_ctx = dict(current_context)
             delete_ctx["delete_schedule_id"] = target_schedule_id
             # Find schedule details for display
@@ -724,11 +978,32 @@ def chat_schedule(
                 confirm_delete=confirm_info,
             )
 
+        # ── Edit intent: validate mentioned person exists in contacts ────────
+        # 必須在 is_complete gate 之前執行，否則 AI ask_user 回傳 is_complete=False
+        # 時就直接 return，第二輪 follow-up 又因 _pending_edit_schedule_id 跳過驗證
+        if intent == "edit" and not current_context.get("_pending_edit_schedule_id"):
+            _ph = _extract_person_hint(user_message)
+            if _ph and not _check_person_in_contacts(user_id, _ph, session):
+                return ChatResponse(
+                    ai_reply=f"聯絡人中沒有「{_ph}」，請確認名稱是否正確。",
+                    updated_data={}, is_complete=False,
+                )
+
         # ── Return early if location needs user input ─────────────────────────
         if needs_location_confirm:
+            # Embed confirmed coords into updated_data so that if the user
+            # types an affirmative reply ("是的") instead of clicking the button,
+            # the next turn can short-circuit without re-running HERE validation.
+            _loc_data = dict(updated_data)
+            if location_details:
+                _loc_data["_pending_confirm_lat"] = location_details.get("lat")
+                _loc_data["_pending_confirm_lon"] = location_details.get("lon")
+                _loc_data["_pending_confirm_name"] = location_details.get("name")
+            elif location_candidates:
+                pass  # multiple candidates: user must click, no single coord to store
             return ChatResponse(
                 ai_reply=ai_reply,
-                updated_data=updated_data,
+                updated_data=_loc_data,
                 is_complete=is_complete,
                 needs_location_confirm=True,
                 location_candidates=location_candidates if location_candidates else None,
@@ -765,7 +1040,7 @@ def chat_schedule(
                 if end_time_str:
                     end_time = datetime.fromisoformat(end_time_str)
                 else:
-                    end_time = start_time.replace(hour=min(start_time.hour + 1, 23))
+                    end_time = start_time.replace(hour=min(start_time.hour + 2, 23))
             else:
                 # edit without time change — will be filled from existing record
                 start_time = None
@@ -774,6 +1049,9 @@ def chat_schedule(
             location_name = updated_data.get("location")
             location_lat = None
             location_lon = None
+
+            # Define effective_schedule_id early — needed inside location block too
+            effective_schedule_id = request.schedule_id or (target_schedule_id if intent == "edit" else None)
 
             if location_name:
                 # If coords already confirmed (confirm_location or explicit lat/lon), use them directly
@@ -786,25 +1064,49 @@ def chat_schedule(
                     location_lat = request.latitude
                     location_lon = request.longitude
                 else:
-                    # Run validate_location — for chain stores (星巴克, 麥當勞) this returns
-                    # multiple candidates; let user pick the right branch
-                    loc_result = HereService.validate_location(
-                        location_name,
-                        lat=request.latitude,
-                        lon=request.longitude,
-                    )
-                    if loc_result["needs_selection"] or (loc_result["best"] is None):
+                    # Create / Edit 都走 validate_location 顯示候選地點
+                    # 加 15 秒總 timeout，避免 4-layer HERE 最壞 38s 超過 Flutter 40s 限制
+                    import concurrent.futures as _cf
+                    _loc_result = None
+                    try:
+                        with _cf.ThreadPoolExecutor(max_workers=1) as _ex:
+                            _fut = _ex.submit(
+                                HereService.validate_location,
+                                location_name,
+                                lat=request.latitude,
+                                lon=request.longitude,
+                            )
+                            _loc_result = _fut.result(timeout=15)
+                    except _cf.TimeoutError:
+                        print(f"[location] validate_location timeout for '{location_name}'")
+                    except Exception as _loc_err:
+                        print(f"[location] validate_location error: {_loc_err}")
+
+                    if _loc_result is None:
+                        # HERE timeout 或失敗：edit 直接儲存地點名稱，create 則提示
+                        if intent != "edit":
+                            return ChatResponse(
+                                ai_reply=f"地點搜尋逾時，請稍後再試或提供更詳細的地址。",
+                                updated_data=updated_data,
+                                is_complete=False,
+                            )
+                        # edit 逾時：地點名稱已存，座標之後補
+                    elif _loc_result["needs_selection"] or (_loc_result["best"] is None):
                         candidates_clean = [
-                            {"name": c["name"], "address": c["address"],
-                             "lat": c["lat"], "lon": c["lon"]}
-                            for c in loc_result.get("candidates", [])
+                            {
+                                "name": c.get("name") or c.get("address", "").split(",")[0].strip() or f"地點 {i+1}",
+                                "address": c.get("address", ""),
+                                "lat": c["lat"],
+                                "lon": c["lon"],
+                            }
+                            for i, c in enumerate(_loc_result.get("candidates", []))
+                            if c.get("name") or c.get("address")
                         ]
-                        # Store intent context so after user selects, we resume edit
                         edit_ctx = dict(updated_data)
                         edit_ctx["_pending_edit_schedule_id"] = effective_schedule_id or target_schedule_id
                         if candidates_clean:
                             return ChatResponse(
-                                ai_reply=f"我找到了幾個「{location_name}」，請選擇正確的分店：",
+                                ai_reply=f"我找到了幾個「{location_name}」，請選擇正確的地點：",
                                 updated_data=edit_ctx,
                                 is_complete=False,
                                 needs_location_confirm=True,
@@ -816,13 +1118,12 @@ def chat_schedule(
                                 updated_data=updated_data,
                                 is_complete=False,
                             )
-                    elif loc_result["best"]:
-                        best = loc_result["best"]
+                    elif _loc_result["best"]:
+                        best = _loc_result["best"]
                         location_lat = best["lat"]
                         location_lon = best["lon"]
 
             repo = ScheduleRepository(session)
-            effective_schedule_id = request.schedule_id or (target_schedule_id if intent == "edit" else None)
 
             # 3. 檢查衝突 (Conflict Detection — only for create, skip for edit)
             if not request.force_create and intent != "edit" and start_time:
@@ -854,8 +1155,81 @@ def chat_schedule(
 
             # ── Update existing schedule (chat edit intent or correction) ──────
             if effective_schedule_id:
+                # Guard：沒有任何欄位需要更新 → 不執行空更新，回問用戶
+                _edit_parts = updated_data.get("participants", [])
+                if isinstance(_edit_parts, str):
+                    _edit_parts = [p.strip() for p in _edit_parts.split(",") if p.strip()]
+                _remove_parts = updated_data.get("remove_participants", [])
+                if isinstance(_remove_parts, str):
+                    _remove_parts = [p.strip() for p in _remove_parts.split(",") if p.strip()]
+                has_changes = (
+                    updated_data.get("title") or
+                    updated_data.get("description") or
+                    updated_data.get("start_time") or
+                    location_name or
+                    _edit_parts or
+                    _remove_parts
+                )
+                if not has_changes:
+                    return ChatResponse(
+                        ai_reply="請問您想把哪些內容改成什麼呢？（例如：改成下午五點、地點換到星巴克）",
+                        updated_data=updated_data,
+                        is_complete=False,
+                    )
+
                 existing = repo.get_by_schedule_id(effective_schedule_id)
+
+                # 驗證 AI 選的行程確實和用戶描述的人名/關鍵字吻合
+                # 避免 AI 語意搜尋誤匹配到不相關行程
                 if existing and existing.user_id == current_user.user_id:
+                    _keyword_hint = user_message  # 用原始訊息做關鍵字驗證
+                    _stop = {"更改", "修改", "調整", "更新", "改", "把", "的", "時間",
+                             "地點", "行程", "活動", "我要", "請", "幫我", "到", "改成"}
+                    _kw_chars = [c for c in _keyword_hint if c not in _stop and len(c.strip()) > 0]
+                    _kw = "".join(_kw_chars)
+                    # 只在有關鍵字且清單非空時才驗證（避免誤擋正常流程）
+                    _schedule_ids_in_list = {
+                        s.get("schedule_id") or s.get("id", "")
+                        for s in (annotated_schedule_list or [])
+                    }
+                    _id_was_in_list = effective_schedule_id in _schedule_ids_in_list
+                    if not _id_was_in_list and annotated_schedule_list:
+                        # AI 選了一個不在搜尋結果中的 id → 很可能是誤判
+                        print(f"[chat edit] WARNING: schedule_id={effective_schedule_id} "
+                              f"not in annotated_schedule_list, possible mismatch")
+                        return ChatResponse(
+                            ai_reply=f"找不到符合描述的行程，請問是哪個行程需要更改？",
+                            updated_data={},
+                            is_complete=False,
+                        )
+                if existing and existing.user_id == current_user.user_id:
+                    # ── Past-schedule guard ───────────────────────────────────
+                    from datetime import timezone as _tz, timedelta as _td
+                    _taipei_now = datetime.now(tz=_tz(_td(hours=8)))
+                    _s_time = existing.meeting_start_time
+                    if isinstance(_s_time, str):
+                        try:
+                            _s_time = datetime.fromisoformat(_s_time.replace("Z", "+00:00"))
+                        except Exception:
+                            _s_time = None
+                    if _s_time:
+                        _s_aware = _s_time.replace(tzinfo=_tz(_td(hours=8))) if _s_time.tzinfo is None else _s_time
+                        if _s_aware < _taipei_now and not request.confirm_past_edit:
+                            _past_info = {
+                                "id": existing.schedule_id,
+                                "title": existing.title,
+                                "start_time": _s_time.isoformat() if isinstance(_s_time, datetime) else str(_s_time),
+                            }
+                            _t = arrow.get(_s_time).to("Asia/Taipei")
+                            _h = _t.hour
+                            _p = "上午" if 6 <= _h < 12 else "中午" if 12 <= _h < 14 else "下午" if 14 <= _h < 18 else "晚上" if 18 <= _h < 22 else "深夜"
+                            _past_str = f"{_t.month}月{_t.day}日 {_p}{_h}點"
+                            return ChatResponse(
+                                ai_reply=f"「{existing.title}」是 {_past_str} 的行程，已經過去了，確定要修改嗎？",
+                                updated_data=updated_data,
+                                is_complete=False,
+                                confirm_past_edit=_past_info,
+                            )
                     # Only update fields that were explicitly provided in updated_data
                     if updated_data.get("title"): existing.title = updated_data["title"]
                     if updated_data.get("description"): existing.description = updated_data["description"]
@@ -865,22 +1239,114 @@ def chat_schedule(
                     if location_name:
                         existing.meeting_location = location_name
                         existing.location = location_name
-                        # Geocode new location for edit (skip if coords already provided)
-                        if not (location_lat and location_lon):
-                            try:
-                                coords = HereService.get_coordinates(location_name)
-                                if coords:
-                                    location_lat = coords[0]
-                                    location_lon = coords[1]
-                            except Exception as e:
-                                print(f"[chat edit] geocoding failed: {e}")
+                        # 座標已在 edit 模式的 quick geocode 處理，這裡直接使用
                     if location_lat and location_lon:
                         existing.latitude = location_lat
                         existing.longitude = location_lon
                     saved_schedule_obj = repo.update(existing)
                     saved_schedule = saved_schedule_obj.dict()
-                    ai_reply = f"✅ 已為您更新行程「{existing.title}」！"
+                    # ── 新增參與者 ──────────────────────────────────────────────
+                    if _edit_parts:
+                        from sqlmodel import select as _select_ec
+                        from ...models.contact import Contact as _EC
+                        from ...models.attend import attend as _Attend
+                        for _pname in _edit_parts:
+                            _clean = _pname.strip().lstrip("@")
+                            if not _clean:
+                                continue
+                            _ec = session.exec(
+                                _select_ec(_EC).where(
+                                    _EC.user_id == current_user.user_id,
+                                    _EC.nick_name == _clean
+                                )
+                            ).first()
+                            if not _ec:
+                                _ec = _EC(user_id=current_user.user_id, nick_name=_clean)
+                                session.add(_ec)
+                                session.commit()
+                                session.refresh(_ec)
+                            # 避免重複加入
+                            _exists_att = session.exec(
+                                _select_ec(_Attend).where(
+                                    _Attend.schedule_id == saved_schedule_obj.schedule_id,
+                                    _Attend.contact_id == _ec.id
+                                )
+                            ).first()
+                            if not _exists_att:
+                                session.add(_Attend(
+                                    schedule_id=saved_schedule_obj.schedule_id,
+                                    contact_id=_ec.id,
+                                    status="P"
+                                ))
+                        session.commit()
+                    # ── 移除參與者 ──────────────────────────────────────────────
+                    if _remove_parts:
+                        from sqlmodel import select as _select_rc
+                        from ...models.contact import Contact as _RC
+                        from ...models.attend import attend as _RAttend
+                        for _rname in _remove_parts:
+                            _rclean = _rname.strip().lstrip("@")
+                            if not _rclean:
+                                continue
+                            _rc = session.exec(
+                                _select_rc(_RC).where(
+                                    _RC.user_id == current_user.user_id,
+                                    _RC.nick_name == _rclean
+                                )
+                            ).first()
+                            if _rc:
+                                _ra = session.exec(
+                                    _select_rc(_RAttend).where(
+                                        _RAttend.schedule_id == saved_schedule_obj.schedule_id,
+                                        _RAttend.contact_id == _rc.id
+                                    )
+                                ).first()
+                                if _ra:
+                                    session.delete(_ra)
+                        session.commit()
+                    _summary = _fmt_schedule_summary(saved_schedule_obj)
+                    _change_lines = []
+                    if _edit_parts:
+                        _names = " ".join(f"@{p.strip().lstrip('@')}" for p in _edit_parts if p.strip())
+                        _change_lines.append(f"➕ 新增參與者：{_names}")
+                    if _remove_parts:
+                        _rnames = " ".join(f"@{p.strip().lstrip('@')}" for p in _remove_parts if p.strip())
+                        _change_lines.append(f"➖ 移除參與者：{_rnames}")
+                    if _change_lines:
+                        _summary += "\n" + "\n".join(_change_lines)
+                    ai_reply = f"✅ 已為您更新行程！\n{_summary}"
                     print(f"DEBUG [chat]: Schedule updated ID={effective_schedule_id}")
+                    # 更新 embedding（豐富化：加入聯絡人姓名 + 時間語境）
+                    try:
+                        from ...services.embedding_service import EmbeddingService
+                        from ...models.contact import Contact as _Contact
+                        _cname = ""
+                        if existing.contact_id:
+                            _c = session.get(_Contact, existing.contact_id)
+                            if _c:
+                                _cname = _c.nick_name or ""
+                        emb = EmbeddingService.embed_schedule(
+                            existing.title or "",
+                            existing.meeting_location or "",
+                            existing.description or "",
+                            contact_name=_cname,
+                            start_time=existing.meeting_start_time,
+                        )
+                        repo.upsert_embedding(existing.schedule_id, emb)
+                    except Exception as _emb_err:
+                        print(f"[embedding] update failed (non-critical): {_emb_err}")
+                        try:
+                            session.rollback()
+                        except Exception:
+                            pass
+                    # 記憶學習（背景，失敗不影響主流程）
+                    try:
+                        from ...services.memory_service import MemoryService
+                        MemoryService.extract_and_save(
+                            user_id, saved_schedule, "edit", _cname, session
+                        )
+                    except Exception:
+                        pass
                 else:
                     return ChatResponse(
                         ai_reply="找不到行程，無法修改。",
@@ -888,6 +1354,17 @@ def chat_schedule(
                         is_complete=False,
                     )
             else:
+                # ── 至少一位參與者 ──────────────────────────────────────────────
+                _parts_check = updated_data.get("participants", [])
+                if isinstance(_parts_check, str):
+                    _parts_check = [p.strip() for p in _parts_check.split(",") if p.strip()]
+                _parts_check = [p for p in _parts_check if p.strip()]
+                if not _parts_check:
+                    return ChatResponse(
+                        ai_reply="請問這個行程要邀請誰參加？（至少需要一位參與者）",
+                        updated_data=updated_data,
+                        is_complete=False,
+                    )
                 # ── 建立 Schedule 物件 ─────────────────────────────────────────
                 new_schedule = Schedule(
                     user_id=current_user.user_id,
@@ -904,15 +1381,47 @@ def chat_schedule(
                 saved_schedule_obj = repo.create(new_schedule)
                 saved_schedule = saved_schedule_obj.dict()
                 print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
-                ai_reply = f"✅ 已為您建立行程「{updated_data.get('title', '未命名行程')}」！"
+                ai_reply = f"✅ 已為您建立行程！\n{_fmt_schedule_summary(saved_schedule_obj)}"
+                # 產生 embedding（豐富化：加入聯絡人 + 時間語境）
+                _new_cname = ""
+                try:
+                    from ...services.embedding_service import EmbeddingService
+                    # 嘗試從 participants 取聯絡人名
+                    _parts = updated_data.get("participants", [])
+                    if isinstance(_parts, list) and _parts:
+                        _new_cname = _parts[0].strip().lstrip("@")
+                    elif isinstance(_parts, str) and _parts:
+                        _new_cname = _parts.split(",")[0].strip().lstrip("@")
+                    emb = EmbeddingService.embed_schedule(
+                        updated_data.get("title", ""),
+                        location_name or "",
+                        updated_data.get("description", ""),
+                        contact_name=_new_cname,
+                        start_time=start_time,
+                    )
+                    repo.upsert_embedding(saved_schedule_obj.schedule_id, emb)
+                except Exception as _emb_err:
+                    print(f"[embedding] create failed (non-critical): {_emb_err}")
+                    try:
+                        session.rollback()
+                    except Exception:
+                        pass
+                # 記憶學習（背景）
+                try:
+                    from ...services.memory_service import MemoryService
+                    MemoryService.extract_and_save(
+                        user_id, saved_schedule, "create", _new_cname, session
+                    )
+                except Exception:
+                    pass
             
-            # 如果有參與者，這邊處理 attend 表
+            # 如果有參與者，這邊處理 attend 表（僅 create；edit 已由 _edit_parts 處理）
             participants = updated_data.get("participants", [])
             # Handle cases where participants might be a string
             if isinstance(participants, str):
                  participants = [p.strip() for p in participants.split(",")]
-                 
-            if participants and isinstance(participants, list):
+
+            if intent != "edit" and participants and isinstance(participants, list):
                 from ...models.contact import Contact
                 from ...models.attend import attend
                 from sqlmodel import select
@@ -956,19 +1465,32 @@ def chat_schedule(
                 session.commit()
             
         except Exception as e:
-            print(f"Error creating schedule: {e}")
+            print(f"Error {'updating' if intent == 'edit' else 'creating'} schedule: {e}")
             import traceback
             traceback.print_exc()
+            action_word = "更新" if intent == "edit" else "建立"
             return ChatResponse(
-                ai_reply="行程建立失敗，請稍後再試。",
+                ai_reply=f"行程{action_word}失敗，請稍後再試。",
                 updated_data=updated_data,
-                is_complete=True # 雖然失敗但邏輯上是對話結束
+                is_complete=False  # 失敗時不清除 context，讓用戶可以重試
             )
 
-    # 3. 回傳結果
+    # 3. 儲存對話紀錄到 Redis（confirm_location / confirm_delete 不重複記錄）
+    if not request.confirm_location and not request.confirm_delete and not request.confirm_past_edit and ai_reply:
+        redis_client.append_chat_turn(user_id, user_message, ai_reply)
+
+    # 若對話完成或刪除，清除 context；否則更新 context
+    if is_complete or getattr(request, 'schedule_deleted', False):
+        redis_client.clear_chat_context(user_id)
+    elif updated_data:
+        redis_client.set_chat_context(user_id, updated_data)
+
+    # 4. 回傳結果
+    # 任何 intent 完成後都回傳空 context，讓 Flutter 清除 _currentContext 並刷新清單
+    return_data = {} if is_complete else updated_data
     return ChatResponse(
         ai_reply=ai_reply,
-        updated_data=updated_data, # 把這個傳回給前端，前端下次要帶回來
+        updated_data=return_data,
         is_complete=is_complete,
         schedule=saved_schedule
     )

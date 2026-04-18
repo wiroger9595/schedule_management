@@ -120,7 +120,16 @@ def create_contact(contact_data: ContactCreate, current_user: User = Depends(get
         line_id=line_id,
         comment=comment
     )
-    return repo.create(contact)
+    saved = repo.create(contact)
+    # 建立聯絡人 embedding（語意人名搜尋）
+    try:
+        from ...services.embedding_service import EmbeddingService
+        from ...repositories.schedule_repository import ScheduleRepository
+        emb = EmbeddingService.embed_contact(saved.nick_name or "", saved.comment or "")
+        ScheduleRepository(session).upsert_contact_embedding(saved.id, saved.user_id, emb)
+    except Exception as _e:
+        print(f"[contact_embedding] create failed (non-critical): {_e}")
+    return saved
 
 @router.delete("/{contact_id}")
 def delete_contact(contact_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -167,6 +176,15 @@ def delete_contact(contact_id: int, current_user: User = Depends(get_current_use
             execution_options={"synchronize_session": "fetch"},
         )
 
+    # 刪除聯絡人 embedding
+    try:
+        from sqlalchemy import text as _text
+        session.execute(
+            _text("DELETE FROM schedule_management.contact_embedding WHERE contact_id = :cid"),
+            {"cid": contact_id}
+        )
+    except Exception:
+        pass
     session.flush()
     repo.delete(contact)
     return {"msg": "Deleted"}
@@ -213,4 +231,13 @@ def update_contact(
     if contact_data.comment is not None: contact.comment = contact_data.comment if contact_data.comment else None
     if contact_data.contact_user_id is not None: contact.contact_user_id = contact_data.contact_user_id if contact_data.contact_user_id else None
 
-    return repo.update(contact)
+    updated = repo.update(contact)
+    # 更新聯絡人 embedding（nick_name 或 comment 改變時重建）
+    try:
+        from ...services.embedding_service import EmbeddingService
+        from ...repositories.schedule_repository import ScheduleRepository
+        emb = EmbeddingService.embed_contact(updated.nick_name or "", updated.comment or "")
+        ScheduleRepository(session).upsert_contact_embedding(updated.id, updated.user_id, emb)
+    except Exception as _e:
+        print(f"[contact_embedding] update failed (non-critical): {_e}")
+    return updated

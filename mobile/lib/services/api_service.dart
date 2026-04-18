@@ -153,10 +153,11 @@ class ApiService {
 
   Future<Map<String, dynamic>> chatWithAI(String message,
       {Map<String, dynamic>? currentContext,
-      List<Map<String, String>>? conversationHistory,
+      List<Map<String, String>>? conversationHistory, // kept for fallback only
       bool forceCreate = false,
       bool confirmLocation = false,
       bool confirmDelete = false,
+      bool confirmPastEdit = false,
       double? latitude,
       double? longitude,
       List<Map<String, dynamic>>? scheduleList}) async {
@@ -169,11 +170,14 @@ class ApiService {
     final body = {
       'message': message,
       if (contextWithoutId != null) 'current_data': contextWithoutId,
+      // conversationHistory no longer sent — server reads from Redis.
+      // Still sent as fallback when server history is empty (first message).
       if (conversationHistory != null && conversationHistory.isNotEmpty)
         'conversation_history': conversationHistory,
       'force_create': forceCreate,
       'confirm_location': confirmLocation,
       'confirm_delete': confirmDelete,
+      'confirm_past_edit': confirmPastEdit,
       'latitude': latitude,
       'longitude': longitude,
       if (scheduleId != null) 'schedule_id': scheduleId,
@@ -192,6 +196,15 @@ class ApiService {
       final error = jsonDecode(response.body);
       throw Exception(error['detail'] ?? 'Unknown error');
     }
+  }
+
+  Future<void> clearChatHistory() async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/schedules/chat/clear'),
+        headers: await getHeaders(),
+      ).timeout(const Duration(seconds: 10));
+    } catch (_) {}
   }
 
   Future<List<dynamic>> searchUsers(String query) async {

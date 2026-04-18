@@ -39,6 +39,8 @@ class ChatWidgetState extends State<ChatWidget> {
       _isLoading = false;
       _messages.add(ChatMessage(text: 'chatCleared'.tr(), isUser: false));
     });
+    // 同步清除 server-side Redis history
+    ApiService().clearChatHistory();
     _loadScheduleList();
   }
 
@@ -224,49 +226,89 @@ class ChatWidgetState extends State<ChatWidget> {
       return name.contains(query);
     }).toList();
 
+    // Detect duplicate nick_names in filtered results
+    final nameCount = <String, int>{};
+    for (final c in filteredContacts) {
+      final n = (c['nick_name'] ?? '').toString();
+      nameCount[n] = (nameCount[n] ?? 0) + 1;
+    }
+    final hasDuplicates = nameCount.values.any((v) => v > 1);
+    final duplicateNames = nameCount.entries.where((e) => e.value > 1).map((e) => e.key).toSet();
+
     return Container(
-      constraints: BoxConstraints(maxHeight: 180),
+      constraints: BoxConstraints(maxHeight: 220),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.grey[300]!, width: 2)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 4,
-            offset: Offset(0, -2),
-          ),
+          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2)),
         ],
       ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        itemCount: filteredContacts.length + 1,
-        itemBuilder: (context, index) {
-          if (index == filteredContacts.length) {
-            return ListTile(
-              leading: Icon(Icons.person_add, color: Colors.black87),
-              title: Text('➕ ${'addContact'.tr()}', style: TextStyle(color: Colors.black87)),
-              onTap: _showAddContactDialog,
-            );
-          }
-          final contact = filteredContacts[index];
-          final nickName = (contact['nick_name'] ?? '').toString();
-          final displayInitial = nickName.isNotEmpty ? nickName[0] : '?';
-
-          return ListTile(
-            leading: CircleAvatar(
-              child: Text(displayInitial),
-              backgroundColor: Colors.grey[300],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (hasDuplicates)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              color: Colors.orange[50],
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 15, color: Colors.orange[700]),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'duplicateContactHint'.tr(namedArgs: {'names': duplicateNames.join('、')}),
+                      style: TextStyle(fontSize: 12, color: Colors.orange[800]),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            title: Text(contact['nick_name'] ?? 'Unknown'),
-            subtitle: Text(contact['phone'] ?? contact['email'] ?? ''),
-            onTap: () => _insertMention(contact['nick_name']),
-          );
-        },
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: filteredContacts.length + 1,
+              itemBuilder: (context, index) {
+                if (index == filteredContacts.length) {
+                  return ListTile(
+                    leading: Icon(Icons.person_add, color: Colors.black87),
+                    title: Text('➕ ${'addContact'.tr()}', style: TextStyle(color: Colors.black87)),
+                    onTap: _showAddContactDialog,
+                  );
+                }
+                final contact = filteredContacts[index];
+                final nickName = (contact['nick_name'] ?? '').toString();
+                final isDup = duplicateNames.contains(nickName);
+                final displayInitial = nickName.isNotEmpty ? nickName[0] : '?';
+                // For duplicates show phone+email to distinguish; always show at least one
+                String subtitle = contact['phone'] ?? contact['email'] ?? '';
+                if (isDup) {
+                  final parts = [
+                    if ((contact['phone'] ?? '').toString().isNotEmpty) contact['phone'].toString(),
+                    if ((contact['email'] ?? '').toString().isNotEmpty) contact['email'].toString(),
+                  ];
+                  subtitle = parts.isNotEmpty ? parts.join(' · ') : 'noContactInfo'.tr();
+                }
+
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: isDup ? Colors.orange[200] : Colors.grey[300],
+                    child: Text(displayInitial),
+                  ),
+                  title: Text(nickName),
+                  subtitle: subtitle.isNotEmpty ? Text(subtitle, style: const TextStyle(fontSize: 12)) : null,
+                  onTap: () => _insertMention(nickName),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, double? overrideLat, double? overrideLon}) async {
+  Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, bool confirmPastEdit = false, double? overrideLat, double? overrideLon}) async {
     final messageText = text ?? _controller.text.trim();
     if (messageText.isEmpty && !forceCreate) return;
 
@@ -322,6 +364,7 @@ class ChatWidgetState extends State<ChatWidget> {
         forceCreate: forceCreate,
         confirmLocation: forceCreate,
         confirmDelete: confirmDelete,
+        confirmPastEdit: confirmPastEdit,
         latitude: finalLat,
         longitude: finalLon,
         scheduleList: _scheduleList,
@@ -335,11 +378,17 @@ class ChatWidgetState extends State<ChatWidget> {
         }
 
         setState(() {
-          _currentContext = data['updated_data'] != null
-              ? Map<String, dynamic>.from(data['updated_data'])
-              : _currentContext;
-          // Keep schedule_id in context after creation so follow-up messages trigger update
-          if (data['schedule'] != null && data['schedule']['id'] != null) {
+          final isComplete = data['is_complete'] == true;
+          final updatedData = data['updated_data'];
+          // Clear context on completion (backend returns {} on create/delete success)
+          if (isComplete && (updatedData == null || (updatedData as Map).isEmpty)) {
+            _currentContext = null;
+            _conversationHistory.clear(); // history stored in Redis; clear local copy
+          } else if (updatedData != null) {
+            _currentContext = Map<String, dynamic>.from(updatedData as Map);
+          }
+          // Keep schedule_id in context after edit so follow-up messages trigger update
+          if (data['schedule'] != null && data['schedule']['id'] != null && !isComplete) {
             _currentContext ??= {};
             _currentContext!['schedule_id'] = data['schedule']['id'];
           }
@@ -361,12 +410,30 @@ class ChatWidgetState extends State<ChatWidget> {
                 onConfirm: () {
                   _currentContext ??= {};
                   _currentContext!['delete_schedule_id'] = del['id'];
-                  _sendMessage(confirmDelete: true);
+                  _sendMessage(text: 'confirmDelete'.tr(), confirmDelete: true);
                 },
                 onCancel: () {
                   _currentContext = null;
                   setState(() {
                     _messages.add(ChatMessage(text: 'deleteCancelled'.tr(), isUser: false));
+                  });
+                },
+              ),
+            );
+          } else if (data['confirm_past_edit'] != null) {
+            final past = data['confirm_past_edit'] as Map<String, dynamic>;
+            if (aiReply.isNotEmpty) _messages.add(ChatMessage(text: aiReply, isUser: false));
+            _messages.add(
+              PastEditConfirmMessage(
+                title: past['title'] as String? ?? '',
+                startTime: past['start_time'] as String?,
+                onConfirm: () {
+                  _sendMessage(confirmPastEdit: true);
+                },
+                onCancel: () {
+                  _currentContext = null;
+                  setState(() {
+                    _messages.add(ChatMessage(text: 'editCancelled'.tr(), isUser: false));
                   });
                 },
               ),
@@ -380,11 +447,8 @@ class ChatWidgetState extends State<ChatWidget> {
               ConflictMessage(
                 onConfirm: () => _sendMessage(forceCreate: true),
                 onChange: () {
-                  setState(() {
-                    _messages.add(ChatMessage(text: 'changeTimeRequest'.tr(), isUser: true));
-                    // Let AI know
-                    _sendMessage(text: 'changeTimeRequest'.tr());
-                  });
+                  // Let AI know
+                  _sendMessage(text: 'changeTimeRequest'.tr());
                 },
               ),
             );
@@ -460,12 +524,18 @@ class ChatWidgetState extends State<ChatWidget> {
 
         if (data['is_complete'] == true && data['conflict'] == null) {
           widget.onScheduleCreated();
+          _loadScheduleList(); // 刷新行程清單（create / edit / delete 後畫面同步）
         }
 
         _scrollToBottom();
       }
     } catch (e) {
       debugPrint('[ChatWidget] Error: $e');
+      // Remove the dangling user turn so history stays paired (user+assistant)
+      if (!forceCreate && _conversationHistory.isNotEmpty &&
+          _conversationHistory.last['role'] == 'user') {
+        _conversationHistory.removeLast();
+      }
       setState(() {
         _messages.add(ChatMessage(text: 'systemError'.tr(), isUser: false));
         _isLoading = false;
@@ -770,16 +840,21 @@ class LocationCandidatesMessage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ...candidates.map((c) {
+          ...candidates.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final c = entry.value;
             final lat = (c['lat'] as num?)?.toDouble();
             final lon = (c['lon'] as num?)?.toDouble();
-            final name = c['name'] as String? ?? '';
+            final rawName = c['name']?.toString() ?? '';
+            final rawAddr = c['address']?.toString() ?? '';
+            final name = rawName.isNotEmpty ? rawName : (rawAddr.isNotEmpty ? rawAddr.split(',').first.trim() : '地點 ${idx + 1}');
+            final address = rawAddr;
             return Card(
               margin: const EdgeInsets.only(bottom: 6),
               child: ListTile(
                 leading: const Icon(Icons.location_on, color: Colors.black54),
                 title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text(c['address'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: IconButton(
                   icon: const Icon(Icons.open_in_new, size: 18, color: Colors.blue),
                   tooltip: 'Google Maps で確認',
@@ -789,11 +864,13 @@ class LocationCandidatesMessage extends StatelessWidget {
               ),
             );
           }),
-          TextButton.icon(
-            onPressed: onPickMap,
-            icon: const Icon(Icons.map, size: 16),
-            label: Text('changeLocation'.tr()),
-            style: TextButton.styleFrom(foregroundColor: Colors.black54),
+          Card(
+            margin: const EdgeInsets.only(bottom: 6),
+            child: ListTile(
+              leading: const Icon(Icons.map, color: Colors.black54),
+              title: Text('changeLocation'.tr(), style: const TextStyle(fontWeight: FontWeight.w600)),
+              onTap: onPickMap,
+            ),
           ),
         ],
       ),
@@ -897,6 +974,102 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
   }
 }
 
+class PastEditConfirmMessage extends StatefulWidget {
+  final String title;
+  final String? startTime;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  const PastEditConfirmMessage({
+    super.key,
+    required this.title,
+    this.startTime,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  State<PastEditConfirmMessage> createState() => _PastEditConfirmMessageState();
+}
+
+class _PastEditConfirmMessageState extends State<PastEditConfirmMessage> {
+  bool _tapped = false;
+
+  String? _formatTime(String? iso) {
+    if (iso == null) return null;
+    try {
+      final dt = DateTime.parse(iso);
+      return DateFormat('MM/dd HH:mm').format(dt);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final timeStr = _formatTime(widget.startTime);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Card(
+        color: Colors.orange[50],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.history, color: Colors.orange, size: 20),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'confirmPastEditTitle'.tr(namedArgs: {'title': widget.title}),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              if (timeStr != null) ...[
+                const SizedBox(height: 4),
+                Text(timeStr, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _tapped ? null : () {
+                        setState(() => _tapped = true);
+                        widget.onCancel();
+                      },
+                      child: Text('cancel'.tr()),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _tapped ? null : () {
+                        setState(() => _tapped = true);
+                        widget.onConfirm();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: Text('confirmPastEdit'.tr()),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class LocationConfirmMessage extends StatefulWidget {
   final VoidCallback onConfirm;
   final VoidCallback onChange;
@@ -940,13 +1113,6 @@ class _LocationConfirmMessageState extends State<LocationConfirmMessage> {
                 subtitle: widget.address != null && widget.address!.isNotEmpty
                     ? Text(widget.address!, maxLines: 2, overflow: TextOverflow.ellipsis)
                     : null,
-                trailing: widget.lat != null && widget.lon != null
-                    ? IconButton(
-                        icon: const Icon(Icons.open_in_new, size: 18, color: Colors.blue),
-                        tooltip: 'confirmOnGoogleMaps'.tr(),
-                        onPressed: () => _openInGoogleMaps(widget.lat, widget.lon, widget.name),
-                      )
-                    : null,
               ),
             ),
           Row(
@@ -984,7 +1150,10 @@ class _LocationConfirmMessageState extends State<LocationConfirmMessage> {
             ],
           ),
           TextButton.icon(
-            onPressed: _tapped ? null : widget.onChange,
+            onPressed: _tapped ? null : () {
+              setState(() => _tapped = true);
+              widget.onChange();
+            },
             icon: const Icon(Icons.map, size: 16),
             label: Text('changeLocation'.tr()),
             style: TextButton.styleFrom(foregroundColor: Colors.black54),

@@ -104,12 +104,13 @@ def validate_location_node(state: ScheduleState) -> ScheduleState:
     if loc_result["needs_selection"]:
         candidates_clean = [
             {
-                "name": c["name"],
-                "address": c["address"],
+                "name": c.get("name") or c.get("address", "").split(",")[0].strip() or f"地點 {i+1}",
+                "address": c.get("address", ""),
                 "lat": c["lat"],
                 "lon": c["lon"],
             }
-            for c in loc_result["candidates"]
+            for i, c in enumerate(loc_result["candidates"])
+            if c.get("name") or c.get("address")
         ]
         return {
             **state,

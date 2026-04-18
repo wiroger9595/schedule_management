@@ -94,6 +94,139 @@ class ScheduleRepository:
         
         return self.session.exec(statement).all()
 
+    def upsert_embedding(self, schedule_id: str, embedding: list) -> None:
+        """儲存或更新行程的 embedding 向量"""
+        from sqlalchemy import text
+        vec_literal = "[" + ",".join(str(x) for x in embedding) + "]"
+        self.session.execute(
+            text(f"""
+                INSERT INTO schedule_management.schedule_embedding (schedule_id, embedding, updated_at)
+                VALUES (:sid, '{vec_literal}'::vector, NOW())
+                ON CONFLICT (schedule_id) DO UPDATE
+                SET embedding = '{vec_literal}'::vector, updated_at = NOW()
+            """),
+            {"sid": schedule_id}
+        )
+        self.session.commit()
+
+    def delete_embedding(self, schedule_id: str) -> None:
+        """刪除行程的 embedding"""
+        from sqlalchemy import text
+        self.session.execute(
+            text("DELETE FROM schedule_management.schedule_embedding WHERE schedule_id = :sid"),
+            {"sid": schedule_id}
+        )
+        self.session.commit()
+
+    def semantic_search(self, user_id: str, query_embedding: list,
+                        top_k: int = 10) -> List[tuple]:
+        """
+        用 cosine similarity 搜尋用戶的行程。
+        回傳 List[(Schedule, similarity_score)] 依相似度降序排列。
+        """
+        from sqlalchemy import text
+        # 向量直接內嵌 SQL（numpy floats，非用戶輸入，無 injection 風險）
+        # 避免 SQLAlchemy text() 將 `:emb::vector` 中的 `::` 誤解析為參數前綴
+        vec_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        rows = self.session.execute(
+            text(f"""
+                SELECT s.schedule_id,
+                       1 - (se.embedding <=> '{vec_literal}'::vector) AS similarity
+                FROM schedule_management.schedule s
+                JOIN schedule_management.schedule_embedding se
+                  ON s.schedule_id = se.schedule_id
+                WHERE s.user_id = :user_id
+                ORDER BY se.embedding <=> '{vec_literal}'::vector
+                LIMIT :top_k
+            """),
+            {"user_id": user_id, "top_k": top_k}
+        ).fetchall()
+
+        results = []
+        for row in rows:
+            s = self.get_by_schedule_id(row.schedule_id)
+            if s:
+                results.append((s, float(row.similarity)))
+        return results
+
+    # ── Contact Embedding ────────────────────────────────────────────────────
+
+    def upsert_contact_embedding(self, contact_id: int, user_id: str, embedding: list) -> None:
+        from sqlalchemy import text
+        vec_literal = "[" + ",".join(str(x) for x in embedding) + "]"
+        self.session.execute(
+            text(f"""
+                INSERT INTO schedule_management.contact_embedding (contact_id, user_id, embedding, updated_at)
+                VALUES (:cid, :uid, '{vec_literal}'::vector, NOW())
+                ON CONFLICT (contact_id) DO UPDATE
+                SET embedding = '{vec_literal}'::vector, updated_at = NOW()
+            """),
+            {"cid": contact_id, "uid": user_id}
+        )
+        self.session.commit()
+
+    def semantic_search_contacts(self, user_id: str, query_embedding: list,
+                                  top_k: int = 3, min_similarity: float = 0.4) -> list:
+        """語意搜尋聯絡人，回傳 [{id, nick_name, comment, similarity}]"""
+        from sqlalchemy import text
+        vec_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        rows = self.session.execute(
+            text(f"""
+                SELECT c.id, c.nick_name, c.comment,
+                       1 - (ce.embedding <=> '{vec_literal}'::vector) AS similarity
+                FROM schedule_management.contact c
+                JOIN schedule_management.contact_embedding ce ON c.id = ce.contact_id
+                WHERE c.user_id = :user_id
+                  AND 1 - (ce.embedding <=> '{vec_literal}'::vector) >= :min_sim
+                ORDER BY ce.embedding <=> '{vec_literal}'::vector
+                LIMIT :top_k
+            """),
+            {"user_id": user_id, "top_k": top_k, "min_sim": min_similarity}
+        ).fetchall()
+        return [
+            {"id": r.id, "nick_name": r.nick_name or "", "comment": r.comment or "",
+             "similarity": round(float(r.similarity), 4)}
+            for r in rows
+        ]
+
+    # ── User Memory ──────────────────────────────────────────────────────────
+
+    def save_user_memory(self, user_id: str, content: str,
+                         memory_type: str, embedding: list) -> None:
+        from sqlalchemy import text
+        vec_literal = "[" + ",".join(str(x) for x in embedding) + "]"
+        self.session.execute(
+            text(f"""
+                INSERT INTO schedule_management.user_memory (user_id, content, memory_type, embedding)
+                VALUES (:uid, :content, :mtype, '{vec_literal}'::vector)
+            """),
+            {"uid": user_id, "content": content, "mtype": memory_type}
+        )
+        self.session.commit()
+
+    def search_user_memory(self, user_id: str, query_embedding: list,
+                            top_k: int = 3, min_similarity: float = 0.45) -> list:
+        """搜尋與當前問題最相關的用戶記憶片段"""
+        from sqlalchemy import text
+        vec_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        rows = self.session.execute(
+            text(f"""
+                SELECT content, memory_type,
+                       1 - (embedding <=> '{vec_literal}'::vector) AS similarity
+                FROM schedule_management.user_memory
+                WHERE user_id = :user_id AND embedding IS NOT NULL
+                  AND 1 - (embedding <=> '{vec_literal}'::vector) >= :min_sim
+                ORDER BY embedding <=> '{vec_literal}'::vector
+                LIMIT :top_k
+            """),
+            {"user_id": user_id, "top_k": top_k, "min_sim": min_similarity}
+        ).fetchall()
+        return [
+            {"content": r.content, "type": r.memory_type,
+             "similarity": round(float(r.similarity), 4)}
+            for r in rows
+        ]
+
     def find_overlapping(self, user_id: str, start_time: datetime, end_time: datetime, exclude_schedule_id: Optional[str] = None) -> List[Schedule]:
         """
         Find schedules that overlap with the given time range for the user.
