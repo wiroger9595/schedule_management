@@ -189,6 +189,31 @@ class ScheduleRepository:
             for r in rows
         ]
 
+    def find_duplicate_contacts(self, user_id: str, nick_names: list[str]) -> dict:
+        """給定名字列表，回傳有重複的 {nick_name: [{id, comment, phone}]} 字典"""
+        from sqlalchemy import text
+        if not nick_names:
+            return {}
+        placeholders = ",".join(f":n{i}" for i in range(len(nick_names)))
+        params = {"user_id": user_id, **{f"n{i}": n for i, n in enumerate(nick_names)}}
+        rows = self.session.execute(
+            text(f"""
+                SELECT id, nick_name, comment, phone
+                FROM schedule_management.contact
+                WHERE user_id = :user_id AND nick_name IN ({placeholders})
+                ORDER BY nick_name, id
+            """),
+            params
+        ).fetchall()
+        result: dict = {}
+        for r in rows:
+            result.setdefault(r.nick_name, []).append({
+                "id": r.id,
+                "comment": r.comment or "",
+                "phone": (r.phone or "")[-4:] if r.phone else "",
+            })
+        return {k: v for k, v in result.items() if len(v) > 1}
+
     # ── User Memory ──────────────────────────────────────────────────────────
 
     def save_user_memory(self, user_id: str, content: str,

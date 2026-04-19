@@ -332,9 +332,24 @@ class AIService:
 
         contact_section = ""
         if _contacts:
-            lines = [f"  • {c['nick_name']}（相似度 {c['similarity']}）{' — ' + c['comment'] if c.get('comment') else ''}"
+            lines = [f"  • @{c['nick_name']}（相似度 {c['similarity']}）{' — ' + c['comment'] if c.get('comment') else ''}"
                      for c in _contacts[:5]]
-            contact_section = "\n## 語意匹配到的聯絡人\n" + "\n".join(lines) + "\n（edit/delete 時優先考慮這些聯絡人的行程）"
+            contact_section = "\n## 語意匹配到的聯絡人\n" + "\n".join(lines) + "\n（以上是聯絡人名單，用於識別句子中的人名）"
+
+        # 同名聯絡人警告
+        _dup_keys = [k for k in (current_context or {}) if k.startswith("_dup_")]
+        if _dup_keys:
+            dup_lines = []
+            for _dk in _dup_keys:
+                _dname = _dk[5:]  # 去掉 _dup_ 前綴
+                _dentries = current_context[_dk]
+                _desc = "、".join(
+                    f"{'備註:' + e['comment'] if e['comment'] else ''}{'末4碼:' + e['phone'] if e['phone'] else '（無備註）'}"
+                    for e in _dentries
+                )
+                dup_lines.append(f"  ⚠️ @{_dname} 有 {len(_dentries)} 位同名聯絡人：{_desc}")
+            contact_section += "\n## ⚠️ 同名聯絡人（必須先問清楚是哪一位）\n" + "\n".join(dup_lines) + \
+                               "\n→ 遇到同名聯絡人時，呼叫 ask_user 讓用戶說明是哪一位（用備註或電話末4碼區分）"
 
         system_prompt = f"""你是行程助理，透過呼叫工具來建立/修改/刪除行程。請用與用戶相同的語言回覆（中文說中文、英文說英文）。
 
@@ -343,6 +358,20 @@ class AIService:
 現在時間（台灣）：{today.strftime("%Y-%m-%d %H:%M")}（{today_str}）
 
 {schedule_section}{memory_section}{contact_section}
+
+## 句子解析規則（名字 / 時間 / 地點順序不固定）
+- 句子中的人名、時間、地點**順序可能任意排列**，不可依位置假設詞性
+- 人名判斷依據：出現在【語意匹配到的聯絡人】清單中，或在 跟/和/找/與/邀請/請/叫 之後
+- 時間判斷依據：含有日期關鍵字（明天/後天/禮拜X/下週/X月X日）或時間詞（X點/早上/下午/晚上）
+- 地點判斷依據：含有地標/店名/區域，或在 在/去/到 之後
+- 範例：「星期五晚上小明台北101跟我吃飯」→ 時間=星期五晚上，人名=@小明，地點=台北101
+- 範例：「跟文哥明天下午三點在星巴克開會」→ 人名=@文哥，時間=明天下午三點，地點=星巴克
+- 若無法確定某詞是人名還是地點 → 優先查聯絡人清單，若在清單中就當人名
+
+## 同名聯絡人處理規則
+- 若同名聯絡人警告出現在上方，**必須先** ask_user 詢問是哪一位，不可假設
+- 詢問方式：列出區分資訊（備註/電話末4碼）讓用戶選擇
+- 例：「您說的 @小明 是哪一位？A（備註：同事）或 B（電話末4碼：1234）？」
 
 ## Title 規則（重要）
 - title 只描述「做什麼 / 和誰」，**不包含地點與時間**

@@ -18,6 +18,8 @@ class EmbeddingService:
     @classmethod
     def _get_model(cls):
         if cls._model is None:
+            import os
+            os.environ.setdefault("FASTEMBED_CACHE_PATH", "/app/.fastembed_cache")
             from fastembed import TextEmbedding
             print(f"[EmbeddingService] Loading model {cls.MODEL_NAME} ...")
             cls._model = TextEmbedding(model_name=cls.MODEL_NAME)

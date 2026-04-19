@@ -33,3 +33,6 @@ deploy.sh
 
 # Logs
 *.log
+
+# fastembed local cache (model is baked in during Docker build)
+.fastembed_cache/

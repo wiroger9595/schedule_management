@@ -310,9 +310,9 @@ class ChatWidgetState extends State<ChatWidget> {
 
   Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, bool confirmPastEdit = false, double? overrideLat, double? overrideLon}) async {
     final messageText = text ?? _controller.text.trim();
-    if (messageText.isEmpty && !forceCreate) return;
+    if (messageText.isEmpty && !forceCreate && !confirmPastEdit && !confirmDelete) return;
 
-    if (!forceCreate) {
+    if (!forceCreate && !confirmPastEdit && !confirmDelete) {
       // Record user turn in conversation history before sending
       _conversationHistory.add({'role': 'user', 'content': messageText});
       setState(() {
@@ -358,7 +358,7 @@ class ChatWidgetState extends State<ChatWidget> {
       }
 
       final data = await apiService.chatWithAI(
-        forceCreate ? 'Confirm' : messageText,
+        (forceCreate || confirmPastEdit || confirmDelete) ? 'Confirm' : messageText,
         currentContext: _currentContext,
         conversationHistory: _conversationHistory,
         forceCreate: forceCreate,

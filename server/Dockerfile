@@ -6,7 +6,8 @@ FROM python:3.12-slim
 # PYTHONUNBUFFERED: Prevents Python from buffering stdout and stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=8080
+    PORT=8080 \
+    FASTEMBED_CACHE_PATH=/app/.fastembed_cache
 
 # Create a non-root user and group
 RUN groupadd -r appuser && useradd -r -g appuser appuser
@@ -25,6 +26,11 @@ COPY requirements.txt .
 
 # Install dependencies securely and keep image small
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download fastembed model into the image so Cloud Run instances don't need to download it
+RUN mkdir -p /app/.fastembed_cache && \
+    python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-zh-v1.5')" && \
+    echo "[Dockerfile] fastembed model cached."
 
 # Copy the rest of the application code
 COPY . /app/

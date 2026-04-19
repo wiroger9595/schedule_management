@@ -700,6 +700,72 @@ def chat_schedule(
         ).first()
         return c is not None
 
+    def _validate_output(data: dict, intent: str, session, user_id: str, current_context: dict) -> str | None:
+        """
+        驗證 AI 輸出的欄位是否合理。
+        回傳 None 表示通過；回傳字串表示需要回問用戶的錯誤訊息。
+        """
+        from sqlmodel import select as _vsel
+        from ...models.contact import Contact as _VContact
+        from datetime import timezone, timedelta
+
+        # ── 1. 時間合理性 ──────────────────────────────────────────────────────
+        start_str = data.get("start_time")
+        end_str = data.get("end_time")
+        if start_str:
+            try:
+                st = datetime.fromisoformat(start_str)
+                # 年份必須在 2024–2035 之間
+                if not (2024 <= st.year <= 2035):
+                    return f"行程時間 {st.year} 年看起來不對，請確認是否為 {datetime.now().year} 年？"
+                # end_time 必須晚於 start_time
+                if end_str:
+                    et = datetime.fromisoformat(end_str)
+                    if et <= st:
+                        return "結束時間必須晚於開始時間，請確認時間是否正確？"
+            except ValueError:
+                return "時間格式無法解析，請重新說明行程時間。"
+
+        # ── 2. 參與者名稱對照聯絡人清單 ────────────────────────────────────────
+        parts = data.get("participants", [])
+        if isinstance(parts, str):
+            parts = [p.strip() for p in parts.split(",") if p.strip()]
+        unknown = []
+        similar_map: dict[str, str] = {}
+        for p in parts:
+            clean = p.strip().lstrip("@")
+            if not clean:
+                continue
+            # 完全匹配
+            exact = session.exec(
+                _vsel(_VContact).where(
+                    _VContact.user_id == user_id,
+                    _VContact.nick_name == clean,
+                )
+            ).first()
+            if not exact:
+                # 模糊匹配（含有該名字）
+                fuzzy = session.exec(
+                    _vsel(_VContact).where(
+                        _VContact.user_id == user_id,
+                        _VContact.nick_name.ilike(f"%{clean}%"),
+                    )
+                ).first()
+                if fuzzy:
+                    similar_map[clean] = fuzzy.nick_name
+                else:
+                    unknown.append(clean)
+
+        if similar_map:
+            suggestions = "、".join(f"@{k} → 是否為 @{v}？" for k, v in similar_map.items())
+            return f"找不到完全符合的聯絡人，{suggestions}"
+
+        # ── 3. create 必須有 location ──────────────────────────────────────────
+        if intent == "create" and not data.get("location"):
+            return "請問行程地點在哪裡？"
+
+        return None  # 通過所有驗證
+
     def _fmt_schedule_summary(obj) -> str:
         """Format saved schedule into a full info summary for user confirmation."""
         lines = []
@@ -753,6 +819,10 @@ def chat_schedule(
 
     annotated_schedule_list = _python_match_schedules(user_message, request.schedule_list or [])
 
+    # ── Semantic Router：偵測「列出/計數」意圖 → 強制帶入完整清單，跳過語意過濾 ──
+    _LIST_KEYWORDS = {"幾個", "幾件", "幾筆", "所有", "全部", "列出", "顯示", "查看", "有哪些", "有什麼", "清單", "總共", "列一下"}
+    _is_list_query = any(kw in user_message for kw in _LIST_KEYWORDS)
+
     # ── Hybrid Search + Reranking ─────────────────────────────────────────────
     # 語意搜尋 + 關鍵字結果合併，依 cosine 分數重排，過濾低相關行程
     try:
@@ -781,11 +851,10 @@ def chat_schedule(
                 s["_match"] = True
                 s["_similarity"] = round(sim, 4)
 
-            # 只過濾「語意補充進來的歷史行程」中分數不足的項目。
-            # Flutter 傳來的原始清單（original_ids）一律保留，確保 AI 能看到所有行程。
+            # 「列出/計數」類查詢強制保留全部原始清單，其餘才做語意過濾
             is_original = sid in original_ids
             has_embedding = sid in similarity_map
-            should_filter = (not is_original) and has_embedding and (not is_keyword_match) and (sim < SIMILARITY_THRESHOLD)
+            should_filter = (not _is_list_query) and (not is_original) and has_embedding and (not is_keyword_match) and (sim < SIMILARITY_THRESHOLD)
             if not should_filter:
                 final_list.append(s)
 
@@ -833,6 +902,14 @@ def chat_schedule(
 
         if _contact_hints:
             print(f"[contact_search] matches={[c['nick_name'] for c in _contact_hints]}")
+            # 偵測同名聯絡人
+            _hint_names = [c["nick_name"] for c in _contact_hints if c["nick_name"]]
+            if _hint_names:
+                _dup_map = _repo2.find_duplicate_contacts(user_id, _hint_names)
+                if _dup_map:
+                    for _n, _entries in _dup_map.items():
+                        current_context[f"_dup_{_n}"] = _entries
+                    print(f"[contact_search] duplicates={list(_dup_map.keys())}")
         if _memory_snippets:
             print(f"[memory_search] hits={len(_memory_snippets)}")
     except Exception as _cs_err:
@@ -854,6 +931,13 @@ def chat_schedule(
             "latitude": _pending_lat,
             "longitude": _pending_lon,
         })
+
+    # ── Auto-confirm past-edit when user continues typing after warning ───────
+    # If _pending_past_edit_id is stored in context (guard already shown once),
+    # treat any subsequent user message as implicit confirmation to proceed.
+    _pending_past_id = current_context.get("_pending_past_edit_id")
+    if _pending_past_id and not request.confirm_past_edit:
+        request = request.model_copy(update={"confirm_past_edit": True})
 
     # ── confirm_location=True: user already approved a location ──────────────
     # Skip the graph entirely. Re-running AI on "確認地點：XX" confuses the model.
@@ -1023,6 +1107,15 @@ def chat_schedule(
         try:
             print(f"DEBUG [chat]: is_complete=True, updated_data={updated_data}")
 
+            # ── Output Validation：AI 輸出合理性驗證 ─────────────────────────
+            _val_err = _validate_output(updated_data, intent, session, user_id, current_context)
+            if _val_err:
+                return ChatResponse(
+                    ai_reply=_val_err,
+                    updated_data=updated_data,
+                    is_complete=False,
+                )
+
             start_time_str = updated_data.get("start_time")
             print(f"DEBUG [chat]: intent={intent}, start_time_str={start_time_str}")
 
@@ -1149,7 +1242,7 @@ def chat_schedule(
                         conflict={
                             "title": base_conflict.title,
                             "start_time": base_conflict.meeting_start_time.isoformat() if isinstance(base_conflict.meeting_start_time, datetime) else str(base_conflict.meeting_start_time),
-                            "end_time": base_conflict.meeting_end_time.isoformat() if base_conflict.meeting_end_time else None
+                            "end_time": base_conflict.meeting_end_time.isoformat() if isinstance(base_conflict.meeting_end_time, datetime) else str(base_conflict.meeting_end_time) if base_conflict.meeting_end_time else None
                         }
                     )
 
@@ -1224,9 +1317,12 @@ def chat_schedule(
                             _h = _t.hour
                             _p = "上午" if 6 <= _h < 12 else "中午" if 12 <= _h < 14 else "下午" if 14 <= _h < 18 else "晚上" if 18 <= _h < 22 else "深夜"
                             _past_str = f"{_t.month}月{_t.day}日 {_p}{_h}點"
+                            # 儲存至 context，讓用戶下一則訊息自動確認（不必再點按鈕）
+                            _warn_data = dict(updated_data)
+                            _warn_data["_pending_past_edit_id"] = existing.schedule_id
                             return ChatResponse(
                                 ai_reply=f"「{existing.title}」是 {_past_str} 的行程，已經過去了，確定要修改嗎？",
-                                updated_data=updated_data,
+                                updated_data=_warn_data,
                                 is_complete=False,
                                 confirm_past_edit=_past_info,
                             )
