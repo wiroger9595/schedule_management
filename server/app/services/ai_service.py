@@ -71,7 +71,7 @@ class AIService:
             raise ValueError("需要設定至少一個 AI API Key")
 
         # Default client/model = first available provider
-        self.client, self.model_name, _label = self._providers[0]
+        self.client, self.model_name, _ = self._providers[0]
         self.api_key = self.client.api_key
         labels = " → ".join(p[2] for p in self._providers)
         print(f"[AIService] Cascade ({len(self._providers)}): {labels}")
@@ -130,24 +130,28 @@ class AIService:
 }}
 """
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": "You are a helpful JSON extraction assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                response_format={"type": "json_object"},
-                timeout=15.0
-            )
-            
-            text = response.choices[0].message.content.strip()
-            schedule_data = json.loads(text)
-            return schedule_data
-        except Exception as e:
-            print(f"AI API Error: {e}")
-            raise ValueError("AI 無法理解訊息格式，請提供更清楚的資訊")
+        msgs = [
+            {"role": "system", "content": "You are a helpful JSON extraction assistant."},
+            {"role": "user", "content": prompt},
+        ]
+        last_err = None
+        for _cli, _model, _label in self._providers:
+            try:
+                response = _cli.chat.completions.create(
+                    model=_model,
+                    messages=msgs,
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                    timeout=15.0,
+                )
+                text = response.choices[0].message.content.strip()
+                return json.loads(text)
+            except Exception as e:
+                last_err = e
+                print(f"[AIService] {_label} extract_schedule_info failed: {str(e)[:80]}")
+                continue
+        print(f"AI API Error: {last_err}")
+        raise ValueError("AI 無法理解訊息格式，請提供更清楚的資訊")
     
     def generate_confirmation_message(self, schedule_data: Dict) -> str:
         """生成確認訊息"""
@@ -355,7 +359,7 @@ class AIService:
         last_exception = None
         response = None
 
-        for _p_idx, (_cli, _model, _label) in enumerate(self._providers):
+        for _cli, _model, _label in self._providers:
             use_tool_calling = True
             for _attempt in range(2):  # max 2 attempts per provider
                 try:
