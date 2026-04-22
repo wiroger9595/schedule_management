@@ -16,6 +16,17 @@ from ...services.notification_service import notification_service
 from ...utils.text_validator import validate_schedule_message
 from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse
 from ...services.schedule_graph import schedule_graph
+from ...services.chat_utils import (
+    extract_person_hint as _extract_person_hint,
+    check_person_in_contacts as _check_person_in_contacts,
+    validate_output as _validate_output,
+    fmt_schedule_summary as _fmt_schedule_summary,
+    python_match_schedules as _python_match_schedules,
+)
+from ...services.attend_service import (
+    add_participants as _add_participants,
+    remove_participants as _remove_participants,
+)
 from .auth import get_current_user
 
 router = APIRouter()
@@ -486,13 +497,14 @@ def update_schedule(
         except:
             pass # Keep old coords or none if geocode fails
             
-    # Auto-revert status from COMING_SOON to PENDING if rescheduled > 3 hours away
-    # Status.COMING_SOON is "CS"
-    if schedule.status == Status.COMING_SOON.value and schedule.meeting_start_time:
+    # Auto-revert status to PENDING when time is rescheduled to the future
+    _revertable = {Status.COMING_SOON.value, "NA"}  # CS and notAttended
+    if schedule.status in _revertable and schedule.meeting_start_time:
         try:
-            st = arrow.get(schedule.meeting_start_time)
-            # If start time is more than 3 hours from now
-            if st > arrow.now().shift(hours=3):
+            from .chat_utils import _to_taipei as _ttp2
+            _st_tw = _ttp2(schedule.meeting_start_time)
+            _now_tw = arrow.now("Asia/Taipei")
+            if _st_tw and _st_tw > _now_tw.shift(hours=3):
                 schedule.status = Status.PENDING.value
                 print(f"DEBUG: Auto-reverted status to PENDING (Time > 3h away)")
         except Exception as e:
@@ -670,166 +682,28 @@ def chat_schedule(
             schedule_deleted=True,
         )
 
-    # ── Person hint extractor: detect contact name in message ────────────────
-    def _extract_person_hint(message: str) -> Optional[str]:
-        """Extract person name hint from patterns like 與X、和X、跟X before 見面/行程/etc."""
-        import re
-        NON_NAMES = {"我", "你", "他", "她", "他們", "大家", "朋友", "同事", "家人",
-                     "老闆", "客戶", "大家", "你們", "我們"}
-        patterns = [
-            r'[與和跟找]([A-Za-z\u4e00-\u9fff]{1,6})(?:見面|開會|吃飯|談|碰面|的行程|的時間|的地點|的約)',
-            r'[與和跟找]([A-Za-z\u4e00-\u9fff]{1,6})(?:\s|$|，|,|。|！|？)',
-        ]
-        for pat in patterns:
-            m = re.search(pat, message)
-            if m:
-                name = m.group(1).strip()
-                if name and name not in NON_NAMES:
-                    return name
-        return None
-
-    def _check_person_in_contacts(user_id: str, person_hint: str, session) -> bool:
-        """Return True if a contact with nick_name containing person_hint exists."""
-        from ...models.contact import Contact
-        from sqlmodel import select as _select
-        c = session.exec(
-            _select(Contact).where(
-                Contact.user_id == user_id,
-                Contact.nick_name.ilike(f"%{person_hint}%"),
-            )
-        ).first()
-        return c is not None
-
-    def _validate_output(data: dict, intent: str, session, user_id: str, current_context: dict) -> str | None:
-        """
-        驗證 AI 輸出的欄位是否合理。
-        回傳 None 表示通過；回傳字串表示需要回問用戶的錯誤訊息。
-        """
-        from sqlmodel import select as _vsel
-        from ...models.contact import Contact as _VContact
-        from datetime import timezone, timedelta
-
-        # ── 1. 時間合理性 ──────────────────────────────────────────────────────
-        start_str = data.get("start_time")
-        end_str = data.get("end_time")
-        if start_str:
-            try:
-                st = datetime.fromisoformat(start_str)
-                # 年份必須在 2024–2035 之間
-                if not (2024 <= st.year <= 2035):
-                    return f"行程時間 {st.year} 年看起來不對，請確認是否為 {datetime.now().year} 年？"
-                # end_time 必須晚於 start_time
-                if end_str:
-                    et = datetime.fromisoformat(end_str)
-                    if et <= st:
-                        return "結束時間必須晚於開始時間，請確認時間是否正確？"
-            except ValueError:
-                return "時間格式無法解析，請重新說明行程時間。"
-
-        # ── 2. 參與者名稱對照聯絡人清單 ────────────────────────────────────────
-        parts = data.get("participants", [])
-        if isinstance(parts, str):
-            parts = [p.strip() for p in parts.split(",") if p.strip()]
-        unknown = []
-        similar_map: dict[str, str] = {}
-        for p in parts:
-            clean = p.strip().lstrip("@")
-            if not clean:
-                continue
-            # 完全匹配
-            exact = session.exec(
-                _vsel(_VContact).where(
-                    _VContact.user_id == user_id,
-                    _VContact.nick_name == clean,
-                )
-            ).first()
-            if not exact:
-                # 模糊匹配（含有該名字）
-                fuzzy = session.exec(
-                    _vsel(_VContact).where(
-                        _VContact.user_id == user_id,
-                        _VContact.nick_name.ilike(f"%{clean}%"),
-                    )
-                ).first()
-                if fuzzy:
-                    similar_map[clean] = fuzzy.nick_name
-                else:
-                    unknown.append(clean)
-
-        if similar_map:
-            suggestions = "、".join(f"@{k} → 是否為 @{v}？" for k, v in similar_map.items())
-            return f"找不到完全符合的聯絡人，{suggestions}"
-
-        # ── 3. create 必須有 location ──────────────────────────────────────────
-        if intent == "create" and not data.get("location"):
-            return "請問行程地點在哪裡？"
-
-        return None  # 通過所有驗證
-
-    def _fmt_schedule_summary(obj) -> str:
-        """Format saved schedule into a full info summary for user confirmation."""
-        lines = []
-        lines.append(f"📋 行程名稱：{obj.title or '未命名'}")
-        if obj.meeting_start_time:
-            _t = arrow.get(obj.meeting_start_time).to("Asia/Taipei")
-            _h = _t.hour
-            _p = "上午" if 6 <= _h < 12 else "中午" if 12 <= _h < 14 else "下午" if 14 <= _h < 18 else "晚上" if 18 <= _h < 22 else "深夜"
-            _ts = f"{_t.month}月{_t.day}日（{_t.format('ddd', locale='zh_TW')}）{_p}{_h}點"
-            if getattr(obj, 'meeting_end_time', None):
-                _et = arrow.get(obj.meeting_end_time).to("Asia/Taipei")
-                _ep = "上午" if 6 <= _et.hour < 12 else "中午" if 12 <= _et.hour < 14 else "下午" if 14 <= _et.hour < 18 else "晚上" if 18 <= _et.hour < 22 else "深夜"
-                _ts += f"到{'（'+_ep+'）' if _ep != _p else ''}{_et.hour}點"
-            lines.append(f"🕐 時間：{_ts}")
-        if getattr(obj, 'meeting_location', None):
-            lines.append(f"📍 地點：{obj.meeting_location}")
-        return "\n".join(lines)
-
-    # ── Pre-match schedules with Python keyword search ────────────────────────
-    # Reliable fuzzy matching before handing to AI — avoids AI missing titles
-    def _python_match_schedules(message: str, schedules: list) -> list:
-        """Return schedule list with matching ones tagged [最佳匹配]."""
-        if not schedules:
-            return schedules
-        # Strip common intent words to get the core keyword
-        stop_words = {"取消", "刪除", "刪掉", "移除", "更改", "修改", "調整", "把", "的", "行程",
-                      "活動", "我", "這個", "請", "幫我", "改到", "延後", "提早"}
-        words = [w for w in message if w not in stop_words and len(w.strip()) > 0]
-        keyword = "".join(words)  # full message minus stop words
-
-        tagged = []
-        for s in schedules:
-            title = s.get("title", "")
-            # Check if any 2+ char substring of keyword appears in title
-            matched = False
-            for length in range(len(keyword), 1, -1):
-                for start in range(len(keyword) - length + 1):
-                    chunk = keyword[start:start + length]
-                    if len(chunk) >= 2 and chunk in title:
-                        matched = True
-                        break
-                if matched:
-                    break
-            if matched:
-                s = dict(s)
-                s["_match"] = True
-                tagged.append(s)
-            else:
-                tagged.append(s)
-        return tagged
-
     annotated_schedule_list = _python_match_schedules(user_message, request.schedule_list or [])
 
     # ── Semantic Router：偵測「列出/計數」意圖 → 強制帶入完整清單，跳過語意過濾 ──
     _LIST_KEYWORDS = {"幾個", "幾件", "幾筆", "所有", "全部", "列出", "顯示", "查看", "有哪些", "有什麼", "清單", "總共", "列一下"}
     _is_list_query = any(kw in user_message for kw in _LIST_KEYWORDS)
 
+    # ── Pre-compute query embedding once (shared by hybrid + contact search) ──
+    _query_emb: list | None = None
+    try:
+        from ...services.embedding_service import EmbeddingService as _ES_pre
+        _query_emb = _ES_pre.embed(user_message)
+    except Exception as _pre_emb_err:
+        print(f"[embedding] pre-compute skipped (non-critical): {_pre_emb_err}")
+
     # ── Hybrid Search + Reranking ─────────────────────────────────────────────
     # 語意搜尋 + 關鍵字結果合併，依 cosine 分數重排，過濾低相關行程
     try:
-        from ...services.embedding_service import EmbeddingService
         from ...repositories.schedule_repository import ScheduleRepository as _Repo
+        if _query_emb is None:
+            raise RuntimeError("embedding unavailable, skip hybrid search")
         _repo = _Repo(session)
-        query_emb = EmbeddingService.embed(user_message)
+        query_emb = _query_emb
         semantic_results = _repo.semantic_search(user_id, query_emb, top_k=10)
 
         # {schedule_id: similarity_score}
@@ -889,16 +763,16 @@ def chat_schedule(
     _contact_hints: list = []
     _memory_snippets: list = []
     try:
-        from ...services.embedding_service import EmbeddingService as _ES
         from ...repositories.schedule_repository import ScheduleRepository as _Repo2
+        if _query_emb is None:
+            raise RuntimeError("embedding unavailable, skip contact/memory search")
         _repo2 = _Repo2(session)
-        _qemb = _ES.embed(user_message)
 
         # 聯絡人語意搜尋
-        _contact_hints = _repo2.semantic_search_contacts(user_id, _qemb, top_k=4, min_similarity=0.4)
+        _contact_hints = _repo2.semantic_search_contacts(user_id, _query_emb, top_k=4, min_similarity=0.4)
 
         # 用戶記憶搜尋
-        _memory_snippets = _repo2.search_user_memory(user_id, _qemb, top_k=3, min_similarity=0.45)
+        _memory_snippets = _repo2.search_user_memory(user_id, _query_emb, top_k=3, min_similarity=0.45)
 
         if _contact_hints:
             print(f"[contact_search] matches={[c['nick_name'] for c in _contact_hints]}")
@@ -1225,8 +1099,9 @@ def chat_schedule(
                     # Found conflicts (could be multiple)
                     conflict_details = []
                     for c in conflicts:
-                        p_start = arrow.get(c.meeting_start_time).format('HH:mm')
-                        p_end = arrow.get(c.meeting_end_time).format('HH:mm') if c.meeting_end_time else "??"
+                        from ...services.chat_utils import _to_taipei as _ttp
+                        p_start = _ttp(c.meeting_start_time).format('HH:mm')
+                        p_end = _ttp(c.meeting_end_time).format('HH:mm') if c.meeting_end_time else "??"
                         conflict_details.append(f"{p_start}-{p_end}「{c.title}」")
                     
                     conflict_msg = "、".join(conflict_details)
@@ -1255,13 +1130,15 @@ def chat_schedule(
                 _remove_parts = updated_data.get("remove_participants", [])
                 if isinstance(_remove_parts, str):
                     _remove_parts = [p.strip() for p in _remove_parts.split(",") if p.strip()]
+                _clear_parts = bool(updated_data.get("clear_participants"))
                 has_changes = (
                     updated_data.get("title") or
                     updated_data.get("description") or
                     updated_data.get("start_time") or
                     location_name or
                     _edit_parts or
-                    _remove_parts
+                    _remove_parts or
+                    _clear_parts
                 )
                 if not has_changes:
                     return ChatResponse(
@@ -1313,10 +1190,11 @@ def chat_schedule(
                                 "title": existing.title,
                                 "start_time": _s_time.isoformat() if isinstance(_s_time, datetime) else str(_s_time),
                             }
-                            _t = arrow.get(_s_time).to("Asia/Taipei")
+                            from ...services.chat_utils import _to_taipei, _display_hour
+                            _t = _to_taipei(_s_time)
                             _h = _t.hour
                             _p = "上午" if 6 <= _h < 12 else "中午" if 12 <= _h < 14 else "下午" if 14 <= _h < 18 else "晚上" if 18 <= _h < 22 else "深夜"
-                            _past_str = f"{_t.month}月{_t.day}日 {_p}{_h}點"
+                            _past_str = f"{_t.month}月{_t.day}日 {_p}{_display_hour(_h)}點"
                             # 儲存至 context，讓用戶下一則訊息自動確認（不必再點按鈕）
                             _warn_data = dict(updated_data)
                             _warn_data["_pending_past_edit_id"] = existing.schedule_id
@@ -1332,6 +1210,15 @@ def chat_schedule(
                     if updated_data.get("start_time"):
                         existing.meeting_start_time = start_time
                         existing.meeting_end_time = end_time
+                        # Reset NA/CS status when rescheduled to future
+                        if existing.status in {Status.COMING_SOON.value, "NA"} and start_time:
+                            try:
+                                from ...services.chat_utils import _to_taipei as _ttp3
+                                _new_tw = _ttp3(start_time)
+                                if _new_tw and _new_tw > arrow.now("Asia/Taipei").shift(hours=3):
+                                    existing.status = Status.PENDING.value
+                            except Exception:
+                                pass
                     if location_name:
                         existing.meeting_location = location_name
                         existing.location = location_name
@@ -1341,71 +1228,26 @@ def chat_schedule(
                         existing.longitude = location_lon
                     saved_schedule_obj = repo.update(existing)
                     saved_schedule = saved_schedule_obj.dict()
-                    # ── 新增參與者 ──────────────────────────────────────────────
-                    if _edit_parts:
-                        from sqlmodel import select as _select_ec
-                        from ...models.contact import Contact as _EC
-                        from ...models.attend import attend as _Attend
-                        for _pname in _edit_parts:
-                            _clean = _pname.strip().lstrip("@")
-                            if not _clean:
-                                continue
-                            _ec = session.exec(
-                                _select_ec(_EC).where(
-                                    _EC.user_id == current_user.user_id,
-                                    _EC.nick_name == _clean
-                                )
-                            ).first()
-                            if not _ec:
-                                _ec = _EC(user_id=current_user.user_id, nick_name=_clean)
-                                session.add(_ec)
-                                session.commit()
-                                session.refresh(_ec)
-                            # 避免重複加入
-                            _exists_att = session.exec(
-                                _select_ec(_Attend).where(
-                                    _Attend.schedule_id == saved_schedule_obj.schedule_id,
-                                    _Attend.contact_id == _ec.id
-                                )
-                            ).first()
-                            if not _exists_att:
-                                session.add(_Attend(
-                                    schedule_id=saved_schedule_obj.schedule_id,
-                                    contact_id=_ec.id,
-                                    status="P"
-                                ))
+                    # ── 新增 / 移除參與者 ────────────────────────────────────────
+                    if _clear_parts:
+                        from sqlmodel import delete as _sql_del
+                        from ...models.attend import attend as _attend_clr
+                        session.exec(_sql_del(_attend_clr).where(_attend_clr.schedule_id == saved_schedule_obj.schedule_id))
                         session.commit()
-                    # ── 移除參與者 ──────────────────────────────────────────────
-                    if _remove_parts:
-                        from sqlmodel import select as _select_rc
-                        from ...models.contact import Contact as _RC
-                        from ...models.attend import attend as _RAttend
-                        for _rname in _remove_parts:
-                            _rclean = _rname.strip().lstrip("@")
-                            if not _rclean:
-                                continue
-                            _rc = session.exec(
-                                _select_rc(_RC).where(
-                                    _RC.user_id == current_user.user_id,
-                                    _RC.nick_name == _rclean
-                                )
-                            ).first()
-                            if _rc:
-                                _ra = session.exec(
-                                    _select_rc(_RAttend).where(
-                                        _RAttend.schedule_id == saved_schedule_obj.schedule_id,
-                                        _RAttend.contact_id == _rc.id
-                                    )
-                                ).first()
-                                if _ra:
-                                    session.delete(_ra)
-                        session.commit()
+                    elif _edit_parts:
+                        _add_participants(saved_schedule_obj.schedule_id, _edit_parts,
+                                          current_user.user_id, session)
+                    if not _clear_parts and _remove_parts:
+                        _remove_participants(saved_schedule_obj.schedule_id, _remove_parts,
+                                             current_user.user_id, session)
                     _summary = _fmt_schedule_summary(saved_schedule_obj)
                     _change_lines = []
-                    if _edit_parts:
+                    if _clear_parts:
+                        _change_lines.append("➖ 已移除所有參與者（個人行程）")
+                    elif _edit_parts:
                         _names = " ".join(f"@{p.strip().lstrip('@')}" for p in _edit_parts if p.strip())
                         _change_lines.append(f"➕ 新增參與者：{_names}")
-                    if _remove_parts:
+                    if not _clear_parts and _remove_parts:
                         _rnames = " ".join(f"@{p.strip().lstrip('@')}" for p in _remove_parts if p.strip())
                         _change_lines.append(f"➖ 移除參與者：{_rnames}")
                     if _change_lines:
@@ -1450,17 +1292,6 @@ def chat_schedule(
                         is_complete=False,
                     )
             else:
-                # ── 至少一位參與者 ──────────────────────────────────────────────
-                _parts_check = updated_data.get("participants", [])
-                if isinstance(_parts_check, str):
-                    _parts_check = [p.strip() for p in _parts_check.split(",") if p.strip()]
-                _parts_check = [p for p in _parts_check if p.strip()]
-                if not _parts_check:
-                    return ChatResponse(
-                        ai_reply="請問這個行程要邀請誰參加？（至少需要一位參與者）",
-                        updated_data=updated_data,
-                        is_complete=False,
-                    )
                 # ── 建立 Schedule 物件 ─────────────────────────────────────────
                 new_schedule = Schedule(
                     user_id=current_user.user_id,

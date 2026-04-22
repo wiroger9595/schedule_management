@@ -59,8 +59,10 @@ if [ -f "$YAML_FILE" ]; then
       --region "$REGION" \
       --allow-unauthenticated \
       --project "$PROJECT_ID" \
+      --memory 1Gi \
+      --cpu 1 \
       --env-vars-file "$YAML_FILE"
-      
+
     # Clean up the generated YAML file
     rm -f "$YAML_FILE"
 else
@@ -68,7 +70,9 @@ else
       --source . \
       --region "$REGION" \
       --allow-unauthenticated \
-      --project "$PROJECT_ID"
+      --project "$PROJECT_ID" \
+      --memory 1Gi \
+      --cpu 1
 fi
 
 echo "========================================="

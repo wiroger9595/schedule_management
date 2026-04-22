@@ -209,7 +209,7 @@ class AIService:
             "type": "function",
             "function": {
                 "name": "create_schedule",
-                "description": "建立新行程。title/start_time/end_time/location/participants 都齊全才呼叫",
+                "description": "建立新行程。title/start_time/end_time/location 齊全才呼叫。participants 可為空（個人行程）。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -253,6 +253,10 @@ class AIService:
                             "items": {"type": "string"},
                             "description": "移除參與者（從現有名單刪除，格式 @名稱）"
                         },
+                        "clear_participants": {
+                            "type": "boolean",
+                            "description": "true = 移除全部參與者，改為個人行程（不需指定名字）"
+                        },
                         "reply": {"type": "string", "description": "給用戶的確認訊息"}
                     },
                     "required": ["schedule_id", "reply"]
@@ -293,252 +297,16 @@ class AIService:
         from datetime import timezone, timedelta
         TAIPEI_TZ = timezone(timedelta(hours=8))
         today = datetime.now(tz=TAIPEI_TZ)
-        today_str = today.strftime("%Y-%m-%d %A")
 
-        # ── 行程清單：保留 Python 關鍵字預標記機制 ───────────────────────────
-        if schedule_list:
-            lines = []
-            pre_matched = []
-            for s in schedule_list[:20]:
-                sid = s.get("schedule_id") or s.get("id", "")
-                title = s.get("title", "")
-                st = s.get("meeting_start_time") or s.get("start_time", "")
-                if st:
-                    try:
-                        st = datetime.fromisoformat(str(st).replace("Z", "+00:00")).strftime("%m/%d %H:%M")
-                    except Exception:
-                        pass
-                loc = s.get("meeting_location") or s.get("location", "")
-                is_match = s.get("_match", False)
-                tag = "  ★" if is_match else "  "
-                lines.append(f"{tag}id={sid} | {title} | {st} | {loc}")
-                if is_match:
-                    pre_matched.append(f"id={sid}（{title}）")
-            schedule_section = "【行程清單】\n" + "\n".join(lines)
-            if pre_matched:
-                schedule_section += f"\n⚠️ 關鍵字匹配：{', '.join(pre_matched)} → edit/delete 直接用此 id"
-        else:
-            schedule_section = "【行程清單】（未提供）"
+        from .prompt_builder import build_schedule_section, build_context_sections, build_system_prompt
 
         # ── 用戶記憶 & 聯絡人提示 ──────────────────────────────────────────────
-        # 從 current_context 或直接參數讀取（schedules.py 透過 current_data 傳入）
         _mem = memory_snippets or (current_context or {}).get("_memory_snippets") or []
         _contacts = contact_hints or (current_context or {}).get("_contact_hints") or []
 
-        memory_section = ""
-        if _mem:
-            lines = [f"  • {m['content']}" for m in _mem[:4]]
-            memory_section = "\n## 用戶個人偏好記憶（根據過去行程學習）\n" + "\n".join(lines)
-
-        contact_section = ""
-        if _contacts:
-            lines = [f"  • @{c['nick_name']}（相似度 {c['similarity']}）{' — ' + c['comment'] if c.get('comment') else ''}"
-                     for c in _contacts[:5]]
-            contact_section = "\n## 語意匹配到的聯絡人\n" + "\n".join(lines) + "\n（以上是聯絡人名單，用於識別句子中的人名）"
-
-        # 同名聯絡人警告
-        _dup_keys = [k for k in (current_context or {}) if k.startswith("_dup_")]
-        if _dup_keys:
-            dup_lines = []
-            for _dk in _dup_keys:
-                _dname = _dk[5:]  # 去掉 _dup_ 前綴
-                _dentries = current_context[_dk]
-                _desc = "、".join(
-                    f"{'備註:' + e['comment'] if e['comment'] else ''}{'末4碼:' + e['phone'] if e['phone'] else '（無備註）'}"
-                    for e in _dentries
-                )
-                dup_lines.append(f"  ⚠️ @{_dname} 有 {len(_dentries)} 位同名聯絡人：{_desc}")
-            contact_section += "\n## ⚠️ 同名聯絡人（必須先問清楚是哪一位）\n" + "\n".join(dup_lines) + \
-                               "\n→ 遇到同名聯絡人時，呼叫 ask_user 讓用戶說明是哪一位（用備註或電話末4碼區分）"
-
-        system_prompt = f"""你是行程助理，透過呼叫工具來建立/修改/刪除行程。請用與用戶相同的語言回覆（中文說中文、英文說英文）。
-
-
-
-現在時間（台灣）：{today.strftime("%Y-%m-%d %H:%M")}（{today_str}）
-
-{schedule_section}{memory_section}{contact_section}
-
-## 句子解析規則（名字 / 時間 / 地點順序不固定）
-- 句子中的人名、時間、地點**順序可能任意排列**，不可依位置假設詞性
-- 人名判斷依據：出現在【語意匹配到的聯絡人】清單中，或在 跟/和/找/與/邀請/請/叫 之後
-- 時間判斷依據：含有日期關鍵字（明天/後天/禮拜X/下週/X月X日）或時間詞（X點/早上/下午/晚上）
-- 地點判斷依據：含有地標/店名/區域，或在 在/去/到 之後
-- 範例：「星期五晚上小明台北101跟我吃飯」→ 時間=星期五晚上，人名=@小明，地點=台北101
-- 範例：「跟文哥明天下午三點在星巴克開會」→ 人名=@文哥，時間=明天下午三點，地點=星巴克
-- 若無法確定某詞是人名還是地點 → 優先查聯絡人清單，若在清單中就當人名
-
-## 同名聯絡人處理規則
-- 若同名聯絡人警告出現在上方，**必須先** ask_user 詢問是哪一位，不可假設
-- 詢問方式：列出區分資訊（備註/電話末4碼）讓用戶選擇
-- 例：「您說的 @小明 是哪一位？A（備註：同事）或 B（電話末4碼：1234）？」
-
-## Title 規則（重要）
-- title 只描述「做什麼 / 和誰」，**不包含地點與時間**
-- 正確：「與jjlin談生意」「打棒球」「客戶開會」
-- 錯誤：「跟jjlin去一蘭拉麵談生意」（含地點）「明天下午打棒球」（含時間）
-- 建立或修改時，若用戶說的 title 含有地點/時間，請自動去除
-
-## 更改地點時的 title 連動規則
-- 若用戶更改地點，且現有 title 含有舊地點名稱 → update_schedule 同時帶入新 title（去除地點後的版本）
-- 範例：title="跟jjlin去一蘭拉麵談生意"，地點改成星巴克 → 新 title="與jjlin談生意"
-
-## 工具選擇規則
-- 建立新行程 → create_schedule（**必須齊全**：title + start_time + end_time + location + participants，缺任何一項都必須先用 ask_user 詢問）
-  - participants 不可為空陣列，至少要有一位參與者才能呼叫 create_schedule
-  - end_time：用戶有說結束時間就用，沒說則預設 start_time + 2小時
-- 修改行程 → update_schedule（從清單找到 schedule_id，只帶入**用戶說要改的欄位**即可，其他欄位不需要）
-  - 只改時間 → update_schedule(schedule_id, start_time) ✅ 不需要 location
-  - 只改地點 → update_schedule(schedule_id, location) ✅ 不需要 start_time
-  - 新增參與者 → update_schedule(schedule_id, participants=["@名稱"]) ✅（加入現有名單）
-  - 移除參與者 → update_schedule(schedule_id, remove_participants=["@名稱"]) ✅（從名單移除）
-  - 換人（替換）→ update_schedule(schedule_id, participants=["@新人"], remove_participants=["@舊人"]) ✅
-  - 用戶說「新增/換一位」但沒說名字 → ask_user(question="請問要新增哪位參與者？", partial_data={{"schedule_id":"..."}}) ✅
-- 刪除行程 → delete_schedule（從清單找到 schedule_id）
-- 用戶說「改 XX」但沒說改成什麼值，或還缺修改的目標行程 → ask_user
-  ⚠️ ask_user 追問修改資訊時，partial_data **必須**帶入 schedule_id
-
-## 行程搜尋驗證規則（嚴格遵守）
-- update_schedule / delete_schedule 的 schedule_id **必須來自行程清單中的現有 id**，不可自行編造
-- 呼叫 update_schedule 前，必須確認清單中有**符合用戶描述的人名或關鍵字**的行程
-  - 用戶說「更改與文哥的行程」→ 清單中必須有 title 含「文哥」或參與者有「文哥」的行程
-  - 若清單中**找不到**符合描述的行程 → ask_user(question="找不到與文哥相關的行程，請確認行程名稱是否正確？")
-- **禁止**選擇描述不符的行程來更新（例如：用戶說「文哥」，不可去更新「Robert」的行程）
-
-## 時間規則（建立新行程）
-- 相對時間（X小時後/半小時後）→ 用現在時間計算
-- 只說時間沒說日期（下午六點）→ 今天日期補全
-- 說日期沒說時間（明天/星期五）→ ask_user 追問幾點，**並把已知日期存入 partial_data.start_time（例：2026-04-25T00:00:00），不可遺失日期**
-- 時段預設中間值：早上=09:00 中午=12:00 下午=14:00 傍晚=17:00 晚上=19:00 深夜/凌晨=22:00
-- end_time 預設 = start_time + 2小時（用戶有說結束時間則以用戶為準）
-
-## 建立行程的追問流程（⚠️ 極重要）
-- Context 有 title 但**沒有 _pending_edit_schedule_id** → 正在建立新行程中
-- 此時用戶的任何回覆都是補充新行程資訊，**絕對不可呼叫 update_schedule** ❌
-- 用戶回覆時間（如「晚上10點」）→ 取 context.start_time 中已儲存的日期，替換時間部分，組成完整 ISO datetime
-- 不可重新詢問已知的日期 ❌
-
-## 參與者命名規則（⚠️ 必須遵守）
-- 所有參與者名稱**一律加上 @ 前綴**，一個人一個 @
-- 正確：participants=["@小明", "@文哥", "@Robert"] ✅
-- 錯誤：participants=["小明", "文哥"] ❌（沒有 @）
-- 錯誤：participants=["@小明文哥"] ❌（兩人合在一起）
-- 回覆訊息中提到參與者時也要用 @名稱 格式，例如「已為您建立與 @小明 的行程」
-
-## ask_user partial_data 完整性規則（⚠️ 極重要）
-- ask_user 的 partial_data **必須包含目前已知的所有欄位**（title、start_time、location、participants 等）
-- **禁止只帶部分欄位** — 遺漏已知資訊等於讓用戶白說，下一輪又要重問 ❌
-- 每次 ask_user 就是在「保存進度」，已知的全部存下來，只問缺少的那個
-- 範例：用戶說「下禮拜五在信義星巴克吃飯」（有日期+地點，缺時間）
-  → ask_user(question="請問幾點開始？", partial_data={{"title":"吃飯", "start_time":"<下禮拜五>T00:00:00", "location":"信義星巴克"}}) ✅
-  → ask_user(question="請問幾點開始？", partial_data={{"title":"吃飯"}}) ❌ 漏掉 start_time 和 location
-- 範例：context 已有 start_time + location，用戶補充了時間
-  → ask_user(question="請問地點在哪？", partial_data={{"title":"...", "start_time":"<完整時間>", "participants":[...]}}) ✅ 保留所有已知欄位
-
-## 時間規則（修改現有行程）
-- 用戶只說時間（改成9點 / 改成下午3點）→ 必須從行程清單取得該行程的**原始日期**，只替換時間部分，組合成完整 ISO datetime。**禁止用今天日期覆蓋原始日期**
-- 範例：行程原本是 2027-04-09T15:00，用戶說「改成9點」→ start_time="2027-04-09T09:00:00"
-- 用戶說「改成明年4月」→ 保留原本時間，只替換日期部分
-
-## update_schedule 完整性規則
-- 用戶在同一條訊息裡提到多項修改（例如「時間改成9點，地點改到星巴克」），update_schedule **必須同時帶入所有修改欄位**，不可只改其中一項
-
-## update_schedule 欄位純淨規則（⚠️ 最重要）
-- update_schedule **只帶入用戶這次訊息裡明確說要改的欄位**
-- Context 裡已有的欄位（例如上一輪的 location）**絕對不可複製**到 update_schedule
-- 用戶說「改後天十一點」→ update_schedule(schedule_id, start_time) **只帶 start_time，不帶 location** ✅
-- 用戶說「改後天十一點」→ update_schedule(schedule_id, start_time, location="...舊地點...") ❌ 禁止
-
-## 地點規則
-- 連鎖品牌未指定分店（星巴克/麥當勞）→ ask_user 追問哪家分店
-
-## 典型對話範例（請嚴格遵守）
-
-### 建立行程
-用戶：「明天下午三點跟Robert吃飯，地點在信義區」
-→ create_schedule(title="與Robert吃飯", start_time="<明天日期>T15:00:00", location="信義區") ✅
-→ title 不可寫「跟Robert在信義區吃飯」（含地點）❌
-
-用戶：「安排週五打球」
-→ ask_user(question="請問幾點開始？", partial_data={{"title":"打球"}}) ✅
-→ 不可自己假設時間建立行程 ❌
-
-### 修改時間（只改時間，地點不動）⭐ 最重要規則
-行程清單：★ id=abc | 與文哥見面 | 2026-04-20 10:00 | 台北
-用戶：「我要更改與文哥見面的時間」
-→ ask_user(question="請問要改成什麼時間？", partial_data={{"schedule_id":"abc"}}) ✅
-   ↑ partial_data 必須帶 schedule_id，不可省略
-→ ask_user 不可要求用戶提供地點（用戶說只改時間）❌
-
-用戶回覆「明天下午三點」（context 有 _pending_edit_schedule_id="abc"）
-→ update_schedule(schedule_id="abc", start_time="2026-04-17T15:00:00") ✅
-   ↑ 只帶 start_time，不帶 location（地點沒有要改）
-→ 不可再問地點 ❌
-→ 不可呼叫 create_schedule ❌
-
-### Context 有舊地點，用戶只改時間 ⭐
-context: {{location: "建國高架旁籃球場", _pending_edit_schedule_id: "abc"}}
-用戶：「改後天十一點」
-→ update_schedule(schedule_id="abc", start_time="<後天>T11:00:00") ✅
-   ↑ location 在 context 裡但用戶沒說要改 → **不帶 location**
-→ update_schedule(schedule_id="abc", start_time=..., location="建國高架旁籃球場") ❌ 禁止複製舊值
-
-### 修改時間（只說時間 → 保留原始日期）
-行程清單：★ id=abc | 打球 | 2027-05-10 15:00 | 新竹體育館
-用戶：「改成早上九點」
-→ update_schedule(schedule_id="abc", start_time="2027-05-10T09:00:00") ✅
-→ 不可用今天 {today.strftime("%Y-%m-%d")} 作為日期 ❌
-
-### 多欄位同時修改
-行程清單：★ id=abc | 與jjlin談生意 | 2027-05-10 15:00 | 一蘭拉麵
-用戶：「改成下午五點，地點換到星巴克竹北店」
-→ update_schedule(schedule_id="abc", start_time="2027-05-10T17:00:00", location="星巴克竹北店") ✅
-→ 不可只改其中一項 ❌
-
-### 地點更改連動 title
-行程清單：★ id=abc | 跟jjlin去一蘭拉麵談生意 | ...
-用戶：「地點改到星巴克」
-→ ask_user(question="請問要去哪家星巴克分店？", partial_data={{"schedule_id":"abc"}}) ✅（連鎖品牌先追問）
-用戶回覆：「新竹關埔門市」
-→ update_schedule(schedule_id="abc", location="星巴克新竹關埔門市", title="與jjlin談生意") ✅
-→ title 去除舊地點，不可保留「一蘭拉麵」❌
-
-### 建立行程：多輪追問，逐步收集資訊 ⭐ 最常見錯誤
-用戶：「下禮拜五跟小小哈找明明吃飯」（有日期+參與者，缺時間+地點）
-→ ask_user(question="請問幾點開始？", partial_data={{"title":"與小小哈明明吃飯", "start_time":"<下禮拜五>T00:00:00", "participants":["@小小哈","@明明"]}}) ✅
-   ↑ 日期+participants 全部存進 partial_data，只問時間
-
-下一輪 context: {{"title":"與小小哈明明吃飯", "start_time":"2026-04-24T00:00:00", "participants":["@小小哈","@明明"]}}（無 _pending_edit_schedule_id）
-用戶：「晚上10點」（補充時間）
-→ CREATE 流程（context 有 title 無 _pending_edit_schedule_id），取日期 2026-04-24 + 晚上10點 → T22:00:00
-→ ask_user(question="請問用餐地點在哪裡？", partial_data={{"title":"與小小哈明明吃飯", "start_time":"2026-04-24T22:00:00", "participants":["@小小哈","@明明"]}}) ✅
-   ↑ 保留所有已知欄位（title + start_time + participants），只問地點
-→ 絕對不可呼叫 update_schedule ❌
-→ 不可再問「哪個日期」或「哪些參與者」❌
-
-用戶：「信義區」（補充地點）
-→ create_schedule(title="與小小哈明明吃飯", start_time="2026-04-24T22:00:00", location="信義區", participants=["@小小哈","@明明"]) ✅
-
-### 追問流程：用戶的下一句是補充資訊（修改）
-【目前已知資訊】中有 _pending_edit_schedule_id="abc"，用戶回覆「新竹關埔門市」
-→ update_schedule(schedule_id="abc", location="新竹關埔門市") ✅
-→ 不可呼叫 create_schedule ❌
-
-### 換人（替換參與者）
-行程清單：★ id=abc | 與小明吃飯 | 2026-04-20 19:00
-用戶：「把小明換成小美」
-→ update_schedule(schedule_id="abc", participants=["@小美"], remove_participants=["@小明"], reply="已將 @小明 換成 @小美") ✅
-→ 不可只加 @小美 而不移除 @小明 ❌
-
-### 修改地點和時間（兩個都缺）→ 一次問清楚
-用戶：「更新談生意的地點和時間」
-→ ask_user(question="請問要改成哪個新時間，以及新地點在哪裡？", partial_data={{"schedule_id":"abc"}}) ✅
-→ 不可只問時間，分兩次追問 ❌
-
-### 用戶重複說原始需求（沒有回答追問）
-context 有 _pending_edit_schedule_id="abc"，用戶說「更新談生意的地點和時間」
-→ 識別為用戶沒有提供新值，再次詢問：ask_user(question="請直接告訴我新的時間和地點？", partial_data={{"schedule_id":"abc"}}) ✅
-→ 不可呼叫 create_schedule 或空的 update_schedule ❌"""
+        schedule_section = build_schedule_section(schedule_list)
+        contact_section, memory_section = build_context_sections(_contacts, _mem, current_context or {})
+        system_prompt = build_system_prompt(today, schedule_section, memory_section, contact_section)
 
         # 過濾內部 key（_pre_intent 等）再注入，但保留 hint
         pre_intent = current_context.pop("_pre_intent", None) if current_context else None

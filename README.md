@@ -466,7 +466,7 @@ change place for play baskball
 
 
 
-我說
+
  我下禮拜五跟小小哈找吃飯
 請問幾點開始？
 請問要將哪個行程改成晚上10點？
@@ -478,3 +478,10 @@ change place for play baskball
 sumire 菫樂
 
 更改找吃飯的參與的人
+
+
+更改小小哈吃飯的聯絡人
+
+
+
+打球改成星期天並且自己去

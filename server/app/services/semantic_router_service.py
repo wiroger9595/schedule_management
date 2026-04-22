@@ -76,8 +76,7 @@ class SemanticRouter:
         from .embedding_service import EmbeddingService
         self._example_embeddings = {}
         for intent, examples in INTENT_EXAMPLES.items():
-            vecs = [EmbeddingService.embed(ex) for ex in examples]
-            self._example_embeddings[intent] = vecs
+            self._example_embeddings[intent] = EmbeddingService.embed_batch(examples)
 
     def route(self, message: str) -> dict:
         """
@@ -111,3 +110,10 @@ class SemanticRouter:
 
 
 semantic_router = SemanticRouter()
+
+# Precompute example embeddings at module load so the first request doesn't spike memory
+try:
+    semantic_router._ensure_embeddings()
+    print("[SemanticRouter] Example embeddings precomputed.")
+except Exception as _sr_init_err:
+    print(f"[SemanticRouter] Precompute skipped (non-critical): {_sr_init_err}")

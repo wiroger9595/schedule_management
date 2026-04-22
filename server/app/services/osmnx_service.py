@@ -1,5 +1,3 @@
-import osmnx as ox
-import networkx as nx
 import math
 
 class OSMnxService:
@@ -28,6 +26,8 @@ class OSMnxService:
         config = configs.get(mode, configs["car"])
         
         try:
+            import osmnx as ox
+            import networkx as nx
             # Calculate straight line distance first
             # Use custom haversine implementation
             distance = OSMnxService._haversine_distance(lat1, lon1, lat2, lon2)

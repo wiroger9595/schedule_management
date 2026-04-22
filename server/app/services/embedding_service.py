@@ -1,37 +1,48 @@
 """
-Embedding service — 使用 fastembed（ONNX runtime，不需要 PyTorch）。
-Python 3.13 相容。
-
-模型：BAAI/bge-small-zh-v1.5（中文優化，512 維，~90MB）
-第一次啟動時自動下載模型快取，之後直接讀取。
+Embedding service — 使用 Google Gemini text-embedding-004 API。
+不需要本地模型，Cloud Run 記憶體使用量大幅降低（省去 ~250MB ONNX model）。
+Free tier: 1500 requests/day, 100 req/min
+輸出 512 維（與現有 pgvector schema 相容）。
 """
 from __future__ import annotations
-from typing import List, Optional
+import json
+import os
+import urllib.request
+from typing import List
+
 import numpy as np
+
+_GEMINI_EMBED_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "text-embedding-004:embedContent"
+)
+_EMBED_DIMS = 512
+
+
+def _call_gemini_embed(text: str) -> List[float]:
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    payload = json.dumps({
+        "content": {"parts": [{"text": text or " "}]},
+        "outputDimensionality": _EMBED_DIMS,
+    }).encode()
+    req = urllib.request.Request(
+        f"{_GEMINI_EMBED_URL}?key={api_key}",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        result = json.loads(resp.read())
+    return result["embedding"]["values"]
 
 
 class EmbeddingService:
-    _model = None  # lazy-load singleton
-    MODEL_NAME = "BAAI/bge-small-zh-v1.5"
-    DIMS = 512
-
-    @classmethod
-    def _get_model(cls):
-        if cls._model is None:
-            import os
-            os.environ.setdefault("FASTEMBED_CACHE_PATH", "/app/.fastembed_cache")
-            from fastembed import TextEmbedding
-            print(f"[EmbeddingService] Loading model {cls.MODEL_NAME} ...")
-            cls._model = TextEmbedding(model_name=cls.MODEL_NAME)
-            print("[EmbeddingService] Model loaded.")
-        return cls._model
+    DIMS = _EMBED_DIMS
 
     @classmethod
     def embed(cls, text: str) -> List[float]:
-        """將文字轉為正規化向量"""
-        model = cls._get_model()
-        vec = next(model.embed([text]))
-        arr = np.array(vec, dtype=np.float32)
+        arr = np.array(_call_gemini_embed(text), dtype=np.float32)
         norm = np.linalg.norm(arr)
         if norm > 0:
             arr = arr / norm
@@ -39,25 +50,12 @@ class EmbeddingService:
 
     @classmethod
     def embed_batch(cls, texts: List[str]) -> List[List[float]]:
-        """批次 embed，效率比逐筆高"""
-        model = cls._get_model()
-        results = []
-        for vec in model.embed(texts):
-            arr = np.array(vec, dtype=np.float32)
-            norm = np.linalg.norm(arr)
-            if norm > 0:
-                arr = arr / norm
-            results.append(arr.tolist())
-        return results
+        return [cls.embed(t) for t in texts]
 
     @classmethod
     def embed_schedule(cls, title: str, location: str = "",
                        description: str = "", contact_name: str = "",
                        start_time=None) -> List[float]:
-        """
-        將行程關鍵欄位合併後 embed。
-        加入聯絡人姓名與時間語境，讓「與文哥見面」可被「文哥那個行程」找到。
-        """
         parts = []
         if title:
             parts.append(title)
@@ -69,7 +67,6 @@ class EmbeddingService:
             try:
                 import arrow as _arrow
                 t = _arrow.get(start_time).to("Asia/Taipei")
-                # 加入星期 + 時段語境，讓時間語意搜尋有效
                 hour = t.hour
                 if 6 <= hour < 12:
                     period = "上午"
@@ -91,7 +88,6 @@ class EmbeddingService:
 
     @classmethod
     def embed_contact(cls, nick_name: str, comment: str = "") -> List[float]:
-        """將聯絡人資訊 embed，用於語意人名搜尋"""
         parts = [nick_name] if nick_name else []
         if comment:
             parts.append(comment)
@@ -107,9 +103,7 @@ class EmbeddingService:
         return float(np.dot(va, vb) / denom)
 
     @classmethod
-    def rerank_schedules(cls, query: str, schedules: list,
-                         top_k: int = 10) -> list:
-        """對已有 embedding 的行程列表做本地重排序"""
+    def rerank_schedules(cls, query: str, schedules: list, top_k: int = 10) -> list:
         if not schedules:
             return []
         query_vec = cls.embed(query)

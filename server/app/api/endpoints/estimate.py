@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
-from ...services.osmnx_service import OSMnxService
 from ...services.here_service import HereService
 
 router = APIRouter()
@@ -14,6 +13,7 @@ def get_travel_estimate(
     mode: str = "drive"
 ):
     try:
+        from ...services.osmnx_service import OSMnxService
         result = OSMnxService.get_travel_estimate(
             lat1, lon1,
             lat2, lon2,
@@ -33,6 +33,7 @@ def get_all_travel_estimates(
     lon2: float
 ):
     try:
+        from ...services.osmnx_service import OSMnxService
         return OSMnxService.get_travel_estimate_all(
             lat1, lon1,
             lat2, lon2
