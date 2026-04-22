@@ -1,14 +1,7 @@
-numpy<2
 fastapi
 uvicorn
 sqlmodel
-osmnx
-networkx
 requests
-pandas
-pyproj
-geopandas
-shapely
 python-dotenv
 asyncpg
 redis
@@ -26,5 +19,9 @@ shortuuid
 firebase-admin>=6.0.0
 
 # ── AI 強化套件 ───────────────────────────────────────────────────────────────
-pgvector>=0.3.0         # PostgreSQL vector 型別支援
-instructor>=1.3.0       # Structured output / JSON fallback 可靠性提升
+numpy<2                 # embedding / semantic router
+instructor>=1.3.0       # Structured output / JSON fallback
+
+# ── 地圖路徑估算（/estimate endpoint）─────────────────────────────────────────
+osmnx
+networkx
