@@ -308,6 +308,54 @@ class ChatWidgetState extends State<ChatWidget> {
     );
   }
 
+  static const _kBusyPhrases = ['系統目前很忙', 'AI 處理失敗'];
+
+  /// Calls chatWithAI and silently retries once (after 1.5 s) when:
+  ///   - the HTTP call throws (e.g. 500, timeout), OR
+  ///   - the backend returns a "busy" ai_reply that means all providers failed.
+  Future<Map<String, dynamic>> _chatWithRetry(
+    ApiService apiService, {
+    required String message,
+    Map<String, dynamic>? currentContext,
+    List<Map<String, String>>? conversationHistory,
+    bool forceCreate = false,
+    bool confirmLocation = false,
+    bool confirmDelete = false,
+    bool confirmPastEdit = false,
+    double? latitude,
+    double? longitude,
+    List<Map<String, dynamic>>? scheduleList,
+  }) async {
+    for (int attempt = 0; attempt <= 1; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(const Duration(milliseconds: 1500));
+      }
+      try {
+        final data = await apiService.chatWithAI(
+          message,
+          currentContext: currentContext,
+          conversationHistory: conversationHistory,
+          forceCreate: forceCreate,
+          confirmLocation: confirmLocation,
+          confirmDelete: confirmDelete,
+          confirmPastEdit: confirmPastEdit,
+          latitude: latitude,
+          longitude: longitude,
+          scheduleList: scheduleList,
+        );
+        final aiReply = data['ai_reply'] as String? ?? '';
+        if (attempt == 0 && _kBusyPhrases.any((s) => aiReply.contains(s))) {
+          continue; // busy reply — retry silently
+        }
+        return data;
+      } catch (_) {
+        if (attempt < 1) continue; // retry once on error
+        rethrow;
+      }
+    }
+    throw Exception('AI unavailable after retries');
+  }
+
   Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, bool confirmPastEdit = false, double? overrideLat, double? overrideLon}) async {
     final messageText = text ?? _controller.text.trim();
     if (messageText.isEmpty && !forceCreate && !confirmPastEdit && !confirmDelete) return;
@@ -357,8 +405,9 @@ class ChatWidgetState extends State<ChatWidget> {
         }
       }
 
-      final data = await apiService.chatWithAI(
-        (forceCreate || confirmPastEdit || confirmDelete) ? 'Confirm' : messageText,
+      final data = await _chatWithRetry(
+        apiService,
+        message: (forceCreate || confirmPastEdit || confirmDelete) ? 'Confirm' : messageText,
         currentContext: _currentContext,
         conversationHistory: _conversationHistory,
         forceCreate: forceCreate,
