@@ -43,6 +43,25 @@ migrations = [
     WITH (m = 16, ef_construction = 64);
     """,
 
+    # ── AI 對話回饋（用於 fine-tune） ──────────────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.ai_feedback (
+        id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        user_message TEXT NOT NULL,
+        ai_reply TEXT NOT NULL,
+        is_good BOOLEAN NOT NULL,
+        correction TEXT,
+        conversation_json TEXT,
+        model_label VARCHAR(128)
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_ai_feedback_user_id
+    ON schedule_management.ai_feedback (user_id);
+    """,
+
     # ── 用戶偏好記憶 ──────────────────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS schedule_management.user_memory (

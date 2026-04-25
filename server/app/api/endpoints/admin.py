@@ -3,8 +3,10 @@ Admin API — protected by X-Admin-Key header.
 Set ADMIN_SECRET_KEY in .env to enable.
 """
 import os
+import json
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,6 +19,7 @@ from ...models.user import User
 from ...models.schedule import Schedule
 from ...models.attend import attend
 from ...models.contact import Contact
+from ...models.ai_feedback import AIFeedback
 
 router = APIRouter()
 
@@ -241,3 +244,48 @@ def list_schedules(
             for s in schedules
         ],
     }
+
+
+# ── AI Training data export ───────────────────────────────────────────────────
+
+@router.get("/training-data")
+def export_training_data(
+    only_bad: bool = False,
+    session: Session = Depends(get_session),
+    _: None = Depends(_check_admin),
+):
+    """Export feedback as JSONL — one line per record, Alpaca/ChatML compatible."""
+    stmt = select(AIFeedback)
+    if only_bad:
+        stmt = stmt.where(AIFeedback.is_good == False)  # noqa: E712
+    stmt = stmt.order_by(AIFeedback.created_at.asc())
+    rows = session.exec(stmt).all()
+
+    def _generate():
+        for r in rows:
+            if r.correction:
+                # DPO-style: chosen = correction, rejected = ai_reply
+                record = {
+                    "prompt": r.user_message,
+                    "chosen": r.correction,
+                    "rejected": r.ai_reply,
+                    "is_good": r.is_good,
+                    "model_label": r.model_label,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+            else:
+                # SFT-style: use ai_reply as the target response
+                record = {
+                    "instruction": r.user_message,
+                    "output": r.ai_reply,
+                    "is_good": r.is_good,
+                    "model_label": r.model_label,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+            yield json.dumps(record, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": "attachment; filename=training_data.jsonl"},
+    )

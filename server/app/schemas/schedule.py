@@ -79,6 +79,15 @@ class ChatRequest(BaseModel):
     schedule_list: Optional[List[dict]] = None  # user's schedules for AI edit/delete context
 
 
+class FeedbackRequest(BaseModel):
+    user_message: str
+    ai_reply: str
+    is_good: bool
+    correction: Optional[str] = None
+    conversation_json: Optional[str] = None
+    model_label: Optional[str] = None
+
+
 class ChatResponse(BaseModel):
     ai_reply: str
     updated_data: dict
@@ -88,6 +97,7 @@ class ChatResponse(BaseModel):
     needs_location_confirm: bool = False
     location_details: Optional[dict] = None
     location_candidates: Optional[List[dict]] = None  # multiple candidates for user to pick
+    location_not_found: bool = False          # true when HERE/Nominatim can't find the location
     confirm_delete: Optional[dict] = None  # {id, title, start_time} — prompts delete confirmation UI
     schedule_deleted: bool = False  # true after successful delete
     confirm_past_edit: Optional[dict] = None  # {id, title, start_time} — prompts past-schedule edit confirmation UI

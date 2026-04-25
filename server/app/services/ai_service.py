@@ -21,7 +21,7 @@ class ScheduleAction(BaseModel):
 class AIService:
     def __init__(self):
         # ── Provider cascade: rate-limit / auth error 時依序 fallback ──────────
-        # 順序：Cerebras → Gemini → OpenRouter → Groq 70B → Together → Cloudflare → Groq 8B
+        # 順序：Cerebras → Groq 70B → Gemini → OpenRouter → Groq 8B → Together → Cloudflare
         cerebras_key   = os.getenv("CEREBRAS_API_KEY")
         gemini_key     = os.getenv("GEMINI_API_KEY")
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
@@ -32,11 +32,17 @@ class AIService:
 
         self._providers: list[tuple] = []  # (client, model_name, label)
 
+        # ── Provider cascade order: quality first, reliable free tiers as fallback ──
+        # Cerebras: best quality, fast; Groq: most stable free tier; Gemini: good but quota;
+        # OpenRouter: free but rate-limited; Cloudflare: cold-start prone → last resort
         if cerebras_key:
             self._providers.append((
                 OpenAI(api_key=cerebras_key, base_url="https://api.cerebras.ai/v1"),
                 "qwen-3-235b-a22b-instruct-2507", "Cerebras/qwen-3-235b",
             ))
+        if groq_key:
+            _groq = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
+            self._providers.append((_groq, "llama-3.3-70b-versatile", "Groq/llama-3.3-70b"))
         if gemini_key:
             self._providers.append((
                 OpenAI(api_key=gemini_key,
@@ -51,7 +57,7 @@ class AIService:
                                     "OpenRouter/llama-3.3-70b:free"))
         if groq_key:
             _groq = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
-            self._providers.append((_groq, "llama-3.3-70b-versatile", "Groq/llama-3.3-70b"))
+            self._providers.append((_groq, "llama-3.1-8b-instant", "Groq/llama-3.1-8b"))
         if together_key:
             self._providers.append((
                 OpenAI(api_key=together_key, base_url="https://api.together.xyz/v1"),
@@ -63,9 +69,6 @@ class AIService:
                        base_url=f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1"),
                 "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "Cloudflare/llama-3.3-70b",
             ))
-        if groq_key:
-            _groq = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
-            self._providers.append((_groq, "llama-3.1-8b-instant", "Groq/llama-3.1-8b"))
 
         if not self._providers:
             raise ValueError("需要設定至少一個 AI API Key")
@@ -142,7 +145,7 @@ class AIService:
                     messages=msgs,
                     temperature=0.1,
                     response_format={"type": "json_object"},
-                    timeout=15.0,
+                    timeout=8.0,
                 )
                 text = response.choices[0].message.content.strip()
                 return json.loads(text)
@@ -187,7 +190,7 @@ class AIService:
             "type": "function",
             "function": {
                 "name": "ask_user",
-                "description": "缺少必要資訊，或用戶說要改但沒說改成什麼時使用",
+                "description": "缺少必要資訊、目標行程不明確、或清單中有多個/零個符合描述的行程時使用。目標不明確時，question 中必須列出行程清單供用戶選擇（格式：1️⃣ 名稱 — 時間 — 地點）",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -235,6 +238,7 @@ class AIService:
                 "name": "update_schedule",
                 "description": (
                     "修改現有行程。必須先從行程清單找到目標行程的 id，且用戶已明確說明要改成什麼值。"
+                    "若清單中有多個符合或找不到符合描述的行程，必須改用 ask_user 列出行程清單讓用戶選擇。"
                     "若更改地點且舊 title 含有舊地點名稱，一併更新 title（移除地點，只保留活動與對象）。"
                     "⚠️ 必須至少帶入一個修改欄位（title/start_time/location/description/participants），"
                     "若用戶尚未提供新值則改用 ask_user 追問，不可呼叫空的 update_schedule。"
@@ -271,7 +275,7 @@ class AIService:
             "type": "function",
             "function": {
                 "name": "delete_schedule",
-                "description": "準備刪除行程（系統會向用戶確認，尚未真正刪除）",
+                "description": "準備刪除行程（系統會向用戶確認，尚未真正刪除）。若目標不明確或有多個符合，改用 ask_user 列出清單讓用戶選擇。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -281,8 +285,58 @@ class AIService:
                     "required": ["schedule_id", "schedule_title"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "reply_to_user",
+                "description": (
+                    "純文字回覆用戶，不做任何行程操作。適用於：\n"
+                    "1. 查詢/列出行程（用戶說「全部」「今天」「這週」「有什麼行程」等）\n"
+                    "2. 無法找到符合的行程（告知用戶）\n"
+                    "3. 一般詢問、確認、問候等不需要操作的情境"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "reply": {"type": "string", "description": "給用戶的完整回覆內容"}
+                    },
+                    "required": ["reply"]
+                }
+            }
         }
     ]
+
+    # ── Output Validation ────────────────────────────────────────────────────
+    @staticmethod
+    def _validate_tool_call(fn_name: str, args: dict, schedule_list: list | None) -> list[str]:
+        """
+        Return a list of error strings for the AI to self-correct.
+        Empty list = valid output.
+        """
+        errors: list[str] = []
+        valid_ids = {s.get("schedule_id") or s.get("id", "") for s in (schedule_list or [])}
+        valid_ids.discard("")
+
+        if fn_name in ("update_schedule", "delete_schedule"):
+            sid = args.get("schedule_id", "")
+            if not sid:
+                errors.append("schedule_id 是必填欄位，不可省略")
+            elif valid_ids and sid not in valid_ids:
+                sample = ", ".join(list(valid_ids)[:3])
+                errors.append(
+                    f"schedule_id={sid!r} 不在行程清單中。"
+                    f"有效的 id 範例：{sample}。請從清單中選擇正確的 id，不可自行編造。"
+                )
+
+        if fn_name == "update_schedule":
+            allowed = {"title", "start_time", "location", "description",
+                       "participants", "remove_participants", "clear_participants"}
+            changed = {k for k in args if k in allowed and args[k] is not None}
+            if not changed:
+                errors.append("update_schedule 必須至少帶入一個修改欄位（title/start_time/location 等），請先用 ask_user 詢問用戶要改成什麼")
+
+        return errors
 
     def process_conversation(self, user_message: str, current_context: dict = None,
                              conversation_history: list = None,
@@ -339,12 +393,22 @@ class AIService:
         def _should_skip_provider(err: Exception) -> bool:
             """Return True if we should abandon this provider and try the next one."""
             s = str(err)
-            # Rate / capacity limits
-            if any(k in s for k in ("429", "queue_exceeded", "too_many_requests",
-                                    "high traffic", "rate_limit", "rate limit",
-                                    "overloaded", "503", "529")):
+            # Rate / capacity / availability
+            if any(k in s for k in (
+                "429", "queue_exceeded", "too_many_requests",
+                "high traffic", "rate_limit", "rate limit",
+                "overloaded", "503", "529",
+                # Cloudflare Workers AI loading / cold start
+                "Service Unavailable", "service unavailable",
+                "model loading", "Model Loading", "loading",
+                "not available", "Not Available",
+                # Generic connection / timeout
+                "Connection error", "connection error",
+                "timed out", "timeout", "Timeout",
+                "RemoteProtocolError", "ReadTimeout",
+            )):
                 return True
-            # Auth / key errors — key invalid or missing for this provider
+            # Auth / key errors
             if any(k in s for k in ("401", "API_KEY_INVALID", "API Key not found",
                                     "invalid_api_key", "invalid api key",
                                     "Permission denied", "PERMISSION_DENIED",
@@ -372,7 +436,7 @@ class AIService:
                             tools=self.TOOLS,
                             tool_choice="required",
                             temperature=0.1,
-                            timeout=20.0,
+                            timeout=8.0,
                         )
                     else:
                         response = _cli.chat.completions.create(
@@ -387,7 +451,7 @@ class AIService:
                             }],
                             temperature=0.1,
                             response_format={"type": "json_object"},
-                            timeout=20.0,
+                            timeout=8.0,
                         )
                     print(f"[AIService] Using {_label}")
                     break  # success
@@ -476,6 +540,80 @@ class AIService:
                 }
             print(f"[AI Tool] {fn_name}({args})")
 
+            # ── Auto-retry: validate output, re-ask model if invalid ─────────
+            _errors = self._validate_tool_call(fn_name, args, schedule_list)
+            if _errors:
+                _err_str = "\n".join(f"• {e}" for e in _errors)
+                print(f"[AI Validation] {fn_name} failed ({len(_errors)} errors), auto-retrying:\n{_err_str}")
+                # Record each error so it's injected into future prompts
+                try:
+                    from .constraint_store import record_error as _rec_err
+                    sid = args.get("schedule_id", "")
+                    for _e in _errors:
+                        if "schedule_id" in _e and "不在行程清單" in _e:
+                            _rec_err("wrong_schedule_id", example=f"AI returned schedule_id={sid!r}")
+                        elif "至少帶入一個修改欄位" in _e:
+                            _rec_err("empty_update_schedule", example=f"user_message={user_message[:60]!r}")
+                        elif "schedule_id 是必填" in _e:
+                            _rec_err("missing_schedule_id_in_update", example=f"fn={fn_name}")
+                except Exception as _ce:
+                    print(f"[constraint_store] record failed (non-critical): {_ce}")
+                _retry_msgs = messages + [
+                    {"role": "assistant", "content": None,
+                     "tool_calls": [{"id": tc.id, "type": "function",
+                                     "function": {"name": fn_name, "arguments": tc.function.arguments}}]},
+                    {"role": "tool", "tool_call_id": tc.id, "content": "error"},
+                    {"role": "system", "content":
+                     f"❌ 上一個工具呼叫有以下錯誤，請重新呼叫正確的工具：\n{_err_str}"},
+                ]
+                try:
+                    _retry_resp = _cli.chat.completions.create(
+                        model=_model, messages=_retry_msgs, tools=self.TOOLS,
+                        tool_choice="required", temperature=0.1, timeout=8.0,
+                    )
+                    _retry_tc = (_retry_resp.choices[0].message.tool_calls or [None])[0]
+                    if _retry_tc:
+                        _retry_args = json.loads(_retry_tc.function.arguments)
+                        _retry_errors = self._validate_tool_call(_retry_tc.function.name, _retry_args, schedule_list)
+                        if not _retry_errors:
+                            print(f"[AI Validation] retry succeeded → {_retry_tc.function.name}")
+                            fn_name = _retry_tc.function.name
+                            args = _retry_args
+                            tc = _retry_tc
+                        else:
+                            print(f"[AI Validation] retry still invalid: {_retry_errors}")
+                except Exception as _retry_err:
+                    print(f"[AI Validation] retry call failed: {_retry_err}")
+
+            # ── Force list when wrong schedule_id survives retry ─────────────
+            if fn_name in ("update_schedule", "delete_schedule"):
+                _sid = args.get("schedule_id", "")
+                _vids = {s.get("schedule_id") or s.get("id", "") for s in (schedule_list or [])}
+                _vids.discard("")
+                if _sid and _vids and _sid not in _vids:
+                    _verb = "修改" if fn_name == "update_schedule" else "刪除"
+                    _ll = []
+                    _icons = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+                    for _i, _s in enumerate((schedule_list or [])[:5]):
+                        _t = _s.get("title", "")
+                        _st = _s.get("meeting_start_time") or _s.get("start_time", "")
+                        try:
+                            from .prompt_builder import _to_taipei as _ptp
+                            _a = _ptp(_st)
+                            _st = _a.format("MM/DD HH:mm") if _a else _st
+                        except Exception:
+                            pass
+                        _loc = _s.get("meeting_location") or _s.get("location", "")
+                        _ll.append(f"{_icons[_i]} {_t} — {_st} — {_loc}")
+                    _q = (f"請問您要{_verb}哪個行程呢？\n" + "\n".join(_ll) + "\n請回覆數字或行程名稱。"
+                          if _ll else f"找不到行程，可以再描述一次嗎？")
+                    print(f"[AI Force-List] {fn_name} bad id={_sid!r} → showing list")
+                    return {
+                        "intent": "create", "target_schedule_id": None,
+                        "updated_data": current_context, "missing_fields": [],
+                        "is_complete": False, "reply": _q,
+                    }
+
             # ── ask_user ────────────────────────────────────────────────────
             if fn_name == "ask_user":
                 partial = args.get("partial_data") or {}
@@ -487,12 +625,34 @@ class AIService:
                               or current_context.get("_pending_edit_schedule_id"))
                 if pending_id:
                     merged["_pending_edit_schedule_id"] = pending_id
+                question = args.get("question", "請問還有什麼需要補充的嗎？")
+                # If the question implies "can't find" but has no numbered list → append list
+                _cant_find_keywords = ("找不到", "找不到行程", "哪個行程", "確認名稱", "請確認")
+                _has_list = any(c in question for c in ("1️⃣", "2️⃣", "①", "1."))
+                _needs_list = any(k in question for k in _cant_find_keywords) and not _has_list
+                if _needs_list and schedule_list:
+                    _ll = []
+                    _icons = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+                    for _i, _s in enumerate(schedule_list[:5]):
+                        _t = _s.get("title", "")
+                        _st = _s.get("meeting_start_time") or _s.get("start_time", "")
+                        try:
+                            from .prompt_builder import _to_taipei as _ptp
+                            _a = _ptp(_st)
+                            _st = _a.format("MM/DD HH:mm") if _a else _st
+                        except Exception:
+                            pass
+                        _loc = _s.get("meeting_location") or _s.get("location", "")
+                        _ll.append(f"{_icons[_i]} {_t} — {_st} — {_loc}")
+                    if _ll:
+                        question = "請問您要操作哪個行程呢？\n" + "\n".join(_ll) + "\n請回覆數字或行程名稱。"
+                        print(f"[AI ask_user] injected schedule list (original question: {args.get('question','')[:60]!r})")
                 return {
                     "intent": "edit" if pending_id else "create",
                     "target_schedule_id": pending_id,
                     "updated_data": merged, "missing_fields": [],
                     "is_complete": False,
-                    "reply": args.get("question", "請問還有什麼需要補充的嗎？"),
+                    "reply": question,
                 }
 
             # ── create_schedule ─────────────────────────────────────────────
@@ -516,10 +676,25 @@ class AIService:
                 schedule_id = args.get("schedule_id")
                 if not schedule_id:
                     print(f"[AI Tool] update_schedule missing schedule_id, args={args}")
+                    _list_lines = []
+                    for i, s in enumerate((schedule_list or [])[:5], 1):
+                        _t = s.get("title", "")
+                        _st = s.get("meeting_start_time") or s.get("start_time", "")
+                        try:
+                            from .prompt_builder import _to_taipei as _ptp
+                            _a = _ptp(_st)
+                            _st = _a.format("MM/DD HH:mm") if _a else _st
+                        except Exception:
+                            pass
+                        _loc = s.get("meeting_location") or s.get("location", "")
+                        _icons = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
+                        _list_lines.append(f"{_icons[i-1]} {_t} — {_st} — {_loc}")
+                    _list_str = "\n".join(_list_lines)
+                    _q = f"請問您要修改哪個行程呢？\n{_list_str}\n請回覆數字或行程名稱。" if _list_lines else "找不到要修改的行程，可以再描述一次嗎？"
                     return {
                         "intent": "create", "target_schedule_id": None,
                         "updated_data": current_context, "missing_fields": [],
-                        "is_complete": False, "reply": "找不到要修改的行程，可以再描述一次嗎？",
+                        "is_complete": False, "reply": _q,
                     }
                 updated_data = {k: v for k, v in args.items()
                                 if k not in ("schedule_id", "reply") and v is not None}
@@ -535,10 +710,25 @@ class AIService:
                 schedule_id = args.get("schedule_id")
                 if not schedule_id:
                     print(f"[AI Tool] delete_schedule missing schedule_id, args={args}")
+                    _list_lines = []
+                    for i, s in enumerate((schedule_list or [])[:5], 1):
+                        _t = s.get("title", "")
+                        _st = s.get("meeting_start_time") or s.get("start_time", "")
+                        try:
+                            from .prompt_builder import _to_taipei as _ptp
+                            _a = _ptp(_st)
+                            _st = _a.format("MM/DD HH:mm") if _a else _st
+                        except Exception:
+                            pass
+                        _loc = s.get("meeting_location") or s.get("location", "")
+                        _icons = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
+                        _list_lines.append(f"{_icons[i-1]} {_t} — {_st} — {_loc}")
+                    _list_str = "\n".join(_list_lines)
+                    _q = f"請問您要刪除哪個行程呢？\n{_list_str}\n請回覆數字或行程名稱。" if _list_lines else "找不到要刪除的行程，可以再描述一次嗎？"
                     return {
                         "intent": "create", "target_schedule_id": None,
                         "updated_data": current_context, "missing_fields": [],
-                        "is_complete": False, "reply": "找不到要刪除的行程，可以再描述一次嗎？",
+                        "is_complete": False, "reply": _q,
                     }
                 title = args.get("schedule_title", "該行程")
                 return {
@@ -547,6 +737,14 @@ class AIService:
                     "updated_data": {}, "missing_fields": [],
                     "is_complete": False,
                     "reply": f"確定要取消「{title}」嗎？",
+                }
+
+            # ── reply_to_user ────────────────────────────────────────────────
+            if fn_name == "reply_to_user":
+                return {
+                    "intent": "query", "target_schedule_id": None,
+                    "updated_data": current_context, "missing_fields": [],
+                    "is_complete": False, "reply": args.get("reply", ""),
                 }
 
             # Unknown tool

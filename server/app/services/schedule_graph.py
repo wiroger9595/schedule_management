@@ -33,6 +33,7 @@ class ScheduleState(TypedDict):
     needs_location_confirm: bool
     location_candidates: List[dict]
     location_details: Optional[dict]
+    location_not_found: bool
 
 
 def collect_info_node(state: ScheduleState) -> ScheduleState:
@@ -68,11 +69,12 @@ def validate_location_node(state: ScheduleState) -> ScheduleState:
         return {
             **state,
             "is_complete": False,
-            "reply": f"抱歉，找不到「{location_name}」相關的地點，請問可以提供更詳細的地址或地標名稱嗎？",
+            "reply": f"找不到「{location_name}」，請直接輸入完整地址或更換地點名稱。",
             "needs_location_confirm": False,
             "location_candidates": [],
             "location_details": None,
             "location_result": loc_result,
+            "location_not_found": True,
         }
 
     if loc_result["needs_selection"]:
@@ -86,13 +88,36 @@ def validate_location_node(state: ScheduleState) -> ScheduleState:
             for i, c in enumerate(loc_result["candidates"])
             if c.get("name") or c.get("address")
         ]
+        # Single candidate: route to confirm card instead of empty selection list
+        if len(candidates_clean) == 1:
+            single = candidates_clean[0]
+            return {
+                **state,
+                "reply": f"我為您找到了「{single['name']}」（{single['address']}）。請問這個地點正確嗎？",
+                "needs_location_confirm": True,
+                "location_candidates": [],
+                "location_details": single,
+                "location_result": loc_result,
+            }
+        if candidates_clean:
+            return {
+                **state,
+                "reply": f"我找到了幾個「{location_name}」相關的地點，請選擇正確的一個：",
+                "needs_location_confirm": True,
+                "location_candidates": candidates_clean,
+                "location_details": None,
+                "location_result": loc_result,
+            }
+        # All candidates had no name/address — fall through to not-found
         return {
             **state,
-            "reply": f"我找到了幾個「{location_name}」相關的地點，請選擇正確的一個：",
-            "needs_location_confirm": True,
-            "location_candidates": candidates_clean,
+            "is_complete": False,
+            "reply": f"找不到「{location_name}」，請直接輸入完整地址或更換地點名稱。",
+            "needs_location_confirm": False,
+            "location_candidates": [],
             "location_details": None,
             "location_result": loc_result,
+            "location_not_found": True,
         }
 
     best = loc_result["best"]
@@ -122,6 +147,7 @@ class _ScheduleGraph:
             "location_candidates": [],
             "location_details": None,
             "location_result": None,
+            "location_not_found": False,
             **state,
         }
         state = collect_info_node(state)

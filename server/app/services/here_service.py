@@ -391,6 +391,25 @@ class HereService:
             scored.append({**place, "_score": score, "_source": "here"})
 
         scored.sort(key=lambda x: x["_score"], reverse=True)
+
+        # ── Distance penalty when user GPS is available ────────────────────────
+        # Prevents distant exact-name matches (e.g. 新竹市東區) beating nearby
+        # colloquial matches (e.g. 台北東區) when the user is clearly in Taipei.
+        if lat is not None and lon is not None and scored:
+            import math as _math
+            for _i, _p in enumerate(scored):
+                _plat, _plon = _p.get("lat") or 0, _p.get("lon") or 0
+                if _plat and _plon:
+                    _dlat = _math.radians(_plat - lat)
+                    _dlon = _math.radians(_plon - lon)
+                    _a = (_math.sin(_dlat / 2) ** 2 +
+                          _math.cos(_math.radians(lat)) * _math.cos(_math.radians(_plat)) *
+                          _math.sin(_dlon / 2) ** 2)
+                    _dist_km = 6371 * 2 * _math.asin(_math.sqrt(max(0, _a)))
+                    _factor = 0.60 if _dist_km > 100 else 0.75 if _dist_km > 50 else 0.88 if _dist_km > 15 else 1.0
+                    scored[_i] = {**_p, "_score": round(_p["_score"] * _factor, 3)}
+            scored.sort(key=lambda x: x["_score"], reverse=True)
+
         here_confidence = scored[0]["_score"] if scored else 0.0
 
         # ── Step 2: Nominatim fallback when HERE confidence is low ──
@@ -434,7 +453,9 @@ class HereService:
                 # Also fix matching candidate in deduped list
                 deduped[0] = best
 
-        threshold = max(confidence - 0.15, 0.5)
+        # Floor: never let the threshold exceed `confidence` itself, so `best` is
+        # always included even when confidence < 0.5.
+        threshold = max(confidence - 0.15, min(confidence, 0.5))
         candidates = [p for p in deduped if p["_score"] >= threshold][:3]
 
         needs_selection = confidence < 0.75 or len(candidates) > 1

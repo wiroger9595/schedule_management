@@ -34,8 +34,11 @@ def build_schedule_section(schedule_list: Optional[list]) -> str:
                 pass
         loc = s.get("meeting_location") or s.get("location", "")
         is_match = s.get("_match", False)
+        is_owner = s.get("is_owner", True)
+        creator = s.get("creator_name") or ""
+        owner_tag = "" if is_owner else f" 【{creator}建立，唯讀】"
         tag = "  ★" if is_match else "  "
-        lines.append(f"{tag}id={sid} | {title} | {st} | {loc}")
+        lines.append(f"{tag}id={sid} | {title} | {st} | {loc}{owner_tag}")
         if is_match:
             pre_matched.append(f"id={sid}（{title}）")
     section = "【行程清單】\n" + "\n".join(lines)
@@ -81,13 +84,35 @@ def build_context_sections(contacts: list, memory: list, context: dict) -> tuple
 def build_system_prompt(today: datetime, schedule_section: str,
                         memory_section: str, contact_section: str) -> str:
     today_str = today.strftime("%Y-%m-%d %A")
+
+    # ── Inject learned constraints (auto-accumulated from past errors) ────────
+    _error_section = ""
+    try:
+        from .constraint_store import get_active_constraints
+        _constraints = get_active_constraints()
+        if _constraints:
+            _lines = "\n".join(f"❌ 禁止：{c}" for c in _constraints)
+            _error_section = f"\n\n## 🚫 已記錄的錯誤模式（絕對禁止重複，每次呼叫工具前必須逐條確認）\n{_lines}"
+    except Exception:
+        pass
+
     return f"""你是行程助理，透過呼叫工具來建立/修改/刪除行程。請用與用戶相同的語言回覆（中文說中文、英文說英文）。
 
 
 
 現在時間（台灣）：{today.strftime("%Y-%m-%d %H:%M")}（{today_str}）
 
-{schedule_section}{memory_section}{contact_section}
+{schedule_section}{memory_section}{contact_section}{_error_section}
+
+## 查詢 / 列出行程規則（⚠️ 重要）
+- 用戶詢問「我的行程」「全部行程」「有什麼行程」「今天」「這週」「最近」「列出」「給我看」等 → 直接從【行程清單】整理並呼叫 reply_to_user，**不要反問用戶想操作哪個**
+- 格式（每筆一行，簡潔）：
+  📅 行程名稱 — 時間 — 地點
+- 若清單為空 → reply_to_user(reply="您目前沒有任何行程 😊")
+- 查詢後若用戶接著說「改第一個」「修改那個」→ 才問清楚是哪個行程，並切換到 edit 流程
+- 例：用戶說「給我看全部行程」
+  → reply_to_user(reply="您目前有以下行程：\n📅 跟Robert吃飯 — 04/25 19:00 — 信義區\n📅 打球 — 04/26 15:00 — 建國高架旁") ✅
+  → ask_user("您想操作哪個行程？") ❌ 禁止
 
 ## 非行程相關問題處理規則
 - 用戶提問與「建立/修改/刪除/查詢行程」完全無關（例如：天氣、新聞、聊天、寫程式、翻譯、算數學等）→ 不回答問題，改為引導：
@@ -163,11 +188,28 @@ def build_system_prompt(today: datetime, schedule_section: str,
 - 用戶說「改 XX」但沒說改成什麼值，或還缺修改的目標行程 → ask_user
   ⚠️ ask_user 追問修改資訊時，partial_data **必須**帶入 schedule_id
 
+## ⭐⭐⭐ 操作目標不明確時 → 列出行程讓用戶選擇（最高優先規則）
+任何 edit / delete 操作，只要符合以下任一情況，**必須**用 ask_user 列出行程供選擇：
+  1. 用戶描述模糊，清單中有**多個**可能符合的行程
+  2. 清單中**找不到**符合描述的行程
+  3. 用戶沒有說明要改哪個行程（如「改一下我的行程」「刪掉那個」）
+
+列出格式（放在 ask_user 的 question 中）：
+  請問您要修改/刪除哪個行程呢？
+  1️⃣ 行程名稱 — 時間 — 地點
+  2️⃣ 行程名稱 — 時間 — 地點
+  …（最多列 5 筆，按時間排序）
+  請回覆數字或行程名稱。
+
+用戶回覆「第一個」「1」「那個打球的」後，再呼叫對應工具，partial_data 帶入 schedule_id。
+
+**禁止**：直接說「找不到該行程，請確認名稱是否正確」而不附上清單 ❌
+**禁止**：自行猜測並操作描述不符的行程 ❌
+
 ## 行程搜尋驗證規則（嚴格遵守）
 - update_schedule / delete_schedule 的 schedule_id **必須來自行程清單中的現有 id**，不可自行編造
 - 呼叫 update_schedule 前，必須確認清單中有**符合用戶描述的人名或關鍵字**的行程
-  - 用戶說「更改與文哥的行程」→ 清單中必須有 title 含「文哥」或參與者有「文哥」的行程
-  - 若清單中**找不到**符合描述的行程 → ask_user(question="找不到與文哥相關的行程，請確認行程名稱是否正確？")
+  - 若**找不到**或**多個符合** → 執行上方「操作目標不明確」規則，列出行程讓用戶選
 - **禁止**選擇描述不符的行程來更新（例如：用戶說「文哥」，不可去更新「Robert」的行程）
 
 ## 時間規則（建立新行程）
@@ -227,6 +269,21 @@ def build_system_prompt(today: datetime, schedule_section: str,
 用戶：「安排週五打球」
 → ask_user(question="請問幾點開始？", partial_data={{"title":"打球"}}) ✅
 → 不可自己假設時間建立行程 ❌
+
+### 找不到指定行程 → 列出清單供選擇 ⭐ 最重要新規則
+用戶：「把新竹那個行程改一下地點」（清單中有多個行程）
+行程清單：
+  id=abc | 與文哥開會 | 04/28 10:00 | 新竹巨城
+  id=def | 打球 | 04/29 15:00 | 新竹體育館
+  id=xyz | 與Robert吃飯 | 04/30 19:00 | 台北信義區
+→ ask_user(question="請問您要修改哪個行程呢？\n1️⃣ 與文哥開會 — 04/28 10:00 — 新竹巨城\n2️⃣ 打球 — 04/29 15:00 — 新竹體育館\n請回覆數字或行程名稱。", partial_data={{}}) ✅
+→ ask_user(question="找不到新竹相關行程，請確認名稱？") ❌ 禁止不附清單
+
+用戶回覆：「第一個」或「1」或「與文哥那個」
+→ ask_user(question="請問新地點是哪裡？", partial_data={{"schedule_id":"abc"}}) ✅
+
+用戶：「改一下我的行程」（完全沒說哪個）
+→ ask_user(question="請問您要修改哪個行程呢？\n1️⃣ 與文哥開會 — 04/28 10:00 — 新竹巨城\n2️⃣ 打球 — 04/29 15:00 — 新竹體育館\n3️⃣ 與Robert吃飯 — 04/30 19:00 — 台北信義區\n請回覆數字。", partial_data={{}}) ✅
 
 ### 修改時間（只改時間，地點不動）⭐ 最重要規則
 行程清單：★ id=abc | 與文哥見面 | 2026-04-20 10:00 | 台北

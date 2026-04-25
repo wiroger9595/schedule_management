@@ -1,0 +1,11 @@
+[
+  {
+    "type": "attendee_only_schedule",
+    "constraint": "行程清單中可能包含其他人邀請您參加的行程（非您建立）。update_schedule / delete_schedule 只能操作您自己建立的行程，若用戶描述的是受邀行程，請告知無法修改並列出可編輯的行程。",
+    "last_example": "AI picked schedule_id='se956cee1a02b74e479012fc523d067461' owned by 'ur0538c8a2af7244febfbd4d19bbd8c903'",
+    "count": 3,
+    "first_seen": "2026-04-25T21:15:41",
+    "last_seen": "2026-04-26T01:06:32",
+    "active": true
+  }
+]

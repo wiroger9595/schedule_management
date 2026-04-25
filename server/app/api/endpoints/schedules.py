@@ -14,7 +14,8 @@ from ...services.ai_service import ai_service
 from ...services.here_service import HereService
 from ...services.notification_service import notification_service
 from ...utils.text_validator import validate_schedule_message
-from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse
+from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse, FeedbackRequest
+from ...models.ai_feedback import AIFeedback
 from ...services.schedule_graph import schedule_graph
 from ...services.chat_utils import (
     extract_person_hint as _extract_person_hint,
@@ -29,6 +30,26 @@ from ...services.attend_service import (
 )
 from .auth import get_current_user
 
+
+def _build_schedule_list_reply(prefix: str, schedule_list: list, suffix: str = "請回覆數字或行程名稱。") -> str:
+    icons = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+    lines = []
+    for i, s in enumerate(schedule_list[:5]):
+        title = s.get("title", "")
+        st = s.get("meeting_start_time") or s.get("start_time", "")
+        if st:
+            try:
+                import arrow as _arrow
+                st = _arrow.get(st).to("Asia/Taipei").format("MM/DD HH:mm")
+            except Exception:
+                pass
+        loc = s.get("meeting_location") or s.get("location", "")
+        lines.append(f"{icons[i]} {title} — {st} — {loc}")
+    if not lines:
+        return f"{prefix}（目前沒有可用的行程）"
+    return f"{prefix}\n" + "\n".join(lines) + f"\n{suffix}"
+
+
 router = APIRouter()
 
 @router.get("/", response_model=List[dict])
@@ -36,10 +57,20 @@ router = APIRouter()
 def get_schedules(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = ScheduleRepository(session)
     schedules = repo.get_by_user_id(current_user.user_id)
-    # Serialize with computed properties
     results = [s.dict() for s in schedules]
-    if results:
-        print(f"DEBUG: get_schedules result[0]: {results[0]}")
+
+    # Annotate each schedule with is_owner + creator_name
+    creator_ids = {r["user_id"] for r in results if r.get("user_id") and r["user_id"] != current_user.user_id}
+    creator_names: dict[str, str] = {}
+    if creator_ids:
+        from sqlmodel import select as _sel
+        _users = session.exec(_sel(User).where(User.user_id.in_(list(creator_ids)))).all()
+        creator_names = {u.user_id: u.full_name or u.email or u.user_id for u in _users}
+
+    for r in results:
+        r["is_owner"] = r.get("user_id") == current_user.user_id
+        r["creator_name"] = None if r["is_owner"] else creator_names.get(r.get("user_id", ""), "其他人")
+
     return results
 
 @router.post("/", response_model=dict)
@@ -403,8 +434,10 @@ def update_schedule(
     repo = ScheduleRepository(session)
     schedule = repo.get_by_schedule_id(schedule_id)
     
-    if not schedule or schedule.user_id != current_user.user_id:
+    if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    if schedule.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="您不是此行程的建立者，無法修改")
 
     print(f"DEBUG: update_schedule received data: {data.dict(exclude_unset=True)}")
     
@@ -666,12 +699,19 @@ def chat_schedule(
     if request.confirm_delete:
         delete_id = current_context.get("delete_schedule_id")
         if not delete_id:
-            return ChatResponse(ai_reply="找不到要刪除的行程。", updated_data=current_context, is_complete=False)
+            _del_msg = _build_schedule_list_reply(
+                "請問您要刪除哪個行程呢？", request.schedule_list or []
+            )
+            return ChatResponse(ai_reply=_del_msg, updated_data=current_context, is_complete=False)
         from sqlmodel import delete as sql_delete
         repo = ScheduleRepository(session)
         target = repo.get_by_schedule_id(delete_id)
         if not target or target.user_id != current_user.user_id:
-            return ChatResponse(ai_reply="找不到行程或無權限刪除。", updated_data=current_context, is_complete=False)
+            _del_msg2 = _build_schedule_list_reply(
+                "找不到可刪除的行程（可能已刪除或非您建立），請選擇要刪除的行程：",
+                request.schedule_list or [],
+            )
+            return ChatResponse(ai_reply=_del_msg2, updated_data=current_context, is_complete=False)
         session.execute(sql_delete(attend).where(attend.schedule_id == delete_id))
         session.delete(target)
         session.commit()
@@ -823,6 +863,7 @@ def chat_schedule(
         needs_location_confirm = False
         location_candidates: list = []
         location_details = None
+        location_not_found = False
         # If pending edit, resume edit intent instead of creating
         pending_edit_id = current_context.get("_pending_edit_schedule_id")
         if pending_edit_id:
@@ -904,6 +945,7 @@ def chat_schedule(
         needs_location_confirm = graph_state["needs_location_confirm"]
         location_candidates = graph_state["location_candidates"]
         location_details = graph_state["location_details"]
+        location_not_found = graph_state.get("location_not_found", False)
         intent = graph_state.get("intent", "create")
         target_schedule_id = graph_state.get("target_schedule_id")
 
@@ -974,6 +1016,7 @@ def chat_schedule(
                 ai_reply=ai_reply,
                 updated_data=updated_data,
                 is_complete=False,
+                location_not_found=location_not_found,
             )
 
     # ── is_complete=True — proceed to DB creation ────────────────────────────
@@ -1019,6 +1062,67 @@ def chat_schedule(
 
             # Define effective_schedule_id early — needed inside location block too
             effective_schedule_id = request.schedule_id or (target_schedule_id if intent == "edit" else None)
+
+            # ── Pre-compute owned schedule IDs (edit intent only) ─────────────
+            # Used to restrict fuzzy recovery to schedules the user can actually edit.
+            # Attendee-only schedules are intentionally excluded.
+            _owned_schedule_ids: set = set()
+            if intent == "edit":
+                from sqlmodel import select as _sel
+                _owned_schedule_ids = set(
+                    session.exec(_sel(Schedule.schedule_id).where(Schedule.user_id == current_user.user_id)).all()
+                )
+
+            # ── Early schedule validation for edit intent ─────────────────────
+            # Validate the target schedule exists AND is owned by current user
+            # BEFORE location search, so hallucinated/wrong IDs are caught early.
+            if intent == "edit" and effective_schedule_id:
+                _repo_early = ScheduleRepository(session)
+                _early_existing = _repo_early.get_by_schedule_id(effective_schedule_id)
+                # Reject if not found OR owned by a different user (user is only attendee)
+                if _early_existing is None or effective_schedule_id not in _owned_schedule_ids:
+                    if _early_existing is not None and effective_schedule_id not in _owned_schedule_ids:
+                        # Schedule exists but user is only an attendee — no fuzzy needed,
+                        # but we still check owned schedules for a better match
+                        print(f"[chat edit] attendee-only schedule rejected: {effective_schedule_id}, "
+                              f"owner={_early_existing.user_id}, current={current_user.user_id}")
+                        try:
+                            from ...services.constraint_store import record_error as _rc
+                            _rc("attendee_only_schedule",
+                                example=f"AI picked schedule_id={effective_schedule_id!r} owned by {_early_existing.user_id!r}")
+                        except Exception:
+                            pass
+                    # Fuzzy recovery — restricted to OWNED schedules only
+                    _fe_ids = {
+                        s.get("schedule_id") or s.get("id", "")
+                        for s in (annotated_schedule_list or [])
+                    } & _owned_schedule_ids
+                    _fe_best, _fe_sim = None, 0.0
+                    for _fe_sid in _fe_ids:
+                        if (_fe_sid and len(_fe_sid) == len(effective_schedule_id)
+                                and _fe_sid[:4] == effective_schedule_id[:4]):
+                            _sim = sum(a == b for a, b in zip(effective_schedule_id, _fe_sid)) / len(_fe_sid)
+                            if _sim > _fe_sim:
+                                _fe_sim, _fe_best = _sim, _fe_sid
+                    if _fe_best and _fe_sim >= 0.92:
+                        print(f"[chat edit] early fuzzy-recovery: {effective_schedule_id} → {_fe_best} (sim={_fe_sim:.2f})")
+                        effective_schedule_id = _fe_best
+                        target_schedule_id = _fe_best
+                    elif _early_existing is not None and effective_schedule_id not in _owned_schedule_ids:
+                        # Attendee-only, no owned alternative found — list owned schedules
+                        _owned_list = [s for s in (annotated_schedule_list or [])
+                                       if (s.get("schedule_id") or s.get("id", "")) in _owned_schedule_ids]
+                        _msg = _build_schedule_list_reply(
+                            f"「{_early_existing.title}」是由其他人建立的行程，您以參與者身分加入，無法修改。\n請問您想修改哪個行程呢？",
+                            _owned_list or annotated_schedule_list or [],
+                        )
+                        return ChatResponse(ai_reply=_msg, updated_data={}, is_complete=False)
+                    else:
+                        _msg = _build_schedule_list_reply(
+                            "找不到符合描述的行程，請問是哪個行程需要更改？",
+                            annotated_schedule_list or [],
+                        )
+                        return ChatResponse(ai_reply=_msg, updated_data={}, is_complete=False)
 
             if location_name:
                 # If coords already confirmed (confirm_location or explicit lat/lon), use them directly
@@ -1069,9 +1173,20 @@ def chat_schedule(
                             for i, c in enumerate(_loc_result.get("candidates", []))
                             if c.get("name") or c.get("address")
                         ]
+                        # effective_schedule_id already validated by early-check above
                         edit_ctx = dict(updated_data)
                         edit_ctx["_pending_edit_schedule_id"] = effective_schedule_id or target_schedule_id
-                        if candidates_clean:
+                        if len(candidates_clean) == 1:
+                            # Single result: show confirm card, not selection list
+                            single = candidates_clean[0]
+                            return ChatResponse(
+                                ai_reply=f"我為您找到了「{single['name']}」（{single['address']}）。請問這個地點正確嗎？",
+                                updated_data=edit_ctx,
+                                is_complete=False,
+                                needs_location_confirm=True,
+                                location_details=single,
+                            )
+                        elif candidates_clean:
                             return ChatResponse(
                                 ai_reply=f"我找到了幾個「{location_name}」，請選擇正確的地點：",
                                 updated_data=edit_ctx,
@@ -1081,9 +1196,10 @@ def chat_schedule(
                             )
                         else:
                             return ChatResponse(
-                                ai_reply=f"找不到「{location_name}」，請提供更詳細的地址。",
+                                ai_reply=f"找不到「{location_name}」，請直接輸入完整地址或更換地點名稱。",
                                 updated_data=updated_data,
                                 is_complete=False,
+                                location_not_found=True,
                             )
                     elif _loc_result["best"]:
                         best = _loc_result["best"]
@@ -1149,6 +1265,28 @@ def chat_schedule(
 
                 existing = repo.get_by_schedule_id(effective_schedule_id)
 
+                # If not found, attempt fuzzy recovery — non-Cerebras models sometimes
+                # hallucinate 1-3 chars in a long ID (confirmed from Groq logs).
+                # This also fixes confirm_location flows where _pending_edit_schedule_id
+                # was set from a previously hallucinated target_schedule_id.
+                if existing is None and effective_schedule_id and annotated_schedule_list:
+                    _fr_ids = {
+                        s.get("schedule_id") or s.get("id", "")
+                        for s in annotated_schedule_list
+                    }
+                    _fr_best, _fr_sim = None, 0.0
+                    for _fr_sid in _fr_ids:
+                        if _fr_sid and len(_fr_sid) == len(effective_schedule_id) and _fr_sid[:4] == effective_schedule_id[:4]:
+                            _sim = sum(a == b for a, b in zip(effective_schedule_id, _fr_sid)) / len(_fr_sid)
+                            if _sim > _fr_sim:
+                                _fr_sim, _fr_best = _sim, _fr_sid
+                    if _fr_best and _fr_sim >= 0.92:
+                        print(f"[chat edit] fuzzy-recovery (existing=None): "
+                              f"{effective_schedule_id} → {_fr_best} (sim={_fr_sim:.2f})")
+                        effective_schedule_id = _fr_best
+                        target_schedule_id = _fr_best
+                        existing = repo.get_by_schedule_id(effective_schedule_id)
+
                 # 驗證 AI 選的行程確實和用戶描述的人名/關鍵字吻合
                 # 避免 AI 語意搜尋誤匹配到不相關行程
                 if existing and existing.user_id == current_user.user_id:
@@ -1158,20 +1296,47 @@ def chat_schedule(
                     _kw_chars = [c for c in _keyword_hint if c not in _stop and len(c.strip()) > 0]
                     _kw = "".join(_kw_chars)
                     # 只在有關鍵字且清單非空時才驗證（避免誤擋正常流程）
+                    # Skip keyword validation for confirm_location: message is "Confirm", not a schedule description
+                    # Skip if already validated as owned by early check (owned = already verified)
                     _schedule_ids_in_list = {
                         s.get("schedule_id") or s.get("id", "")
                         for s in (annotated_schedule_list or [])
                     }
-                    _id_was_in_list = effective_schedule_id in _schedule_ids_in_list
-                    if not _id_was_in_list and annotated_schedule_list:
-                        # AI 選了一個不在搜尋結果中的 id → 很可能是誤判
-                        print(f"[chat edit] WARNING: schedule_id={effective_schedule_id} "
-                              f"not in annotated_schedule_list, possible mismatch")
-                        return ChatResponse(
-                            ai_reply=f"找不到符合描述的行程，請問是哪個行程需要更改？",
-                            updated_data={},
-                            is_complete=False,
-                        )
+                    _id_was_in_list = (
+                        effective_schedule_id in _owned_schedule_ids  # early check already confirmed ownership
+                        or effective_schedule_id in _schedule_ids_in_list
+                    )
+                    if not _id_was_in_list and annotated_schedule_list and not request.confirm_location:
+                        # Non-Cerebras models sometimes hallucinate 1-3 chars in a long ID.
+                        # Fuzzy recovery searches owned IDs only (not attended-only ones).
+                        _fuzzy_pool = (_owned_schedule_ids & _schedule_ids_in_list) if _owned_schedule_ids else _schedule_ids_in_list
+                        _best_fuzzy, _best_sim = None, 0.0
+                        for _sid in _fuzzy_pool:
+                            if _sid and len(_sid) == len(effective_schedule_id) and _sid[:4] == effective_schedule_id[:4]:
+                                _sim = sum(a == b for a, b in zip(effective_schedule_id, _sid)) / len(_sid)
+                                if _sim > _best_sim:
+                                    _best_sim, _best_fuzzy = _sim, _sid
+                        if _best_fuzzy and _best_sim >= 0.92:
+                            print(f"[chat edit] fuzzy-recovered schedule_id: "
+                                  f"{effective_schedule_id} → {_best_fuzzy} (sim={_best_sim:.2f})")
+                            effective_schedule_id = _best_fuzzy
+                            target_schedule_id = _best_fuzzy
+                        else:
+                            print(f"[chat edit] WARNING: schedule_id={effective_schedule_id} "
+                                  f"not in annotated_schedule_list, possible mismatch")
+                            try:
+                                from ...services.constraint_store import record_error as _rc
+                                _rc("wrong_schedule_id",
+                                    example=f"AI returned schedule_id={effective_schedule_id!r} not in list")
+                            except Exception:
+                                pass
+                            _owned_list2 = [s for s in (annotated_schedule_list or [])
+                                            if (s.get("schedule_id") or s.get("id", "")) in _owned_schedule_ids]
+                            _msg2 = _build_schedule_list_reply(
+                                "找不到符合描述的行程，請問是哪個行程需要更改？",
+                                _owned_list2 or annotated_schedule_list or [],
+                            )
+                            return ChatResponse(ai_reply=_msg2, updated_data={}, is_complete=False)
                 if existing and existing.user_id == current_user.user_id:
                     # ── Past-schedule guard ───────────────────────────────────
                     from datetime import timezone as _tz, timedelta as _td
@@ -1286,11 +1451,23 @@ def chat_schedule(
                     except Exception:
                         pass
                 else:
-                    return ChatResponse(
-                        ai_reply="找不到行程，無法修改。",
-                        updated_data=updated_data,
-                        is_complete=False,
-                    )
+                    print(f"[chat edit] ownership check failed: "
+                          f"effective_schedule_id={effective_schedule_id}, "
+                          f"existing={'None' if existing is None else f'owner={existing.user_id}'}, "
+                          f"current_user={current_user.user_id}")
+                    _owned_list3 = [s for s in (annotated_schedule_list or [])
+                                    if (s.get("schedule_id") or s.get("id", "")) in _owned_schedule_ids]
+                    if existing is not None:
+                        _msg3 = _build_schedule_list_reply(
+                            f"「{existing.title}」是由其他人建立的行程，您以參與者身分加入，無法修改。\n請問您想修改哪個行程呢？",
+                            _owned_list3 or annotated_schedule_list or [],
+                        )
+                    else:
+                        _msg3 = _build_schedule_list_reply(
+                            "找不到符合描述的行程，請問是哪個行程需要更改？",
+                            _owned_list3 or annotated_schedule_list or [],
+                        )
+                    return ChatResponse(ai_reply=_msg3, updated_data={}, is_complete=False)
             else:
                 # ── 建立 Schedule 物件 ─────────────────────────────────────────
                 new_schedule = Schedule(
@@ -1421,3 +1598,40 @@ def chat_schedule(
         is_complete=is_complete,
         schedule=saved_schedule
     )
+
+
+@router.post("/chat/feedback", response_model=dict)
+def submit_feedback(
+    req: FeedbackRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    fb = AIFeedback(
+        user_id=current_user.user_id,
+        user_message=req.user_message,
+        ai_reply=req.ai_reply,
+        is_good=req.is_good,
+        correction=req.correction,
+        conversation_json=req.conversation_json,
+        model_label=req.model_label,
+    )
+    session.add(fb)
+    session.commit()
+
+    # 👎 feedback → auto-record as unknown error pattern so it's flagged for review
+    if not req.is_good:
+        try:
+            from ...services.constraint_store import record_error as _rc
+            _rc(
+                "user_thumbs_down",
+                example=f"user={req.user_message[:80]!r} ai={req.ai_reply[:80]!r}",
+                custom_constraint=(
+                    f"以下類型的回覆曾被用戶標記為錯誤，請避免類似模式："
+                    f"「{req.ai_reply[:60]}」"
+                    + (f"（用戶更正：{req.correction[:60]}）" if req.correction else "")
+                ),
+            )
+        except Exception:
+            pass
+
+    return {"ok": True}
