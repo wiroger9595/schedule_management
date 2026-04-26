@@ -275,5 +275,13 @@
   "codeSentSuccess": "若此信箱已註冊，驗證碼已寄出，請檢查收件匣",
   "sendFailed": "發送失敗: {error}",
   "passwordResetSuccess": "密碼重置成功，請重新登入",
-  "resetFailed": "重置失敗: {error}"
+  "resetFailed": "重置失敗: {error}",
+  "locationNotFound": "找不到該地點，請手動輸入完整地址",
+  "enterAddressHint": "例：台北市信義區松壽路12號",
+  "confirmAddress": "確認地址",
+  "useCurrentLocation": "GPS 定位",
+  "locating": "定位中...",
+  "locationPermissionDenied": "定位權限被拒絕",
+  "locationServiceDisabled": "定位服務未開啟",
+  "locationFailed": "定位失敗，請手動輸入地址"
 }

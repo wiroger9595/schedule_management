@@ -562,6 +562,30 @@ class ApiService {
     }
   }
 
+  Future<void> submitFeedback({
+    required String userMessage,
+    required String aiReply,
+    required bool isGood,
+    String? correction,
+    String? conversationJson,
+    String? modelLabel,
+  }) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/schedules/chat/feedback'),
+        headers: await getHeaders(),
+        body: jsonEncode({
+          'user_message': userMessage,
+          'ai_reply': aiReply,
+          'is_good': isGood,
+          if (correction != null) 'correction': correction,
+          if (conversationJson != null) 'conversation_json': conversationJson,
+          if (modelLabel != null) 'model_label': modelLabel,
+        }),
+      );
+    } catch (_) {}
+  }
+
   Future<void> deleteComment(int id) async {
     final response = await http.delete(
       Uri.parse('$baseUrl/comments/$id'),

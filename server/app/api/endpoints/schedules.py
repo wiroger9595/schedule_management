@@ -31,23 +31,7 @@ from ...services.attend_service import (
 from .auth import get_current_user
 
 
-def _build_schedule_list_reply(prefix: str, schedule_list: list, suffix: str = "請回覆數字或行程名稱。") -> str:
-    icons = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-    lines = []
-    for i, s in enumerate(schedule_list[:5]):
-        title = s.get("title", "")
-        st = s.get("meeting_start_time") or s.get("start_time", "")
-        if st:
-            try:
-                import arrow as _arrow
-                st = _arrow.get(st).to("Asia/Taipei").format("MM/DD HH:mm")
-            except Exception:
-                pass
-        loc = s.get("meeting_location") or s.get("location", "")
-        lines.append(f"{icons[i]} {title} — {st} — {loc}")
-    if not lines:
-        return f"{prefix}（目前沒有可用的行程）"
-    return f"{prefix}\n" + "\n".join(lines) + f"\n{suffix}"
+from ...services.ai_policy import build_schedule_list_reply as _build_schedule_list_reply
 
 
 router = APIRouter()
@@ -853,9 +837,23 @@ def chat_schedule(
     if _pending_past_id and not request.confirm_past_edit:
         request = request.model_copy(update={"confirm_past_edit": True})
 
+    # ── confirm_past_edit=True: user approved editing a past schedule ────────
+    # Skip the graph — location was already validated in the previous turn.
+    # Re-running the graph would re-trigger location confirmation.
+    if request.confirm_past_edit and current_context.get("_pending_past_edit_id"):
+        updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
+        is_complete = True
+        ai_reply = ""
+        needs_location_confirm = False
+        location_candidates: list = []
+        location_details = None
+        location_not_found = False
+        intent = "edit"
+        target_schedule_id = current_context.get("_pending_past_edit_id")
+
     # ── confirm_location=True: user already approved a location ──────────────
     # Skip the graph entirely. Re-running AI on "確認地點：XX" confuses the model.
-    if request.confirm_location:
+    elif request.confirm_location:
         # Strip all internal _ keys (including _pending_confirm_*)
         updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
         is_complete = True
@@ -1363,6 +1361,11 @@ def chat_schedule(
                             # 儲存至 context，讓用戶下一則訊息自動確認（不必再點按鈕）
                             _warn_data = dict(updated_data)
                             _warn_data["_pending_past_edit_id"] = existing.schedule_id
+                            # Preserve validated coords so confirm_past_edit bypass skips re-validation
+                            if location_lat:
+                                _warn_data["latitude"] = location_lat
+                            if location_lon:
+                                _warn_data["longitude"] = location_lon
                             return ChatResponse(
                                 ai_reply=f"「{existing.title}」是 {_past_str} 的行程，已經過去了，確定要修改嗎？",
                                 updated_data=_warn_data,

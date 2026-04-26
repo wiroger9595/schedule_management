@@ -18,6 +18,8 @@ class Schedule {
 
   final String? cancelReason;
   final bool? isOnline;
+  final bool? isOwner;
+  final String? creatorName;
 
   Schedule({
     required this.id,
@@ -38,6 +40,8 @@ class Schedule {
     this.contactPhone,
     this.contactLineId,
     this.isOnline,
+    this.isOwner,
+    this.creatorName,
   });
 
   factory Schedule.fromJson(Map<String, dynamic> json) {
@@ -66,6 +70,8 @@ class Schedule {
           ?.map((e) => e as Map<String, dynamic>)
           .toList(),
       isOnline: json['is_online'] == true,
+      isOwner: json['is_owner'] != false,
+      creatorName: json['creator_name'] as String?,
     );
   }
 
@@ -88,6 +94,8 @@ class Schedule {
       'contact_email': contactEmail,
       'contact_phone': contactPhone,
       'contact_line_id': contactLineId,
+      'is_owner': isOwner,
+      'creator_name': creatorName,
     };
   }
 

@@ -586,27 +586,18 @@ class AIService:
                     print(f"[AI Validation] retry call failed: {_retry_err}")
 
             # ── Force list when wrong schedule_id survives retry ─────────────
+            from .ai_policy import (
+                build_inline_list, build_schedule_list_reply as _pol_list,
+                needs_list_injection, is_off_topic, OFF_TOPIC_REDIRECT,
+                CANT_FIND_EDIT, CANT_FIND_DELETE, CANT_FIND_GENERIC,
+            )
             if fn_name in ("update_schedule", "delete_schedule"):
                 _sid = args.get("schedule_id", "")
                 _vids = {s.get("schedule_id") or s.get("id", "") for s in (schedule_list or [])}
                 _vids.discard("")
                 if _sid and _vids and _sid not in _vids:
                     _verb = "修改" if fn_name == "update_schedule" else "刪除"
-                    _ll = []
-                    _icons = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-                    for _i, _s in enumerate((schedule_list or [])[:5]):
-                        _t = _s.get("title", "")
-                        _st = _s.get("meeting_start_time") or _s.get("start_time", "")
-                        try:
-                            from .prompt_builder import _to_taipei as _ptp
-                            _a = _ptp(_st)
-                            _st = _a.format("MM/DD HH:mm") if _a else _st
-                        except Exception:
-                            pass
-                        _loc = _s.get("meeting_location") or _s.get("location", "")
-                        _ll.append(f"{_icons[_i]} {_t} — {_st} — {_loc}")
-                    _q = (f"請問您要{_verb}哪個行程呢？\n" + "\n".join(_ll) + "\n請回覆數字或行程名稱。"
-                          if _ll else f"找不到行程，可以再描述一次嗎？")
+                    _q = build_inline_list(schedule_list or [], verb=_verb)
                     print(f"[AI Force-List] {fn_name} bad id={_sid!r} → showing list")
                     return {
                         "intent": "create", "target_schedule_id": None,
@@ -617,36 +608,16 @@ class AIService:
             # ── ask_user ────────────────────────────────────────────────────
             if fn_name == "ask_user":
                 partial = args.get("partial_data") or {}
-                # 合併時排除 schedule_id（另外處理成 _pending_edit_schedule_id）
                 merged = {**current_context,
                           **{k: v for k, v in partial.items() if v and k != "schedule_id"}}
-                # 保留 edit 狀態：partial_data 帶 schedule_id 或 context 已有 _pending_edit
                 pending_id = (partial.get("schedule_id")
                               or current_context.get("_pending_edit_schedule_id"))
                 if pending_id:
                     merged["_pending_edit_schedule_id"] = pending_id
                 question = args.get("question", "請問還有什麼需要補充的嗎？")
-                # If the question implies "can't find" but has no numbered list → append list
-                _cant_find_keywords = ("找不到", "找不到行程", "哪個行程", "確認名稱", "請確認")
-                _has_list = any(c in question for c in ("1️⃣", "2️⃣", "①", "1."))
-                _needs_list = any(k in question for k in _cant_find_keywords) and not _has_list
-                if _needs_list and schedule_list:
-                    _ll = []
-                    _icons = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-                    for _i, _s in enumerate(schedule_list[:5]):
-                        _t = _s.get("title", "")
-                        _st = _s.get("meeting_start_time") or _s.get("start_time", "")
-                        try:
-                            from .prompt_builder import _to_taipei as _ptp
-                            _a = _ptp(_st)
-                            _st = _a.format("MM/DD HH:mm") if _a else _st
-                        except Exception:
-                            pass
-                        _loc = _s.get("meeting_location") or _s.get("location", "")
-                        _ll.append(f"{_icons[_i]} {_t} — {_st} — {_loc}")
-                    if _ll:
-                        question = "請問您要操作哪個行程呢？\n" + "\n".join(_ll) + "\n請回覆數字或行程名稱。"
-                        print(f"[AI ask_user] injected schedule list (original question: {args.get('question','')[:60]!r})")
+                if needs_list_injection(question) and schedule_list:
+                    question = build_inline_list(schedule_list, verb="操作")
+                    print(f"[AI ask_user] injected schedule list (original: {args.get('question','')[:60]!r})")
                 return {
                     "intent": "edit" if pending_id else "create",
                     "target_schedule_id": pending_id,
@@ -676,21 +647,7 @@ class AIService:
                 schedule_id = args.get("schedule_id")
                 if not schedule_id:
                     print(f"[AI Tool] update_schedule missing schedule_id, args={args}")
-                    _list_lines = []
-                    for i, s in enumerate((schedule_list or [])[:5], 1):
-                        _t = s.get("title", "")
-                        _st = s.get("meeting_start_time") or s.get("start_time", "")
-                        try:
-                            from .prompt_builder import _to_taipei as _ptp
-                            _a = _ptp(_st)
-                            _st = _a.format("MM/DD HH:mm") if _a else _st
-                        except Exception:
-                            pass
-                        _loc = s.get("meeting_location") or s.get("location", "")
-                        _icons = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
-                        _list_lines.append(f"{_icons[i-1]} {_t} — {_st} — {_loc}")
-                    _list_str = "\n".join(_list_lines)
-                    _q = f"請問您要修改哪個行程呢？\n{_list_str}\n請回覆數字或行程名稱。" if _list_lines else "找不到要修改的行程，可以再描述一次嗎？"
+                    _q = build_inline_list(schedule_list or [], verb="修改")
                     return {
                         "intent": "create", "target_schedule_id": None,
                         "updated_data": current_context, "missing_fields": [],
@@ -710,21 +667,7 @@ class AIService:
                 schedule_id = args.get("schedule_id")
                 if not schedule_id:
                     print(f"[AI Tool] delete_schedule missing schedule_id, args={args}")
-                    _list_lines = []
-                    for i, s in enumerate((schedule_list or [])[:5], 1):
-                        _t = s.get("title", "")
-                        _st = s.get("meeting_start_time") or s.get("start_time", "")
-                        try:
-                            from .prompt_builder import _to_taipei as _ptp
-                            _a = _ptp(_st)
-                            _st = _a.format("MM/DD HH:mm") if _a else _st
-                        except Exception:
-                            pass
-                        _loc = s.get("meeting_location") or s.get("location", "")
-                        _icons = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
-                        _list_lines.append(f"{_icons[i-1]} {_t} — {_st} — {_loc}")
-                    _list_str = "\n".join(_list_lines)
-                    _q = f"請問您要刪除哪個行程呢？\n{_list_str}\n請回覆數字或行程名稱。" if _list_lines else "找不到要刪除的行程，可以再描述一次嗎？"
+                    _q = build_inline_list(schedule_list or [], verb="刪除")
                     return {
                         "intent": "create", "target_schedule_id": None,
                         "updated_data": current_context, "missing_fields": [],
@@ -741,10 +684,14 @@ class AIService:
 
             # ── reply_to_user ────────────────────────────────────────────────
             if fn_name == "reply_to_user":
+                reply_text = args.get("reply", "")
+                if is_off_topic(user_message, reply_text):
+                    print(f"[AI Guard] off-topic reply intercepted. user={user_message[:60]!r}")
+                    reply_text = OFF_TOPIC_REDIRECT
                 return {
                     "intent": "query", "target_schedule_id": None,
                     "updated_data": current_context, "missing_fields": [],
-                    "is_complete": False, "reply": args.get("reply", ""),
+                    "is_complete": False, "reply": reply_text,
                 }
 
             # Unknown tool

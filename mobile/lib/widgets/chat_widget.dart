@@ -68,6 +68,27 @@ class ChatWidgetState extends State<ChatWidget> {
     } catch (_) {}
   }
 
+  /// Builds an AI ChatMessage with 👍/👎 feedback wired to the backend.
+  ChatMessage _buildAiMessage(String text) {
+    final history = List<Map<String, String>>.from(_conversationHistory);
+    final userMsg = history.isNotEmpty && history.last['role'] == 'user'
+        ? (history.last['content'] ?? '')
+        : (history.length >= 2 ? (history[history.length - 2]['content'] ?? '') : '');
+    return ChatMessage(
+      text: text,
+      isUser: false,
+      onFeedback: (bool isGood, String? correction) {
+        ApiService().submitFeedback(
+          userMessage: userMsg,
+          aiReply: text,
+          isGood: isGood,
+          correction: correction,
+          conversationJson: jsonEncode(history),
+        );
+      },
+    );
+  }
+
   Future<void> _loadContacts() async {
     try {
       final apiService = ApiService();
@@ -444,14 +465,14 @@ class ChatWidgetState extends State<ChatWidget> {
 
           if (data['schedule_deleted'] == true) {
             // Schedule deleted successfully — refresh list
-            if (aiReply.isNotEmpty) _messages.add(ChatMessage(text: aiReply, isUser: false));
+            if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
             _currentContext = null;
             widget.onScheduleCreated();
             _loadScheduleList();
           } else if (data['confirm_delete'] != null) {
             // Backend wants user to confirm deletion
             final del = data['confirm_delete'] as Map<String, dynamic>;
-            if (aiReply.isNotEmpty) _messages.add(ChatMessage(text: aiReply, isUser: false));
+            if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
             _messages.add(
               DeleteConfirmMessage(
                 title: del['title'] as String? ?? '',
@@ -471,7 +492,7 @@ class ChatWidgetState extends State<ChatWidget> {
             );
           } else if (data['confirm_past_edit'] != null) {
             final past = data['confirm_past_edit'] as Map<String, dynamic>;
-            if (aiReply.isNotEmpty) _messages.add(ChatMessage(text: aiReply, isUser: false));
+            if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
             _messages.add(
               PastEditConfirmMessage(
                 title: past['title'] as String? ?? '',
@@ -489,9 +510,7 @@ class ChatWidgetState extends State<ChatWidget> {
             );
           } else if (data['conflict'] != null) {
             // Conflict Detected
-            _messages.add(
-              ChatMessage(text: aiReply.isNotEmpty ? aiReply : 'timeConflict'.tr(), isUser: false),
-            );
+            _messages.add(_buildAiMessage(aiReply.isNotEmpty ? aiReply : 'timeConflict'.tr()));
             _messages.add(
               ConflictMessage(
                 onConfirm: () => _sendMessage(forceCreate: true),
@@ -502,7 +521,7 @@ class ChatWidgetState extends State<ChatWidget> {
               ),
             );
           } else if (data['needs_location_confirm'] == true) {
-            _messages.add(ChatMessage(text: aiReply, isUser: false));
+            _messages.add(_buildAiMessage(aiReply));
 
             final candidates = data['location_candidates'] as List<dynamic>?;
 
@@ -530,7 +549,11 @@ class ChatWidgetState extends State<ChatWidget> {
               );
             } else {
               // Single high-confidence match — show card with address + confirm/reject
-              final det = data['location_details'] as Map<String, dynamic>?;
+              // Fallback: if backend sent 1 candidate without location_details, use the candidate.
+              final det = (data['location_details'] as Map<String, dynamic>?)
+                  ?? (candidates != null && candidates.length == 1
+                      ? candidates.first as Map<String, dynamic>?
+                      : null);
               final detName = det?['name'] as String? ?? '';
               final detAddress = det?['address'] as String? ?? '';
               final detLat = (det?['lat'] as num?)?.toDouble();
@@ -555,6 +578,21 @@ class ChatWidgetState extends State<ChatWidget> {
                 ),
               );
             }
+          } else if (data['location_not_found'] == true) {
+            // Location not found — show manual input card
+            final failedLocation = (_currentContext?['location'] as String?) ?? '';
+            if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
+            _messages.add(
+              LocationManualInputMessage(
+                initialValue: failedLocation,
+                onConfirm: (String address, double? lat, double? lon) {
+                  _currentContext ??= {};
+                  _currentContext!['location'] = address;
+                  _conversationHistory.add({'role': 'user', 'content': '手動輸入地址：$address'});
+                  _sendMessage(forceCreate: true, overrideLat: lat, overrideLon: lon);
+                },
+              ),
+            );
           } else {
             // Normal reply or schedule created
             if (data['schedule'] != null) {
@@ -562,9 +600,9 @@ class ChatWidgetState extends State<ChatWidget> {
               final successMsg = aiReply.isNotEmpty
                   ? aiReply
                   : '✅ ${scheduleTitle.isNotEmpty ? 'scheduleCreatedWithTitle'.tr(namedArgs: {'title': scheduleTitle}) : 'scheduleCreated'.tr()}';
-              _messages.add(ChatMessage(text: successMsg, isUser: false));
+              _messages.add(_buildAiMessage(successMsg));
             } else if (aiReply.isNotEmpty) {
-              _messages.add(ChatMessage(text: aiReply, isUser: false));
+              _messages.add(_buildAiMessage(aiReply));
             }
           }
 
@@ -754,55 +792,170 @@ class ChatWidgetState extends State<ChatWidget> {
   }
 }
 
-class ChatMessage extends StatelessWidget {
+class ChatMessage extends StatefulWidget {
   final String text;
   final bool isUser;
+  final void Function(bool isGood, String? correction)? onFeedback;
 
-  const ChatMessage({super.key, required this.text, required this.isUser});
+  const ChatMessage({super.key, required this.text, required this.isUser, this.onFeedback});
+
+  @override
+  State<ChatMessage> createState() => _ChatMessageState();
+}
+
+class _ChatMessageState extends State<ChatMessage> {
+  bool? _feedbackGiven;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: isUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: widget.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (!isUser) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.grey[200],
-              child: Icon(Icons.assistant, size: 16, color: Colors.black87),
-            ),
-            SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isUser ? Colors.black : Colors.grey[200],
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: isUser ? Colors.white : Colors.black87,
-                  fontSize: 15,
+          Row(
+            mainAxisAlignment: widget.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!widget.isUser) ...[
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.grey[200],
+                  child: Icon(Icons.assistant, size: 16, color: Colors.black87),
+                ),
+                SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: widget.isUser ? Colors.black : Colors.grey[200],
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    widget.text,
+                    style: TextStyle(
+                      color: widget.isUser ? Colors.white : Colors.black87,
+                      fontSize: 15,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              if (widget.isUser) ...[
+                SizedBox(width: 8),
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.grey[300],
+                  child: Icon(Icons.person, size: 16, color: Colors.black87),
+                ),
+              ],
+            ],
           ),
-          if (isUser) ...[
-            SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.grey[300],
-              child: Icon(Icons.person, size: 16, color: Colors.black87),
+          if (!widget.isUser && widget.onFeedback != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 40, top: 2),
+              child: _feedbackGiven != null
+                  ? Text('感謝反饋', style: TextStyle(fontSize: 11, color: Colors.grey))
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _FeedbackButton(
+                          icon: Icons.thumb_up_outlined,
+                          color: Colors.green,
+                          onTap: () {
+                            setState(() => _feedbackGiven = true);
+                            widget.onFeedback!(true, null);
+                          },
+                        ),
+                        SizedBox(width: 4),
+                        _FeedbackButton(
+                          icon: Icons.thumb_down_outlined,
+                          color: Colors.red,
+                          onTap: () => _showCorrectionDialog(context),
+                        ),
+                      ],
+                    ),
             ),
-          ],
         ],
+      ),
+    );
+  }
+
+  void _showCorrectionDialog(BuildContext ctx) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: ctx,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('AI 回答有誤？'),
+        content: _CorrectionField(controller: ctrl),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dCtx);
+              setState(() => _feedbackGiven = false);
+              final correction = ctrl.text.trim();
+              widget.onFeedback!(false, correction.isEmpty ? null : correction);
+            },
+            child: const Text('送出'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CorrectionField extends StatefulWidget {
+  final TextEditingController controller;
+  const _CorrectionField({required this.controller});
+
+  @override
+  State<_CorrectionField> createState() => _CorrectionFieldState();
+}
+
+class _CorrectionFieldState extends State<_CorrectionField> {
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 350), () {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: widget.controller,
+      focusNode: _focusNode,
+      decoration: const InputDecoration(hintText: '正確答案是...（可不填）'),
+      maxLines: 3,
+    );
+  }
+}
+
+class _FeedbackButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _FeedbackButton({required this.icon, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(icon, size: 16, color: color),
       ),
     );
   }
@@ -1206,6 +1359,209 @@ class _LocationConfirmMessageState extends State<LocationConfirmMessage> {
             icon: const Icon(Icons.map, size: 16),
             label: Text('changeLocation'.tr()),
             style: TextButton.styleFrom(foregroundColor: Colors.black54),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Reverse-geocode via Nominatim. Returns display_name or "lat, lon" on failure.
+Future<String> _reverseGeocode(double lat, double lon) async {
+  try {
+    final uri = Uri.parse(
+      'https://nominatim.openstreetmap.org/reverse'
+      '?lat=$lat&lon=$lon&format=json&accept-language=zh-TW',
+    );
+    final resp = await http
+        .get(uri, headers: {'User-Agent': 'ScheduleManagementApp/1.0'})
+        .timeout(const Duration(seconds: 6));
+    if (resp.statusCode == 200) {
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      return (data['display_name'] as String?) ?? '$lat, $lon';
+    }
+  } catch (_) {}
+  return '$lat, $lon';
+}
+
+/// Card shown when the AI cannot find the location.
+/// Pre-fills the original location text so the user can edit and confirm.
+/// GPS button auto-fills via reverse geocoding.
+class LocationManualInputMessage extends StatefulWidget {
+  final String initialValue;
+  // address, lat (nullable), lon (nullable)
+  final void Function(String address, double? lat, double? lon) onConfirm;
+
+  const LocationManualInputMessage({
+    super.key,
+    required this.initialValue,
+    required this.onConfirm,
+  });
+
+  @override
+  State<LocationManualInputMessage> createState() => _LocationManualInputMessageState();
+}
+
+class _LocationManualInputMessageState extends State<LocationManualInputMessage> {
+  late final TextEditingController _ctrl;
+  final FocusNode _focusNode = FocusNode();
+  bool _submitted = false;
+  bool _locating = false;
+  double? _lat;
+  double? _lon;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialValue);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final address = _ctrl.text.trim();
+    if (address.isEmpty) return;
+    setState(() => _submitted = true);
+    widget.onConfirm(address, _lat, _lon);
+  }
+
+  Future<void> _useCurrentLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('locationServiceDisabled'.tr())),
+        );
+      }
+      return;
+    }
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('locationPermissionDenied'.tr())),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _locating = true;
+      _ctrl.text = 'locating'.tr();
+    });
+
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      final address = await _reverseGeocode(pos.latitude, pos.longitude);
+      if (mounted) {
+        setState(() {
+          _ctrl.text = address;
+          _lat = pos.latitude;
+          _lon = pos.longitude;
+          _locating = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _locating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('locationFailed'.tr())),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_off, color: Colors.orange.shade700, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'locationNotFound'.tr(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange.shade800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _ctrl,
+            focusNode: _focusNode,
+            enabled: !_submitted && !_locating,
+            decoration: InputDecoration(
+              hintText: 'enterAddressHint'.tr(),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              isDense: true,
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_submitted || _locating) ? null : _useCurrentLocation,
+                  icon: _locating
+                      ? const SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location, size: 15),
+                  label: Text(_locating ? 'locating'.tr() : 'useCurrentLocation'.tr(),
+                      style: const TextStyle(fontSize: 13)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: (_submitted || _locating) ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: Text('confirmAddress'.tr()),
+                ),
+              ),
+            ],
           ),
         ],
       ),

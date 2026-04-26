@@ -275,5 +275,13 @@
   "codeSentSuccess": "If the email is registered, a verification code has been sent. Please check your inbox.",
   "sendFailed": "Send failed: {error}",
   "passwordResetSuccess": "Password reset successful. Please login again.",
-  "resetFailed": "Reset failed: {error}"
+  "resetFailed": "Reset failed: {error}",
+  "locationNotFound": "Location not found. Please enter the full address manually.",
+  "enterAddressHint": "e.g. 12 Songshou Rd, Xinyi District, Taipei",
+  "confirmAddress": "Confirm Address",
+  "useCurrentLocation": "Use GPS",
+  "locating": "Locating...",
+  "locationPermissionDenied": "Location permission denied",
+  "locationServiceDisabled": "Location service is disabled",
+  "locationFailed": "Location failed, please enter address manually"
 }
