@@ -8,6 +8,12 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
+# HuggingFace Inference
+try:
+    from huggingface_hub import InferenceClient
+except ImportError:
+    InferenceClient = None
+
 
 # ── Pydantic schema for instructor fallback ───────────────────────────────────
 class ScheduleAction(BaseModel):
@@ -16,6 +22,23 @@ class ScheduleAction(BaseModel):
     updated_data: dict = Field(default_factory=dict)
     is_complete: bool = False
     reply: str = ""
+
+
+# ── Mock response classes for HuggingFace compatibility ──────────────────
+class _MockMessage:
+    def __init__(self, text: str):
+        self.content = text
+        self.tool_calls = None
+
+
+class _MockChoice:
+    def __init__(self, text: str):
+        self.message = _MockMessage(text)
+
+
+class _MockResponse:
+    def __init__(self, text: str):
+        self.choices = [_MockChoice(text)]
 
 
 class AIService:
@@ -32,42 +55,31 @@ class AIService:
 
         self._providers: list[tuple] = []  # (client, model_name, label)
 
-        # ── Provider cascade order: quality first, reliable free tiers as fallback ──
-        # Cerebras: best quality, fast; Groq: most stable free tier; Gemini: good but quota;
-        # OpenRouter: free but rate-limited; Cloudflare: cold-start prone → last resort
+        # ── Provider cascade: HuggingFace 優先（無配額限制）──
+        # HuggingFace (主力，免費無限) → Groq (備援) → Cerebras (備援) → Gemini (最終)
+        hf_key = os.getenv("HUGGINGFACE_API_KEY")
+
+        if hf_key and InferenceClient:
+            try:
+                hf_client = InferenceClient(api_key=hf_key)
+                # 使用 Mistral-Large（HuggingFace 推薦的開源模型，自動選擇最適版本）
+                self._providers.append((hf_client, "mistralai/Mistral-Large-Instruct-2407", "HuggingFace/Mistral-Large"))
+            except Exception as e:
+                print(f"[AIService] HuggingFace init failed: {e}")
+
+        if groq_key:
+            _groq = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
+            self._providers.append((_groq, "llama-3.3-70b-versatile", "Groq/llama-3.3-70b"))
         if cerebras_key:
             self._providers.append((
                 OpenAI(api_key=cerebras_key, base_url="https://api.cerebras.ai/v1"),
                 "qwen-3-235b-a22b-instruct-2507", "Cerebras/qwen-3-235b",
             ))
-        if groq_key:
-            _groq = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
-            self._providers.append((_groq, "llama-3.3-70b-versatile", "Groq/llama-3.3-70b"))
         if gemini_key:
             self._providers.append((
                 OpenAI(api_key=gemini_key,
                        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"),
                 "gemini-2.0-flash", "Gemini/gemini-2.0-flash",
-            ))
-        if openrouter_key:
-            _or_client = OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1",
-                                default_headers={"HTTP-Referer": "https://schedule-app",
-                                                 "X-Title": "ScheduleAI"})
-            self._providers.append((_or_client, "meta-llama/llama-3.3-70b-instruct:free",
-                                    "OpenRouter/llama-3.3-70b:free"))
-        if groq_key:
-            _groq = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
-            self._providers.append((_groq, "llama-3.1-8b-instant", "Groq/llama-3.1-8b"))
-        if together_key:
-            self._providers.append((
-                OpenAI(api_key=together_key, base_url="https://api.together.xyz/v1"),
-                "meta-llama/Llama-3.3-70B-Instruct-Turbo", "Together/llama-3.3-70b",
-            ))
-        if cf_account and cf_token:
-            self._providers.append((
-                OpenAI(api_key=cf_token,
-                       base_url=f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1"),
-                "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "Cloudflare/llama-3.3-70b",
             ))
 
         if not self._providers:
@@ -75,7 +87,7 @@ class AIService:
 
         # Default client/model = first available provider
         self.client, self.model_name, _ = self._providers[0]
-        self.api_key = self.client.api_key
+        self.api_key = getattr(self.client, "api_key", None)  # HuggingFace doesn't have api_key attribute
         labels = " → ".join(p[2] for p in self._providers)
         print(f"[AIService] Cascade ({len(self._providers)}): {labels}")
 
@@ -226,7 +238,7 @@ class AIService:
                         "location": {"type": "string"},
                         "description": {"type": "string"},
                         "participants": {"type": "array", "items": {"type": "string"}},
-                        "reply": {"type": "string", "description": "給用戶的確認訊息"}
+                        "reply": {"type": "string", "description": "給用戶的一句確認訊息（只說建立了什麼，禁止加引導語或建議）"}
                     },
                     "required": ["title", "start_time", "end_time", "location", "reply"]
                 }
@@ -265,7 +277,7 @@ class AIService:
                             "type": "boolean",
                             "description": "true = 移除全部參與者，改為個人行程（不需指定名字）"
                         },
-                        "reply": {"type": "string", "description": "給用戶的確認訊息"}
+                        "reply": {"type": "string", "description": "給用戶的一句確認訊息（只說改了什麼，禁止加引導語或建議）"}
                     },
                     "required": ["schedule_id", "reply"]
                 }
@@ -389,6 +401,11 @@ class AIService:
         )
 
         import time as _time
+        import re as _re
+
+        def _strip_thinking(text: str) -> str:
+            """Strip <think>...</think> blocks from Qwen-3 thinking mode output."""
+            return _re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
 
         def _should_skip_provider(err: Exception) -> bool:
             """Return True if we should abandon this provider and try the next one."""
@@ -429,7 +446,48 @@ class AIService:
                 try:
                     if _attempt > 0:
                         _time.sleep(1)
-                    if use_tool_calling:
+
+                    # ── HuggingFace special handling ──
+                    if isinstance(_cli, InferenceClient) and InferenceClient:
+                        # Use HuggingFace's chat_completion API (OpenAI-compatible)
+                        try:
+                            response_obj = _cli.chat_completion(
+                                model=_model,
+                                messages=messages + [{
+                                    "role": "system",
+                                    "content": '請以 JSON 回應，格式：{"intent":"create|edit|delete","target_schedule_id":null,"updated_data":{},"is_complete":false,"reply":"回覆內容"}'
+                                }],
+                                max_tokens=1024,
+                                temperature=0.1,
+                            )
+                            # HuggingFace returns dict-like response
+                            response_text = response_obj.choices[0].message.content
+                            response = _MockResponse(response_text)
+                            use_tool_calling = False
+                        except Exception as _hf_err:
+                            # Fallback: try text_generation with plain text prompt
+                            text_prompt = ""
+                            for msg in messages:
+                                role = msg.get("role", "user")
+                                content = msg.get("content", "")
+                                if role == "system":
+                                    text_prompt += f"{content}\n\n"
+                                elif role == "user":
+                                    text_prompt += f"用戶: {content}\n"
+                                elif role == "assistant":
+                                    text_prompt += f"助手: {content}\n"
+
+                            text_prompt += "請以 JSON 回應，格式：{\"intent\":\"create|edit|delete\",\"target_schedule_id\":null,\"updated_data\":{},\"is_complete\":false,\"reply\":\"回覆內容\"}\n\n助手: "
+
+                            response_text = _cli.text_generation(
+                                text_prompt,
+                                max_new_tokens=1024,
+                                temperature=0.1,
+                            )
+
+                            response = _MockResponse(response_text)
+                            use_tool_calling = False
+                    elif use_tool_calling:
                         response = _cli.chat.completions.create(
                             model=_model,
                             messages=messages,
@@ -458,6 +516,14 @@ class AIService:
                 except Exception as _e:
                     last_exception = _e
                     if _should_skip_provider(_e):
+                        # 主力 model（第一順位）限速時：先 sleep 重試一次，仍失敗才報忙碌
+                        if _label == self._providers[0][2]:
+                            if _attempt == 0:
+                                print(f"[AIService] Primary {_label} rate limited → sleep 15s & retry")
+                                _time.sleep(15)
+                                continue  # retry same provider
+                            print(f"[AIService] Primary {_label} rate limited (after retry) → returning busy")
+                            raise RuntimeError("AI_RATE_LIMITED") from _e
                         print(f"[AIService] {_label} skipped ({type(_e).__name__}): {str(_e)[:120]}")
                         break  # move to next provider
                     if use_tool_calling and _is_tool_unsupported(_e):
@@ -504,7 +570,7 @@ class AIService:
                         print(f"[instructor] fallback failed: {_inst_err}")
 
                 # 最終 fallback：手動解析 content
-                content = getattr(msg, "content", "") or ""
+                content = _strip_thinking(getattr(msg, "content", "") or "")
                 if content:
                     try:
                         if content.startswith("```"):
@@ -684,7 +750,7 @@ class AIService:
 
             # ── reply_to_user ────────────────────────────────────────────────
             if fn_name == "reply_to_user":
-                reply_text = args.get("reply", "")
+                reply_text = _strip_thinking(args.get("reply", ""))
                 if is_off_topic(user_message, reply_text):
                     print(f"[AI Guard] off-topic reply intercepted. user={user_message[:60]!r}")
                     reply_text = OFF_TOPIC_REDIRECT
@@ -708,6 +774,65 @@ class AIService:
             return {
                 "updated_data": current_context, "missing_fields": [],
                 "is_complete": False, "reply": "抱歉，系統暫時無法處理，請稍後再試。"
+            }
+
+    def process_conversation_with_provider(
+        self,
+        provider_index: int,
+        user_message: str,
+        current_context: dict = None,
+        conversation_history: list = None,
+        schedule_list: list = None,
+        memory_snippets: list = None,
+        contact_hints: list = None,
+    ) -> dict:
+        """
+        Process conversation using a specific provider (for model comparison).
+        provider_index: 0=first provider, 1=second, etc.
+        """
+        if provider_index >= len(self._providers):
+            return {"error": f"Provider index {provider_index} out of range"}
+
+        # Use the specified provider only, no cascade
+        try:
+            _cli, _model, _label = self._providers[provider_index]
+            print(f"[compare] Using {_label} (index {provider_index})")
+
+            # Reuse the same process_conversation logic but with single provider
+            # by temporarily replacing _providers
+            original_providers = self._providers
+            self._providers = [(_cli, _model, _label)]
+            self.client = _cli
+            self.model_name = _model
+
+            result = self.process_conversation(
+                user_message=user_message,
+                current_context=current_context,
+                conversation_history=conversation_history,
+                schedule_list=schedule_list,
+                memory_snippets=memory_snippets,
+                contact_hints=contact_hints,
+            )
+
+            # Restore original providers
+            self._providers = original_providers
+            self.client = original_providers[0][0]
+            self.model_name = original_providers[0][1]
+
+            return result
+        except Exception as e:
+            self._providers = original_providers
+            self.client = original_providers[0][0]
+            self.model_name = original_providers[0][1]
+            err_msg = str(e)[:200]
+            return {
+                "error": err_msg,
+                "intent": "ERROR",
+                "target_schedule_id": None,
+                "updated_data": current_context or {},
+                "missing_fields": [],
+                "is_complete": False,
+                "reply": f"[ERROR] {err_msg}",
             }
 
 ai_service = AIService()
