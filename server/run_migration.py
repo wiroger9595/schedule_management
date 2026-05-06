@@ -83,6 +83,39 @@ migrations = [
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
     """,
+
+    # ── AI 測試結果（用於追踪模型改進） ──────────────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.ai_test_result (
+        id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        test_case_id VARCHAR(64) NOT NULL,
+        category VARCHAR(32) NOT NULL,
+        user_message TEXT NOT NULL,
+        expected_intent VARCHAR(32) NOT NULL,
+        expected_complete BOOLEAN NOT NULL,
+        model_name VARCHAR(128) NOT NULL,
+        actual_intent VARCHAR(32),
+        actual_complete BOOLEAN,
+        model_reply TEXT,
+        passed BOOLEAN NOT NULL,
+        quality_score FLOAT NOT NULL,
+        duration_ms FLOAT NOT NULL,
+        errors TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_ai_test_result_category
+    ON schedule_management.ai_test_result (category);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_ai_test_result_passed
+    ON schedule_management.ai_test_result (passed);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_ai_test_result_model
+    ON schedule_management.ai_test_result (model_name);
+    """,
 ]
 
 with engine.connect() as conn:

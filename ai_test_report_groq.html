@@ -1,0 +1,1071 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>AI 行程助理優化報告</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+                h1 { color: #333; border-bottom: 3px solid #4CAF50; padding-bottom: 10px; }
+                h2 { color: #555; margin-top: 30px; }
+                table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+                th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+                th { background: #4CAF50; color: white; }
+                tr:hover { background: #f5f5f5; }
+                .pass { background: #d4edda; color: #155724; }
+                .fail { background: #f8d7da; color: #721c24; }
+                .score-high { color: #28a745; font-weight: bold; }
+                .score-med { color: #ffc107; font-weight: bold; }
+                .score-low { color: #dc3545; font-weight: bold; }
+                .recommendation { background: #e7f3ff; border-left: 4px solid #2196F3; padding: 10px; margin: 10px 0; }
+                .error { color: #d32f2f; font-size: 0.9em; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🤖 AI 行程助理優化報告</h1>
+                <p>生成時間: 2026-05-05 10:32:13</p>
+
+                <h2>📊 整體概況</h2>
+                <table>
+                    <tr>
+                        <th>模型</th>
+                        <th>通過率</th>
+                        <th>平均分數</th>
+                        <th>平均時間</th>
+                    </tr>
+        
+                    <tr>
+                        <td>Groq/llama-3.3-70b</td>
+                        <td>0.0% (0/90)</td>
+                        <td><span class="score-high">69.8</span></td>
+                        <td>4.9 ms</td>
+                    </tr>
+            
+                </table>
+
+                <h2>📈 按類別分析</h2>
+                <table>
+                    <tr>
+                        <th>類別</th>
+                        <th>通過率</th>
+                        <th>常見問題</th>
+                    </tr>
+        
+                    <tr>
+                        <td><strong>intent</strong></td>
+                        <td>0% (0/14)</td>
+                        <td>
+        <div class='error'>• [ai_service.error] Invalid format specifier '"..."' for object of type 'str'</div><div class='error'>• Intent mismatch: expected edit, got ERROR</div><div class='error'>• Completeness mismatch: expected True, got False</div>
+                        </td>
+                    </tr>
+            
+                    <tr>
+                        <td><strong>past_schedule</strong></td>
+                        <td>0% (0/8)</td>
+                        <td>
+        <div class='error'>• Completeness mismatch: expected True, got False</div><div class='error'>• [ai_service.error] Invalid format specifier '"..."' for object of type 'str'</div><div class='error'>• Intent mismatch: expected delete, got ERROR</div>
+                        </td>
+                    </tr>
+            
+                    <tr>
+                        <td><strong>location</strong></td>
+                        <td>0% (0/12)</td>
+                        <td>
+        <div class='error'>• Completeness mismatch: expected True, got False</div><div class='error'>• [ai_service.error] Invalid format specifier '"..."' for object of type 'str'</div><div class='error'>• Intent mismatch: expected create, got ERROR</div>
+                        </td>
+                    </tr>
+            
+                    <tr>
+                        <td><strong>participants</strong></td>
+                        <td>0% (0/12)</td>
+                        <td>
+        <div class='error'>• Completeness mismatch: expected True, got False</div><div class='error'>• [ai_service.error] Invalid format specifier '"..."' for object of type 'str'</div><div class='error'>• Intent mismatch: expected create, got ERROR</div>
+                        </td>
+                    </tr>
+            
+                    <tr>
+                        <td><strong>parsing</strong></td>
+                        <td>0% (0/14)</td>
+                        <td>
+        <div class='error'>• Completeness mismatch: expected True, got False</div><div class='error'>• [ai_service.error] Invalid format specifier '"..."' for object of type 'str'</div><div class='error'>• Intent mismatch: expected create, got ERROR</div>
+                        </td>
+                    </tr>
+            
+                    <tr>
+                        <td><strong>edge_case</strong></td>
+                        <td>0% (0/30)</td>
+                        <td>
+        <div class='error'>• [ai_service.error] Invalid format specifier '"..."' for object of type 'str'</div><div class='error'>• Intent mismatch: expected edit, got ERROR</div><div class='error'>• Completeness mismatch: expected True, got False</div>
+                        </td>
+                    </tr>
+            
+                </table>
+
+                <h2>🔍 詳細測試結果</h2>
+        <h3>Groq/llama-3.3-70b</h3><table>
+                <tr>
+                    <th>測試名稱</th>
+                    <th>類別</th>
+                    <th>意圖</th>
+                    <th>完整</th>
+                    <th>分數</th>
+                    <th>狀態</th>
+                    <th>時間</th>
+                </tr>
+            
+                <tr>
+                    <td>相對日期 - 明天</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.6ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>相對日期 - 後天</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>週日期 - 下禮拜五</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.8ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>時間段 - 下午</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>建立 - 清楚的建立請求</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>10.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>編輯 - 改時間</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>34.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>刪除 - 明確的刪除</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected delete, got ERROR</td></tr>
+                <tr>
+                    <td>查詢 - 列出行程</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>9.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected query, got ERROR</td></tr>
+                <tr>
+                    <td>明確地點</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.9ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>模糊地點 - 品牌</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>線上會議</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.9ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>修改過去行程 - 保留日期</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>修改過去行程 - 改到未來</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>5.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>單一參與者</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>多個參與者</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.9ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>移除參與者</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>5.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>模糊的「那個」</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>15.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>同名聯絡人</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>21.9ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>缺少關鍵信息</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>離題問題</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected query, got ERROR</td></tr>
+                <tr>
+                    <td>相對時間 - 一小時後</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>36.5ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>時間範圍 - 整個下午</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>14.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>時間修飾 - 大概中午</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>農曆日期 - 初一</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>5.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>時間 - 周末</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>5.5ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>時間 - 傍晚5點到7點</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>時間 - 連續兩天</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>12.5ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>時間 - 月末</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>8.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>時間 - 季度末</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>7.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>時間 - 假期</td>
+                    <td>parsing</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>0.8ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>建立 - 用請求語句</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>編輯 - 更改</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>10.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>編輯 - 換</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>5.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>刪除 - 取消</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.8ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected delete, got ERROR</td></tr>
+                <tr>
+                    <td>刪除 - 去掉</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected delete, got ERROR</td></tr>
+                <tr>
+                    <td>查詢 - 我今天幾點有行程</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected query, got ERROR</td></tr>
+                <tr>
+                    <td>查詢 - 列出</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected query, got ERROR</td></tr>
+                <tr>
+                    <td>查詢 - 檢查</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected query, got ERROR</td></tr>
+                <tr>
+                    <td>編輯 - 加入</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>編輯 - 移除</td>
+                    <td>intent</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>線上 + 地點混合</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>連鎖店分店 - 全家</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>地標 - 百貨公司</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>公共交通站點</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>家裡（地點）</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>5.6ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>辦公室</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.9ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>戶外位置 - 公園</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.8ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>不確定的地點</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>10.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>多個地點</td>
+                    <td>location</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>多人同時邀請</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>移除特定人</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>8.6ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>新增參與者（複數）</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>臨時參與者</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>移除所有人（個人行程）</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>8.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>昵稱識別</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.5ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>公司團隊參與</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>可選參與者</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>家庭成員</td>
+                    <td>participants</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>過去行程改時間（同日）</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>6.5ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>過去行程改時間（不同日期）</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.6ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR</td></tr>
+                <tr>
+                    <td>過去行程改參與者</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>過去行程改地點</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.6ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>過去行程更名</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>過去行程刪除</td>
+                    <td>past_schedule</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected delete, got ERROR</td></tr>
+                <tr>
+                    <td>全小寫輸入</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.8ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>使用數字日期</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>無空格連貫</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>繁簡混用</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>重複訊息</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>過度詳細</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>反問式請求</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected query, got ERROR</td></tr>
+                <tr>
+                    <td>非常簡短</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>只有人名</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>9.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>不相關的後續</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected query, got ERROR</td></tr>
+                <tr>
+                    <td>時間戳記</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>自然語言混雜</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>長句子</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>缺少主語</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>0.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>條件性要求</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>多語言混用</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>日常咖啡約</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>工作會議</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>健身房</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>3.5ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>家務提醒</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>6.1ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>醫療預約</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.4ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>交通運輸</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>4.0ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>家庭聚餐</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.3ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>演唱會門票</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">60</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.7ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR, Completeness mismatch: expected True, got False</td></tr>
+                <tr>
+                    <td>提交截止日期</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>2.2ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr>
+                <tr>
+                    <td>旅遊行程</td>
+                    <td>edge_case</td>
+                    <td>ERROR</td>
+                    <td>✗</td>
+                    <td><span class="score-med">75</span></td>
+                    <td class="fail">✗</td>
+                    <td>1.8ms</td>
+                </tr>
+                <tr><td colspan='7' class='error'>錯誤: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected create, got ERROR</td></tr></table>
+                <h2>💡 優化建議</h2>
+        
+                <div class="recommendation">
+                    <strong>🔴 整體識別率過低</strong><br>
+                    失敗率 100%，需要重新審視 prompt 和約束。<br>
+                    <small>優先度: 高</small>
+                </div>
+            
+                <div class="recommendation">
+                    <strong>⚠️ intent 識別不佳</strong><br>
+                    此類別通過率僅 0%，常見問題: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR<br>
+                    <small>優先度: 中</small>
+                </div>
+            
+                <div class="recommendation">
+                    <strong>⚠️ past_schedule 識別不佳</strong><br>
+                    此類別通過率僅 0%，常見問題: Completeness mismatch: expected True, got False, [ai_service.error] Invalid format specifier '"..."' for object of type 'str'<br>
+                    <small>優先度: 中</small>
+                </div>
+            
+                <div class="recommendation">
+                    <strong>⚠️ location 識別不佳</strong><br>
+                    此類別通過率僅 0%，常見問題: Completeness mismatch: expected True, got False, [ai_service.error] Invalid format specifier '"..."' for object of type 'str'<br>
+                    <small>優先度: 中</small>
+                </div>
+            
+                <div class="recommendation">
+                    <strong>⚠️ participants 識別不佳</strong><br>
+                    此類別通過率僅 0%，常見問題: Completeness mismatch: expected True, got False, [ai_service.error] Invalid format specifier '"..."' for object of type 'str'<br>
+                    <small>優先度: 中</small>
+                </div>
+            
+                <div class="recommendation">
+                    <strong>⚠️ parsing 識別不佳</strong><br>
+                    此類別通過率僅 0%，常見問題: Completeness mismatch: expected True, got False, [ai_service.error] Invalid format specifier '"..."' for object of type 'str'<br>
+                    <small>優先度: 中</small>
+                </div>
+            
+                <div class="recommendation">
+                    <strong>⚠️ edge_case 識別不佳</strong><br>
+                    此類別通過率僅 0%，常見問題: [ai_service.error] Invalid format specifier '"..."' for object of type 'str', Intent mismatch: expected edit, got ERROR<br>
+                    <small>優先度: 中</small>
+                </div>
+            
+                <div class="recommendation">
+                    <strong>🤖 Groq/llama-3.3-70b 表現差</strong><br>
+                    此模型通過率僅 0%，建議降低優先度或考慮替換。<br>
+                    <small>優先度: 高</small>
+                </div>
+            
+            </div>
+        </body>
+        </html>
+        

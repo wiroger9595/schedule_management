@@ -55,7 +55,7 @@ class AIService:
 
         self._providers: list[tuple] = []  # (client, model_name, label)
 
-        # ── Provider cascade: HuggingFace 優先（無配額限制）──
+        # ── Provider cascade: HuggingFace 優先（測試對象）→ Groq → Cerebras → Gemini ──
         # HuggingFace (主力，免費無限) → Groq (備援) → Cerebras (備援) → Gemini (最終)
         hf_key = os.getenv("HUGGINGFACE_API_KEY")
 
@@ -81,6 +81,15 @@ class AIService:
                        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"),
                 "gemini-2.0-flash", "Gemini/gemini-2.0-flash",
             ))
+
+        # ── HuggingFace (備援)
+        hf_key = os.getenv("HUGGINGFACE_API_KEY")
+        if hf_key and InferenceClient:
+            try:
+                hf_client = InferenceClient(api_key=hf_key)
+                self._providers.append((hf_client, "mistralai/Mistral-Large-Instruct-2407", "HuggingFace/Mistral-Large"))
+            except Exception as e:
+                print(f"[AIService] HuggingFace init failed: {e}")
 
         if not self._providers:
             raise ValueError("需要設定至少一個 AI API Key")
@@ -410,6 +419,11 @@ class AIService:
         def _should_skip_provider(err: Exception) -> bool:
             """Return True if we should abandon this provider and try the next one."""
             s = str(err)
+
+            # HuggingFace model support issues (check first, specific)
+            if any(k in s for k in ("doesn't support task", "does not support task")):
+                return True
+
             # Rate / capacity / availability
             if any(k in s for k in (
                 "429", "queue_exceeded", "too_many_requests",
@@ -423,6 +437,8 @@ class AIService:
                 "Connection error", "connection error",
                 "timed out", "timeout", "Timeout",
                 "RemoteProtocolError", "ReadTimeout",
+                # Other unsupported scenarios
+                "unsupported", "Unsupported",
             )):
                 return True
             # Auth / key errors
@@ -436,6 +452,11 @@ class AIService:
         def _is_tool_unsupported(err: Exception) -> bool:
             s = str(err).lower()
             return any(k in s for k in ("tool", "function_call", "tool_choice"))
+
+        def _is_model_unsupported(err: Exception) -> bool:
+            """Check if error is due to model/task not being supported (immediate skip, don't retry)."""
+            s = str(err)
+            return any(k in s for k in ("doesn't support task", "does not support task"))
 
         last_exception = None
         response = None
@@ -516,6 +537,10 @@ class AIService:
                 except Exception as _e:
                     last_exception = _e
                     if _should_skip_provider(_e):
+                        # 模型不支持的錯誤：直接跳過，不重試
+                        if _is_model_unsupported(_e):
+                            print(f"[AIService] {_label} model not supported, skipping: {str(_e)[:80]}")
+                            break  # move to next provider
                         # 主力 model（第一順位）限速時：先 sleep 重試一次，仍失敗才報忙碌
                         if _label == self._providers[0][2]:
                             if _attempt == 0:

@@ -830,16 +830,14 @@ def chat_schedule(
             "longitude": _pending_lon,
         })
 
-    # ── Auto-confirm past-edit when user continues typing after warning ───────
-    # If _pending_past_edit_id is stored in context (guard already shown once),
-    # treat any subsequent user message as implicit confirmation to proceed.
+    # ── Past-edit context tracking ────────────────────────────────────────────
     _pending_past_id = current_context.get("_pending_past_edit_id")
-    if _pending_past_id and not request.confirm_past_edit:
-        request = request.model_copy(update={"confirm_past_edit": True})
+    # _auto_past_confirmed: user typed a new message after the past-edit warning.
+    # We run the graph to process any new input (e.g. a new future date),
+    # then skip the past-edit guard in the DB section.
+    _auto_past_confirmed = bool(_pending_past_id and not request.confirm_past_edit)
 
-    # ── confirm_past_edit=True: user approved editing a past schedule ────────
-    # Skip the graph — location was already validated in the previous turn.
-    # Re-running the graph would re-trigger location confirmation.
+    # ── confirm_past_edit=True (explicit button click): skip graph ────────────
     if request.confirm_past_edit and current_context.get("_pending_past_edit_id"):
         updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
         is_complete = True
@@ -946,6 +944,15 @@ def chat_schedule(
         location_not_found = graph_state.get("location_not_found", False)
         intent = graph_state.get("intent", "create")
         target_schedule_id = graph_state.get("target_schedule_id")
+
+        # ── Preserve _pending_past_edit_id when auto-confirming but AI needs more info ──
+        # Without this, if the user types after the past-edit warning and the AI still
+        # asks a follow-up question, the confirmation context would be lost.
+        if _auto_past_confirmed and not is_complete and _pending_past_id:
+            updated_data = dict(updated_data)
+            updated_data["_pending_past_edit_id"] = _pending_past_id
+            if not updated_data.get("_pending_edit_schedule_id"):
+                updated_data["_pending_edit_schedule_id"] = _pending_past_id
 
         # ── Delete intent: return confirm prompt to frontend ──────────────────
         if intent == "delete":
@@ -1347,7 +1354,8 @@ def chat_schedule(
                             _s_time = None
                     if _s_time:
                         _s_aware = _s_time.replace(tzinfo=_tz(_td(hours=8))) if _s_time.tzinfo is None else _s_time
-                        if _s_aware < _taipei_now and not request.confirm_past_edit:
+                        # Skip guard if user already confirmed (button click or auto-confirm via new message)
+                        if _s_aware < _taipei_now and not request.confirm_past_edit and not _auto_past_confirmed:
                             _past_info = {
                                 "id": existing.schedule_id,
                                 "title": existing.title,
@@ -1358,20 +1366,44 @@ def chat_schedule(
                             _h = _t.hour
                             _p = "上午" if 6 <= _h < 12 else "中午" if 12 <= _h < 14 else "下午" if 14 <= _h < 18 else "晚上" if 18 <= _h < 22 else "深夜"
                             _past_str = f"{_t.month}月{_t.day}日 {_p}{_display_hour(_h)}點"
-                            # 儲存至 context，讓用戶下一則訊息自動確認（不必再點按鈕）
-                            _warn_data = dict(updated_data)
-                            _warn_data["_pending_past_edit_id"] = existing.schedule_id
-                            # Preserve validated coords so confirm_past_edit bypass skips re-validation
-                            if location_lat:
-                                _warn_data["latitude"] = location_lat
-                            if location_lon:
-                                _warn_data["longitude"] = location_lon
-                            return ChatResponse(
-                                ai_reply=f"「{existing.title}」是 {_past_str} 的行程，已經過去了，確定要修改嗎？",
-                                updated_data=_warn_data,
-                                is_complete=False,
-                                confirm_past_edit=_past_info,
-                            )
+
+                            # If the new start_time is also in the past (AI kept original past date,
+                            # only replaced time) → ask user to specify a future date instead of confirming.
+                            _new_st_str = updated_data.get("start_time")
+                            _new_time_also_past = False
+                            if _new_st_str:
+                                try:
+                                    _new_dt = datetime.fromisoformat(_new_st_str)
+                                    _new_aware = _new_dt.replace(tzinfo=_tz(_td(hours=8))) if _new_dt.tzinfo is None else _new_dt
+                                    _new_time_also_past = _new_aware < _taipei_now
+                                except Exception:
+                                    pass
+
+                            if _new_time_also_past:
+                                # New time is also past — ask user for a future date/time
+                                _ask_data = {k: v for k, v in updated_data.items() if k not in ("start_time", "end_time")}
+                                _ask_data["_pending_past_edit_id"] = existing.schedule_id
+                                _ask_data["_pending_edit_schedule_id"] = existing.schedule_id
+                                return ChatResponse(
+                                    ai_reply=f"「{existing.title}」原本是 {_past_str} 的行程，時間已過去了。請問您想改到什麼時候呢？",
+                                    updated_data=_ask_data,
+                                    is_complete=False,
+                                )
+                            else:
+                                # New time is future (or only non-time fields changed) — standard confirmation
+                                _warn_data = dict(updated_data)
+                                _warn_data["_pending_past_edit_id"] = existing.schedule_id
+                                _warn_data["_pending_edit_schedule_id"] = existing.schedule_id
+                                if location_lat:
+                                    _warn_data["latitude"] = location_lat
+                                if location_lon:
+                                    _warn_data["longitude"] = location_lon
+                                return ChatResponse(
+                                    ai_reply=f"「{existing.title}」是 {_past_str} 的行程，已經過去了，確定要修改嗎？",
+                                    updated_data=_warn_data,
+                                    is_complete=False,
+                                    confirm_past_edit=_past_info,
+                                )
                     # Only update fields that were explicitly provided in updated_data
                     if updated_data.get("title"): existing.title = updated_data["title"]
                     if updated_data.get("description"): existing.description = updated_data["description"]
@@ -1422,6 +1454,29 @@ def chat_schedule(
                         _summary += "\n" + "\n".join(_change_lines)
                     ai_reply = f"✅ 已為您更新行程！\n{_summary}"
                     print(f"DEBUG [chat]: Schedule updated ID={effective_schedule_id}")
+                    # ── 自動存訓練資料 ────────────────────────────────────────
+                    try:
+                        import json as _json
+                        _train_log = AIFeedback(
+                            user_id=current_user.user_id,
+                            user_message=user_message,
+                            ai_reply=ai_reply,
+                            is_good=True,
+                            model_label="auto",
+                            conversation_json=_json.dumps({
+                                "intent": "edit",
+                                "tool_call": {
+                                    "name": "update_schedule",
+                                    "args": {"schedule_id": effective_schedule_id,
+                                             **{k: v for k, v in updated_data.items() if v is not None}},
+                                },
+                                "history": conversation_history[-6:],
+                            }, ensure_ascii=False),
+                        )
+                        session.add(_train_log)
+                        session.commit()
+                    except Exception:
+                        pass
                     # 更新 embedding（豐富化：加入聯絡人姓名 + 時間語境）
                     try:
                         from ...services.embedding_service import EmbeddingService
@@ -1489,6 +1544,28 @@ def chat_schedule(
                 saved_schedule = saved_schedule_obj.dict()
                 print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
                 ai_reply = f"✅ 已為您建立行程！\n{_fmt_schedule_summary(saved_schedule_obj)}"
+                # ── 自動存訓練資料 ────────────────────────────────────────────
+                try:
+                    import json as _json
+                    _train_log = AIFeedback(
+                        user_id=current_user.user_id,
+                        user_message=user_message,
+                        ai_reply=ai_reply,
+                        is_good=True,
+                        model_label="auto",
+                        conversation_json=_json.dumps({
+                            "intent": "create",
+                            "tool_call": {
+                                "name": "create_schedule",
+                                "args": {k: v for k, v in updated_data.items() if v is not None},
+                            },
+                            "history": conversation_history[-6:],
+                        }, ensure_ascii=False),
+                    )
+                    session.add(_train_log)
+                    session.commit()
+                except Exception:
+                    pass
                 # 產生 embedding（豐富化：加入聯絡人 + 時間語境）
                 _new_cname = ""
                 try:

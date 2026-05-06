@@ -86,3 +86,7 @@ pip install -r requirements.txt
 flutter clean && flutter run --dart-define-from-file=.env
 # Web
 flutter clean && flutter run -d chrome --web-port=7800 --dart-define-from-file=.env
+
+
+// 上版語法
+./deploy.sh
