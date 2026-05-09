@@ -817,18 +817,24 @@ def chat_schedule(
         except Exception:
             pass
 
-    # ── Affirmative text reply when location confirm is pending ──────────────
-    # User typed "是的" / "對" instead of clicking the card button.
-    # Detect and treat as confirm_location=True using stored coords.
+    # ── Affirmative text reply when a confirm is pending ─────────────────────
+    # User typed "是的" / "對" / "確定" instead of clicking the card button.
+    # Detect and treat as the corresponding confirm flag.
     _AFFIRMATIVE = {"是", "是的", "對", "好", "確認", "確定", "ok", "OK", "yes", "沒錯", "正確", "行", "可以"}
+    _is_affirm = user_message.strip() in _AFFIRMATIVE
     _pending_lat = current_context.get("_pending_confirm_lat")
     _pending_lon = current_context.get("_pending_confirm_lon")
-    if (user_message.strip() in _AFFIRMATIVE and _pending_lat and _pending_lon):
+    _pending_past_id_pre = current_context.get("_pending_past_edit_id")
+
+    if _is_affirm and _pending_lat and _pending_lon:
         request = request.model_copy(update={
             "confirm_location": True,
             "latitude": _pending_lat,
             "longitude": _pending_lon,
         })
+    elif _is_affirm and _pending_past_id_pre:
+        # 用戶打字確認過期行程修改（不是按按鈕）
+        request = request.model_copy(update={"confirm_past_edit": True})
 
     # ── Past-edit context tracking ────────────────────────────────────────────
     _pending_past_id = current_context.get("_pending_past_edit_id")
