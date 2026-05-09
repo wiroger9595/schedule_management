@@ -8,9 +8,14 @@ from sqlmodel import select
 from ..models.contact import Contact
 
 
+_FALLBACK_NON_NAMES = {"我", "你", "他", "她", "他們", "大家", "朋友", "同事", "家人",
+                       "老闆", "客戶", "你們", "我們"}
+
 def extract_person_hint(message: str) -> Optional[str]:
-    NON_NAMES = {"我", "你", "他", "她", "他們", "大家", "朋友", "同事", "家人",
-                 "老闆", "客戶", "你們", "我們"}
+    # NON_NAMES 從 lexicon 表動態載入；DB 無資料時 fallback
+    from ..repositories.lexicon_repository import get_lexicon
+    NON_NAMES = get_lexicon("non_name", "zh-TW") or _FALLBACK_NON_NAMES
+
     patterns = [
         r'[與和跟找]([A-Za-z\u4e00-\u9fff]{1,6})(?:見面|開會|吃飯|談|碰面|的行程|的時間|的地點|的約)',
         r'[與和跟找]([A-Za-z\u4e00-\u9fff]{1,6})(?:\s|$|，|,|。|！|？)',
@@ -113,11 +118,15 @@ def fmt_schedule_summary(obj) -> str:
     return "\n".join(lines)
 
 
+_FALLBACK_STOP_WORDS = {"取消", "刪除", "刪掉", "移除", "更改", "修改", "調整", "把", "的", "行程",
+                        "活動", "我", "這個", "請", "幫我", "改到", "延後", "提早"}
+
 def python_match_schedules(message: str, schedules: list) -> list:
     if not schedules:
         return schedules
-    stop_words = {"取消", "刪除", "刪掉", "移除", "更改", "修改", "調整", "把", "的", "行程",
-                  "活動", "我", "這個", "請", "幫我", "改到", "延後", "提早"}
+    # stop_words 從 lexicon 表動態載入；DB 無資料時 fallback
+    from ..repositories.lexicon_repository import get_lexicon
+    stop_words = get_lexicon("stop_word", "zh-TW") or _FALLBACK_STOP_WORDS
     words = [w for w in message if w not in stop_words and len(w.strip()) > 0]
     keyword = "".join(words)
 
