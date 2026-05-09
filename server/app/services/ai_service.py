@@ -387,6 +387,7 @@ class AIService:
 
         schedule_section = build_schedule_section(schedule_list)
         contact_section, memory_section = build_context_sections(_contacts, _mem, current_context or {})
+        # 把 session/user_message 留給 build_system_prompt，讓它從 DB 抓相關 prompt_rule
 
         # ── RAG 相似案例注入 ──────────────────────────────────────────────────
         rag_section = ""
@@ -407,7 +408,15 @@ class AIService:
             except Exception as e:
                 print(f"[AIService] RAG retrieval failed: {str(e)[:80]}")
 
-        system_prompt = build_system_prompt(today, schedule_section, memory_section, contact_section, rag_section)
+        system_prompt = build_system_prompt(
+            today=today,
+            schedule_section=schedule_section,
+            memory_section=memory_section,
+            contact_section=contact_section,
+            rag_section=rag_section,
+            user_message=user_message,
+            session=session,
+        )
 
         # 過濾內部 key（_pre_intent 等）再注入，但保留 hint
         pre_intent = current_context.pop("_pre_intent", None) if current_context else None
