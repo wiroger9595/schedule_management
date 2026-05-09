@@ -53,9 +53,13 @@ class PromptRuleRepository:
         ).all()
 
     def search_relevant(self, user_message: str, language: str = "zh-TW",
-                        top_k: int = 5) -> List[PromptRule]:
-        """Semantic search for top-k rules relevant to user message."""
-        query_emb = EmbeddingService.embed(user_message)
+                        top_k: int = 5, query_embedding=None) -> List[PromptRule]:
+        """Semantic search for top-k rules relevant to user message.
+
+        若提供 query_embedding 則重用（避免重複呼叫 embedding API）。"""
+        if query_embedding is None:
+            query_embedding = EmbeddingService.embed(user_message)
+        query_emb = query_embedding
         return self.session.exec(
             select(PromptRule)
             .where(PromptRule.language == language)

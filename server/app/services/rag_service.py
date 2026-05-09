@@ -17,13 +17,18 @@ class RAGService:
         language: str = "zh-TW",
         intent: Optional[str] = None,
         top_k: int = 5,
+        query_embedding: Optional[List[float]] = None,
     ) -> List[RAGExample]:
-        """Retrieve most relevant training examples for a user message."""
+        """Retrieve most relevant training examples for a user message.
+
+        If query_embedding is provided, skip re-embedding (used for caching across
+        multiple retrievals with same query)."""
         return self.repo.search_similar(
             user_message=user_message,
             language=language,
             intent=intent,
             top_k=top_k,
+            query_embedding=query_embedding,
         )
 
     def format_examples_for_prompt(

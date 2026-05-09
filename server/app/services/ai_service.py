@@ -387,7 +387,15 @@ class AIService:
 
         schedule_section = build_schedule_section(schedule_list)
         contact_section, memory_section = build_context_sections(_contacts, _mem, current_context or {})
-        # 把 session/user_message 留給 build_system_prompt，讓它從 DB 抓相關 prompt_rule
+
+        # ── 預先 embed user_message（給 RAG 和 prompt_rule 共用，省一次 API）──
+        cached_query_embedding = None
+        if session:
+            try:
+                from .embedding_service import EmbeddingService
+                cached_query_embedding = EmbeddingService.embed(user_message)
+            except Exception as e:
+                print(f"[AIService] Pre-embed failed: {str(e)[:80]}")
 
         # ── RAG 相似案例注入 ──────────────────────────────────────────────────
         rag_section = ""
@@ -396,11 +404,11 @@ class AIService:
                 from .rag_service import get_rag_service
                 rag_service = get_rag_service(session)
                 if rag_service.should_use_rag(language):
-                    # 檢索 top 5（多取一些供模型對照）
                     examples = rag_service.get_relevant_examples(
                         user_message=user_message,
                         language=language,
                         top_k=5,
+                        query_embedding=cached_query_embedding,  # 重用 embedding
                     )
                     if examples:
                         rag_section = rag_service.format_examples_for_prompt(examples, language)
@@ -416,6 +424,7 @@ class AIService:
             rag_section=rag_section,
             user_message=user_message,
             session=session,
+            query_embedding=cached_query_embedding,  # 重用 embedding
         )
 
         # 過濾內部 key（_pre_intent 等）再注入，但保留 hint

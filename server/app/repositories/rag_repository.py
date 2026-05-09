@@ -66,9 +66,11 @@ class RAGRepository:
         language: str = "zh-TW",
         intent: str = None,
         top_k: int = 5,
+        query_embedding=None,
     ) -> List[RAGExample]:
         """Search similar examples using vector similarity."""
-        query_embedding = self.embedding_service.embed(user_message)
+        if query_embedding is None:
+            query_embedding = self.embedding_service.embed(user_message)
 
         stmt = select(RAGExample).where(RAGExample.language == language)
         if intent:

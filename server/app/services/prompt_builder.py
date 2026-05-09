@@ -93,11 +93,12 @@ def build_context_sections(contacts: list, memory: list, context: dict) -> tuple
 
 
 def _load_rules_from_db(user_message: str = "", language: str = "zh-TW",
-                        session=None) -> str:
+                        session=None, query_embedding=None) -> str:
     """
     從 DB 載入適用的 prompt rules：
     - 永遠載入 priority >= 100 的規則
     - 按 user_message 相似度檢索 top-3 條件規則
+    - 若提供 query_embedding 則重用（避免重複 embed）
     """
     if not session:
         return ""
@@ -113,7 +114,8 @@ def _load_rules_from_db(user_message: str = "", language: str = "zh-TW",
         conditional = []
         if user_message:
             conditional = repo.search_relevant(
-                user_message=user_message, language=language, top_k=3
+                user_message=user_message, language=language, top_k=3,
+                query_embedding=query_embedding,
             )
 
         all_rules = list(always_on) + list(conditional)
@@ -131,7 +133,8 @@ def build_system_prompt(today: datetime, schedule_section: str,
                         memory_section: str, contact_section: str,
                         rag_section: str = "",
                         user_message: str = "",
-                        session=None) -> str:
+                        session=None,
+                        query_embedding=None) -> str:
     """
     組裝 system prompt。
 
@@ -161,6 +164,7 @@ def build_system_prompt(today: datetime, schedule_section: str,
         user_message=user_message,
         language="zh-TW",
         session=session,
+        query_embedding=query_embedding,
     )
 
     # 若 DB 沒規則（首次啟動或 DB 未種子）→ 使用 fallback 最小規則
