@@ -23,8 +23,17 @@ import numpy as np
 
 _EMBED_DIMS = 512
 
-# 同 provider 失敗後 cooldown（避免每次都重試已掛掉的）
-_FAILURE_COOLDOWN_SEC = 300  # 5 分鐘
+# 同 provider 失敗後 cooldown（從 app_config 讀，預設 300 秒）
+_DEFAULT_FAILURE_COOLDOWN_SEC = 300
+
+def _get_failure_cooldown() -> int:
+    try:
+        from .config_service import config_get
+        return int(config_get("embedding.failure_cooldown_sec",
+                              default=_DEFAULT_FAILURE_COOLDOWN_SEC))
+    except Exception:
+        return _DEFAULT_FAILURE_COOLDOWN_SEC
+
 _provider_failed_until: dict[str, float] = {}
 
 
@@ -183,8 +192,9 @@ def _mark_failed(name: str, error: Exception):
     s = str(error)
     if any(k in s for k in ("402", "429", "rate limit", "Payment Required",
                              "quota", "exhausted", "too many")):
-        _provider_failed_until[name] = time.time() + _FAILURE_COOLDOWN_SEC
-        print(f"[Embedding] {name} rate-limited, cooldown {_FAILURE_COOLDOWN_SEC}s")
+        cooldown = _get_failure_cooldown()
+        _provider_failed_until[name] = time.time() + cooldown
+        print(f"[Embedding] {name} rate-limited, cooldown {cooldown}s")
     elif any(k in s for k in ("400", "401", "API key", "invalid", "expired")):
         # Key 問題 → 整個 session 跳過
         _provider_failed_until[name] = time.time() + 86400  # 24h

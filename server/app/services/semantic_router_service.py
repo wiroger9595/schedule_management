@@ -24,7 +24,15 @@ _FALLBACK_INTENT_EXAMPLES: dict[str, list[str]] = {
     "query":  ["我今天有什麼行程", "查一下我的行程"],
 }
 
-CONFIDENCE_THRESHOLD = 0.45  # 低於此值不預判，交給 AI
+_DEFAULT_CONFIDENCE_THRESHOLD = 0.45  # fallback；實際從 app_config 讀
+
+def _get_threshold():
+    try:
+        from .config_service import config_get
+        return config_get("semantic_router.confidence_threshold",
+                          default=_DEFAULT_CONFIDENCE_THRESHOLD)
+    except Exception:
+        return _DEFAULT_CONFIDENCE_THRESHOLD
 
 
 class SemanticRouter:
@@ -93,7 +101,7 @@ class SemanticRouter:
                     best_score = avg_score
                     best_intent = intent
 
-            if best_score < CONFIDENCE_THRESHOLD:
+            if best_score < _get_threshold():
                 return {"intent": None, "confidence": round(best_score, 3)}
 
             return {"intent": best_intent, "confidence": round(best_score, 3)}

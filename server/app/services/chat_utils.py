@@ -45,7 +45,11 @@ def validate_output(data: dict, intent: str, session, user_id: str, current_cont
     if start_str:
         try:
             st = datetime.fromisoformat(start_str)
-            if not (2024 <= st.year <= 2035):
+            # 年份範圍從 app_config 讀（預設 2024-2035）
+            from .config_service import config_get
+            year_min = int(config_get("validation.year_min", default=2024))
+            year_max = int(config_get("validation.year_max", default=2035))
+            if not (year_min <= st.year <= year_max):
                 return f"行程時間 {st.year} 年看起來不對，請確認是否為 {datetime.now().year} 年？"
             if end_str:
                 et = datetime.fromisoformat(end_str)

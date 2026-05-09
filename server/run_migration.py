@@ -169,6 +169,42 @@ migrations = [
     WITH (m = 16, ef_construction = 64);
     """,
 
+    # ── App Config（運行時可調整的閾值與旗標）─────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.app_config (
+        id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        key VARCHAR(100) UNIQUE NOT NULL,
+        value TEXT NOT NULL,
+        value_type VARCHAR(20) NOT NULL DEFAULT 'str',
+        description TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+
+    # ── Inference Default（AI 推斷預設值）─────────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.inference_default (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        kind VARCHAR(50) NOT NULL,
+        keywords TEXT[] NOT NULL,
+        result VARCHAR(255) NOT NULL,
+        fallback_result VARCHAR(255),
+        priority INT DEFAULT 0,
+        language VARCHAR(10) NOT NULL DEFAULT 'zh-TW',
+        embedding vector(512),
+        enabled BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_inference_default_kind
+    ON schedule_management.inference_default (kind);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_inference_default_keywords
+    ON schedule_management.inference_default USING gin (keywords);
+    """,
+
     # ── Lexicon（關鍵字字典，stop_word/non_name/edit_verb 等）────────────────────
     """
     CREATE TABLE IF NOT EXISTS schedule_management.lexicon (

@@ -129,6 +129,68 @@ def _load_rules_from_db(user_message: str = "", language: str = "zh-TW",
         return ""
 
 
+def _load_inference_defaults(language: str = "zh-TW") -> str:
+    """
+    從 inference_default 表載入活動/時段/title 預設映射，組成 markdown 注入 prompt。
+    取代之前寫死在 prompt_rule rule_text 裡的「吃飯→19:00, 開會→09:00...」文字。
+    """
+    try:
+        from ..repositories.inference_default_repository import InferenceDefaultRepository
+        from ..db.database import engine
+
+        local_session = Session(engine)
+        repo = InferenceDefaultRepository(local_session)
+
+        # 各類映射
+        activity_time = repo.get_by_kind("activity_time", language)
+        tod_time      = repo.get_by_kind("tod_time", language)
+        title_tmpl    = repo.get_by_kind("title_template", language)
+        duration      = repo.get_by_kind("duration", language)
+        local_session.close()
+
+        sections = []
+
+        # 1. 活動 → 預設時間
+        if activity_time:
+            entries = []
+            for d in activity_time:
+                kws = "/".join(d.keywords[:3])  # 顯示前 3 個關鍵字
+                entries.append(f"{kws}={d.result[:5]}")  # HH:MM only
+            sections.append("## 活動預設時間\n- " + "; ".join(entries))
+
+        # 2. 時段詞 → 時間
+        if tod_time:
+            entries = [f"{'/'.join(d.keywords[:2])}={d.result[:5]}" for d in tod_time]
+            sections.append("## 時段詞預設\n- " + " ".join(entries) + "（直接用，不追問）")
+
+        # 3. Title 生成模板
+        if title_tmpl:
+            lines = []
+            for d in title_tmpl[:8]:  # 只取前 8 個避免太長
+                kws = "/".join(d.keywords[:2])
+                lines.append(f"  {kws} + 人名 → 「{d.result}」；無人名 → 「{d.fallback_result}」")
+            sections.append("## Title 模板\n" + "\n".join(lines))
+
+        # 4. 預設時長
+        if duration:
+            entries = []
+            for d in duration:
+                kws = "/".join(d.keywords[:2])
+                hms = d.result[:5]  # HH:MM
+                entries.append(f"{kws}={hms}")
+            sections.append("## 預設時長 (end_time = start + duration)\n- " + "; ".join(entries))
+
+        return "\n\n".join(sections) if sections else ""
+
+    except Exception as e:
+        print(f"[PromptBuilder] Inference defaults load failed: {e}")
+        return ""
+
+
+# 需要 Session import
+from sqlmodel import Session
+
+
 def build_system_prompt(today: datetime, schedule_section: str,
                         memory_section: str, contact_section: str,
                         rag_section: str = "",
@@ -159,7 +221,7 @@ def build_system_prompt(today: datetime, schedule_section: str,
 
     rag_note = f"\n\n{rag_section}" if rag_section else ""
 
-    # ── Load rules from DB（核心改動）──────────────────────────────────────
+    # ── Load rules from DB（動態 prompt 規則）─────────────────────────────
     db_rules = _load_rules_from_db(
         user_message=user_message,
         language="zh-TW",
@@ -167,9 +229,14 @@ def build_system_prompt(today: datetime, schedule_section: str,
         query_embedding=query_embedding,
     )
 
+    # ── Load inference defaults（活動時間/時段/title 等映射）──────────────
+    inference_defaults = _load_inference_defaults(language="zh-TW")
+
     # 若 DB 沒規則（首次啟動或 DB 未種子）→ 使用 fallback 最小規則
     if not db_rules:
         db_rules = _FALLBACK_RULES
+
+    inference_section = f"\n\n{inference_defaults}" if inference_defaults else ""
 
     return f"""你是行程規劃助理，專門幫用戶建立、修改、刪除、查詢行程。請用與用戶相同的語言回覆。
 
@@ -177,7 +244,7 @@ def build_system_prompt(today: datetime, schedule_section: str,
 
 {schedule_section}{memory_section}{contact_section}{rag_note}{_error_section}
 
-{db_rules}"""
+{db_rules}{inference_section}"""
 
 
 # ============================================================
