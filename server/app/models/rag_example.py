@@ -1,6 +1,7 @@
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, String, DateTime, Text, JSON
-from sqlalchemy.dialects.postgresql import UUID, VECTOR
+from sqlalchemy.dialects.postgresql import UUID
+from pgvector.sqlalchemy import Vector
 from datetime import datetime
 import uuid
 
@@ -27,7 +28,7 @@ class RAGExample(SQLModel, table=True):
     # Embedding vector (512-dim, matches existing schema)
     embedding: list = Field(
         default=None,
-        sa_column=Column(VECTOR(512), nullable=True),
+        sa_column=Column(Vector(512), nullable=True),
         description="512-dim embedding (Gemini text-embedding-004 / HF bge truncated)"
     )
 

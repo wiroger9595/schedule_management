@@ -1,8 +1,8 @@
 """
-Embedding service — 使用 Google Gemini text-embedding-004 API（主要）+ HuggingFace API 備用。
+Embedding service — 使用 HuggingFace Inference API（主要）+ Gemini API 備用。
 不需要本地模型，無依賴衝突。
-Gemini Free tier: 1500 requests/day, 100 req/min
-HuggingFace Free tier: 1000 requests/hour
+HuggingFace bge-base-zh-v1.5: 免費，768 維（截斷至 512）
+Gemini text-embedding-004: 1500/day（如果有效 key）
 輸出 512 維（與現有 pgvector schema 相容）。
 """
 from __future__ import annotations
@@ -17,8 +17,37 @@ _GEMINI_EMBED_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "text-embedding-004:embedContent"
 )
-_HF_EMBED_URL = "https://api-inference.huggingface.co/models/BAAI/bge-base-zh-v1.5"
+_HF_MODEL = "BAAI/bge-base-zh-v1.5"
 _EMBED_DIMS = 512
+
+# Lazy-loaded HF client
+_hf_client = None
+
+
+def _get_hf_client():
+    global _hf_client
+    if _hf_client is None:
+        from huggingface_hub import InferenceClient
+        api_key = os.getenv("HUGGINGFACE_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("HUGGINGFACE_API_KEY not set")
+        _hf_client = InferenceClient(api_key=api_key)
+    return _hf_client
+
+
+def _call_hf_embed(text: str) -> List[float]:
+    """HuggingFace Inference API for bge-base-zh-v1.5 (768 dims, truncated to 512)."""
+    client = _get_hf_client()
+    result = client.feature_extraction(text or " ", model=_HF_MODEL)
+    # Returns numpy array of shape (768,)
+    arr = np.array(result, dtype=np.float32).flatten()
+    # Truncate 768 → 512
+    arr = arr[:_EMBED_DIMS]
+    # Normalize
+    norm = np.linalg.norm(arr)
+    if norm > 0:
+        arr = arr / norm
+    return arr.tolist()
 
 
 def _call_gemini_embed(text: str) -> List[float]:
@@ -26,6 +55,7 @@ def _call_gemini_embed(text: str) -> List[float]:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY not set")
     payload = json.dumps({
+        "model": "models/text-embedding-004",
         "content": {"parts": [{"text": text or " "}]},
         "outputDimensionality": _EMBED_DIMS,
     }).encode()
@@ -39,50 +69,24 @@ def _call_gemini_embed(text: str) -> List[float]:
     return result["embedding"]["values"]
 
 
-def _call_hf_embed(text: str) -> List[float]:
-    """HuggingFace Inference API for bge-base-zh-v1.5 (768 dims, truncated to 512)."""
-    api_key = os.getenv("HUGGINGFACE_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("HUGGINGFACE_API_KEY not set")
-    payload = json.dumps({"inputs": text or " "}).encode()
-    req = urllib.request.Request(
-        _HF_EMBED_URL,
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        result = json.loads(resp.read())
-    # HF returns 768-dim vector, truncate to 512 to match schema
-    if isinstance(result, list):
-        return result[:_EMBED_DIMS]
-    raise RuntimeError(f"Unexpected HF response: {result}")
-
-
 class EmbeddingService:
     DIMS = _EMBED_DIMS
 
     @classmethod
     def embed(cls, text: str) -> List[float]:
-        # Try Gemini first, fallback to HF
+        # Try HF first (Gemini key may be expired), fallback to Gemini
         try:
-            arr = np.array(_call_gemini_embed(text), dtype=np.float32)
-            norm = np.linalg.norm(arr)
-            if norm > 0:
-                arr = arr / norm
-            return arr.tolist()
+            return _call_hf_embed(text)
         except Exception as e:
-            print(f"[Embedding] Gemini failed: {str(e)[:80]}, trying HF")
+            print(f"[Embedding] HF failed: {str(e)[:80]}, trying Gemini")
             try:
-                arr = np.array(_call_hf_embed(text), dtype=np.float32)
+                arr = np.array(_call_gemini_embed(text), dtype=np.float32)
                 norm = np.linalg.norm(arr)
                 if norm > 0:
                     arr = arr / norm
                 return arr.tolist()
             except Exception as e2:
-                print(f"[Embedding] HF also failed: {str(e2)[:80]}")
+                print(f"[Embedding] Gemini also failed: {str(e2)[:80]}")
                 raise
 
     @classmethod

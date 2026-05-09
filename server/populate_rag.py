@@ -1,15 +1,27 @@
 """Populate RAG examples from training data files."""
 
 import sys
-from app.db.database import SessionLocal
+from dotenv import load_dotenv
+load_dotenv()
+
+from sqlmodel import Session
+from app.db.database import engine
 from app.repositories.rag_repository import RAGRepository
-from app.data.rag_training_data import RAG_TRAINING_DATA  # Chinese V3
-from app.data.rag_training_data_en_v3 import RAG_TRAINING_DATA_EN_V3  # English V3
+
+# Chinese datasets (V1 + V2 + V3)
+from app.data.rag_training_data import RAG_TRAINING_DATA
+from app.data.rag_training_data_v2 import RAG_TRAINING_DATA_V2
+from app.data.rag_training_data_v3 import RAG_TRAINING_DATA_V3
+
+# English datasets (V1 + V2 + V3)
+from app.data.rag_training_data_en import RAG_TRAINING_DATA_EN
+from app.data.rag_training_data_en_v2 import RAG_TRAINING_DATA_EN_V2
+from app.data.rag_training_data_en_v3 import RAG_TRAINING_DATA_EN_V3
 
 
 def populate_from_dataset(dataset, language: str):
     """Insert dataset into database."""
-    session = SessionLocal()
+    session = Session(engine)
     repo = RAGRepository(session)
 
     examples = []
@@ -45,28 +57,59 @@ def populate_from_dataset(dataset, language: str):
     return count
 
 
+def clear_existing():
+    """Remove all existing RAG examples."""
+    import os
+    from sqlalchemy import text
+    schema = os.getenv("POSTGRES_SCHEMA", "public")
+    session = Session(engine)
+    session.execute(text(f"DELETE FROM {schema}.rag_example"))
+    session.commit()
+    print("🗑️  Cleared existing RAG examples\n")
+    session.close()
+
+
 def main():
     print("🚀 Populating RAG training examples...\n")
 
-    # Check if datasets are available
-    try:
-        zh_count = populate_from_dataset(RAG_TRAINING_DATA, "zh-TW")
-    except Exception as e:
-        print(f"❌ Chinese dataset error: {e}")
-        zh_count = 0
+    if "--clear" in sys.argv or "--reset" in sys.argv:
+        clear_existing()
 
-    try:
-        en_count = populate_from_dataset(RAG_TRAINING_DATA_EN_V3, "en")
-    except Exception as e:
-        print(f"❌ English dataset error: {e}")
-        en_count = 0
+    zh_total = 0
+    en_total = 0
 
-    total = zh_count + en_count
+    # Chinese datasets
+    for name, dataset in [
+        ("zh V1", RAG_TRAINING_DATA),
+        ("zh V2", RAG_TRAINING_DATA_V2),
+        ("zh V3", RAG_TRAINING_DATA_V3),
+    ]:
+        try:
+            count = populate_from_dataset(dataset, "zh-TW")
+            zh_total += count
+            print(f"  → {name}: {count}")
+        except Exception as e:
+            print(f"❌ {name} error: {e}")
+
+    # English datasets
+    for name, dataset in [
+        ("en V1", RAG_TRAINING_DATA_EN),
+        ("en V2", RAG_TRAINING_DATA_EN_V2),
+        ("en V3", RAG_TRAINING_DATA_EN_V3),
+    ]:
+        try:
+            count = populate_from_dataset(dataset, "en")
+            en_total += count
+            print(f"  → {name}: {count}")
+        except Exception as e:
+            print(f"❌ {name} error: {e}")
+
+    total = zh_total + en_total
     if total > 0:
-        print(f"\n✅ Total {total} RAG examples inserted successfully")
+        print(f"\n✅ Total {total} RAG examples inserted ({zh_total} zh + {en_total} en)")
         print("\nRAG is now ready! The AI will use similar examples to improve responses.")
     else:
-        print("\n⚠️  No examples were inserted. Check that training data files exist.")
+        print("\n⚠️  No examples were inserted.")
 
 
 if __name__ == "__main__":

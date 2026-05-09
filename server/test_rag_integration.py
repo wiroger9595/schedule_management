@@ -4,7 +4,8 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 
-from app.db.database import SessionLocal
+from sqlmodel import Session
+from app.db.database import engine
 from app.repositories.rag_repository import RAGRepository
 from app.services.rag_service import RAGService
 from app.services.embedding_service import EmbeddingService
@@ -27,7 +28,7 @@ def test_embedding_service():
 def test_rag_repository():
     """Test RAG repository operations."""
     print("\n📦 Testing RAG Repository...")
-    session = SessionLocal()
+    session = Session(engine)
     try:
         repo = RAGRepository(session)
 
@@ -65,7 +66,7 @@ def test_rag_repository():
 def test_rag_service():
     """Test RAG service formatting."""
     print("\n🔍 Testing RAG Service...")
-    session = SessionLocal()
+    session = Session(engine)
     try:
         from app.services.rag_service import get_rag_service
         rag_svc = get_rag_service(session)
@@ -98,7 +99,7 @@ def test_rag_service():
 def test_ai_with_rag():
     """Test AI service with RAG integration."""
     print("\n🤖 Testing AI Service with RAG...")
-    session = SessionLocal()
+    session = Session(engine)
     try:
         TAIPEI_TZ = timezone(timedelta(hours=8))
         today = datetime.now(tz=TAIPEI_TZ)
