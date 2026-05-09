@@ -21,7 +21,7 @@ firebase-admin>=6.0.0
 # ── AI 強化套件 ───────────────────────────────────────────────────────────────
 numpy<2                 # embedding / semantic router
 instructor>=1.3.0       # Structured output / JSON fallback
-sentence-transformers   # RAG embedding (bge-base-zh-v1.5)
+huggingface_hub>=0.20.0 # RAG embedding via HF Inference API (no local model needed)
 
 # ── 地圖路徑估算（/estimate endpoint）─────────────────────────────────────────
 osmnx

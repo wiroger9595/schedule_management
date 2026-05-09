@@ -24,11 +24,11 @@ class RAGExample(SQLModel, table=True):
     is_complete: bool = Field(default=False)
     parsed_data: dict = Field(default={}, sa_column=Column(JSON, nullable=True))
 
-    # Embedding vector (768-dim for bge-base-zh-v1.5)
+    # Embedding vector (512-dim, matches existing schema)
     embedding: list = Field(
         default=None,
-        sa_column=Column(VECTOR(768), nullable=True),
-        description="768-dim embedding from bge-base-zh-v1.5"
+        sa_column=Column(VECTOR(512), nullable=True),
+        description="512-dim embedding (Gemini text-embedding-004 / HF bge truncated)"
     )
 
     created_at: datetime = Field(

@@ -25,16 +25,17 @@ User Message
 
 ## Components
 
-### 1. Embedding Model: `bge-base-zh-v1.5`
-- **Size**: 400MB download, 1GB RAM at runtime
-- **Dimensions**: 768
-- **Language**: Optimized for Chinese, works well for English too
-- **Cost**: Free, runs locally or via HuggingFace API
+### 1. Embedding API (no local model needed)
+- **Primary**: Gemini text-embedding-004 (512 dims, free 1500/day)
+- **Fallback**: HuggingFace bge-base-zh-v1.5 API (truncated to 512 dims, free 1000/hour)
+- **Dimensions**: 512 (matches existing schema)
+- **Cost**: $0/month (uses free tiers)
+- **No dependencies**: Pure HTTP calls, no torch/sentence-transformers needed
 
 ### 2. Vector Database: PostgreSQL + pgvector
 - **Table**: `rag_example`
 - **Index**: HNSW (faster than IVFFlat, no pre-configuration needed)
-- **Storage**: ~448 training examples (Chinese + English)
+- **Storage**: ~310 training examples (Chinese + English)
 
 ### 3. RAG Pipeline Components
 - `embedding_service.py`: Embed texts to vectors (local or API fallback)
@@ -52,7 +53,7 @@ cd server
 pip install -r requirements.txt
 ```
 
-This includes `sentence-transformers` which provides bge-base-zh-v1.5 model.
+Only requires `huggingface_hub` (lightweight) — no local ML models needed.
 
 ### Step 2: Run Database Migrations
 
@@ -108,28 +109,19 @@ Expected output:
 ### Environment Variables
 
 ```bash
-# Choose embedding approach
-EMBEDDING_USE_LOCAL=true          # Use local bge-base-zh-v1.5 (recommended, free)
-# EMBEDDING_USE_LOCAL=false       # Use Gemini API (backup)
-
-# For Gemini API fallback
-GEMINI_API_KEY=...                # Required if using API
-
-# Database
+# Required
+GEMINI_API_KEY=...                # Primary embedding API
+HUGGINGFACE_API_KEY=...           # Fallback embedding API
 DATABASE_URL=postgresql://...     # Must have pgvector extension
 ```
 
-### Model Selection
+### Embedding Cascade
 
 The embedding service automatically:
-1. **Primary**: Use local bge-base-zh-v1.5 (if `EMBEDDING_USE_LOCAL=true`)
-2. **Fallback**: Use Gemini text-embedding-004 API (if available)
+1. **Primary**: Gemini text-embedding-004 (free 1500/day)
+2. **Fallback**: HuggingFace bge-base-zh-v1.5 API (free 1000/hour)
 
-To force local-only (no API fallback):
-```python
-# In rag_service.py
-_use_local = True  # No fallback
-```
+Both produce 512-dim vectors compatible with the existing schema.
 
 ## How RAG is Integrated
 

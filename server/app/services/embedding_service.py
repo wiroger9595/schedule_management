@@ -1,13 +1,15 @@
 """
-Embedding service — 使用 bge-base-zh-v1.5 本地模型（推薦）或 Gemini API 備用。
-本地模型: 400MB 模型 + ~1GB 記憶體，無 API 呼叫成本
-輸出 768 維（bge-base-zh-v1.5 標準）
+Embedding service — 使用 Google Gemini text-embedding-004 API（主要）+ HuggingFace API 備用。
+不需要本地模型，無依賴衝突。
+Gemini Free tier: 1500 requests/day, 100 req/min
+HuggingFace Free tier: 1000 requests/hour
+輸出 512 維（與現有 pgvector schema 相容）。
 """
 from __future__ import annotations
 import json
 import os
 import urllib.request
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 
@@ -15,34 +17,8 @@ _GEMINI_EMBED_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "text-embedding-004:embedContent"
 )
-_GEMINI_DIMS = 512
-_BGE_DIMS = 768
-
-# Global model instance for caching
-_model = None
-_use_local = os.getenv("EMBEDDING_USE_LOCAL", "true").lower() == "true"
-
-
-def _get_local_model():
-    """Lazy load sentence-transformers model."""
-    global _model
-    if _model is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            model_name = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-zh-v1.5")
-            _model = SentenceTransformer(model_name)
-        except ImportError:
-            raise RuntimeError(
-                "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
-            )
-    return _model
-
-
-def _call_local_embed(text: str) -> List[float]:
-    model = _get_local_model()
-    embedding = model.encode(text or " ", normalize_embeddings=True)
-    return embedding.tolist()
+_HF_EMBED_URL = "https://api-inference.huggingface.co/models/BAAI/bge-base-zh-v1.5"
+_EMBED_DIMS = 512
 
 
 def _call_gemini_embed(text: str) -> List[float]:
@@ -51,7 +27,7 @@ def _call_gemini_embed(text: str) -> List[float]:
         raise RuntimeError("GEMINI_API_KEY not set")
     payload = json.dumps({
         "content": {"parts": [{"text": text or " "}]},
-        "outputDimensionality": _GEMINI_DIMS,
+        "outputDimensionality": _EMBED_DIMS,
     }).encode()
     req = urllib.request.Request(
         f"{_GEMINI_EMBED_URL}?key={api_key}",
@@ -60,38 +36,57 @@ def _call_gemini_embed(text: str) -> List[float]:
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         result = json.loads(resp.read())
-    # Normalize Gemini output to match bge dims
     return result["embedding"]["values"]
 
 
+def _call_hf_embed(text: str) -> List[float]:
+    """HuggingFace Inference API for bge-base-zh-v1.5 (768 dims, truncated to 512)."""
+    api_key = os.getenv("HUGGINGFACE_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("HUGGINGFACE_API_KEY not set")
+    payload = json.dumps({"inputs": text or " "}).encode()
+    req = urllib.request.Request(
+        _HF_EMBED_URL,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        result = json.loads(resp.read())
+    # HF returns 768-dim vector, truncate to 512 to match schema
+    if isinstance(result, list):
+        return result[:_EMBED_DIMS]
+    raise RuntimeError(f"Unexpected HF response: {result}")
+
+
 class EmbeddingService:
-    DIMS = _BGE_DIMS  # bge-base-zh-v1.5 uses 768 dims
+    DIMS = _EMBED_DIMS
 
     @classmethod
     def embed(cls, text: str) -> List[float]:
-        if _use_local:
-            try:
-                return _call_local_embed(text)
-            except Exception as e:
-                print(f"Local embedding failed: {e}, falling back to Gemini")
-                return _call_gemini_embed(text)
-        else:
+        # Try Gemini first, fallback to HF
+        try:
             arr = np.array(_call_gemini_embed(text), dtype=np.float32)
             norm = np.linalg.norm(arr)
             if norm > 0:
                 arr = arr / norm
             return arr.tolist()
+        except Exception as e:
+            print(f"[Embedding] Gemini failed: {str(e)[:80]}, trying HF")
+            try:
+                arr = np.array(_call_hf_embed(text), dtype=np.float32)
+                norm = np.linalg.norm(arr)
+                if norm > 0:
+                    arr = arr / norm
+                return arr.tolist()
+            except Exception as e2:
+                print(f"[Embedding] HF also failed: {str(e2)[:80]}")
+                raise
 
     @classmethod
     def embed_batch(cls, texts: List[str]) -> List[List[float]]:
-        if _use_local:
-            try:
-                model = _get_local_model()
-                embeddings = model.encode(texts, normalize_embeddings=True)
-                return embeddings.tolist()
-            except Exception as e:
-                print(f"Local batch embedding failed: {e}, falling back to Gemini")
-                return [_call_gemini_embed(t) for t in texts]
         return [cls.embed(t) for t in texts]
 
     @classmethod

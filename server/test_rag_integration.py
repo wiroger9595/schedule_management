@@ -4,9 +4,6 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 
-# Setup environment
-os.environ.setdefault("EMBEDDING_USE_LOCAL", "true")
-
 from app.db.database import SessionLocal
 from app.repositories.rag_repository import RAGRepository
 from app.services.rag_service import RAGService
@@ -18,10 +15,9 @@ def test_embedding_service():
     """Test that embedding service works."""
     print("\n📊 Testing Embedding Service...")
     try:
-        svc = EmbeddingService()
-        embedding = svc.embed("明天下午三點跟小明在星巴克吃飯")
+        embedding = EmbeddingService.embed("明天下午三點跟小明在星巴克吃飯")
         print(f"  ✓ Generated embedding with {len(embedding)} dimensions")
-        assert len(embedding) == 768, f"Expected 768 dims, got {len(embedding)}"
+        assert len(embedding) == 512, f"Expected 512 dims, got {len(embedding)}"
         return True
     except Exception as e:
         print(f"  ✗ Embedding failed: {e}")

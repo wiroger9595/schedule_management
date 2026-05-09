@@ -128,7 +128,7 @@ migrations = [
         intent VARCHAR(50) NOT NULL,
         is_complete BOOLEAN DEFAULT FALSE,
         parsed_data JSONB,
-        embedding vector(768),
+        embedding vector(512),
         created_at TIMESTAMP DEFAULT NOW()
     );
     """,
