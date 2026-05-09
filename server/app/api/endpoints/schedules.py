@@ -890,6 +890,7 @@ def chat_schedule(
                     **({"_pre_intent": pre_intent} if pre_intent else {}),
                     **({"_contact_hints": _contact_hints} if _contact_hints else {}),
                     **({"_memory_snippets": _memory_snippets} if _memory_snippets else {}),
+                    **({"_session": session} if session else {}),
                 },
                 "user_lat": request.latitude,
                 "user_lon": request.longitude,

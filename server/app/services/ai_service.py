@@ -63,7 +63,7 @@ class AIService:
             try:
                 hf_client = InferenceClient(api_key=hf_key)
                 # 使用 Mistral-Large（HuggingFace 推薦的開源模型，自動選擇最適版本）
-                self._providers.append((hf_client, "mistralai/Mistral-Large-Instruct-2407", "HuggingFace/Mistral-Large"))
+                self._providers.append((hf_client, "Qwen/Qwen2.5-7B-Instruct", "HuggingFace/Qwen2.5-7B"))
             except Exception as e:
                 print(f"[AIService] HuggingFace init failed: {e}")
 
@@ -87,7 +87,7 @@ class AIService:
         if hf_key and InferenceClient:
             try:
                 hf_client = InferenceClient(api_key=hf_key)
-                self._providers.append((hf_client, "mistralai/Mistral-Large-Instruct-2407", "HuggingFace/Mistral-Large"))
+                self._providers.append((hf_client, "Qwen/Qwen2.5-7B-Instruct", "HuggingFace/Qwen2.5-7B"))
             except Exception as e:
                 print(f"[AIService] HuggingFace init failed: {e}")
 
@@ -363,7 +363,9 @@ class AIService:
                              conversation_history: list = None,
                              schedule_list: list = None,
                              memory_snippets: list = None,
-                             contact_hints: list = None) -> dict:
+                             contact_hints: list = None,
+                             session = None,
+                             language: str = "zh-TW") -> dict:
         """
         使用 Tool Use（Function Calling）處理對話，支援建立、修改、刪除行程。
         回傳格式與舊版相同，LangGraph / chat endpoint 無需改動。
@@ -385,7 +387,25 @@ class AIService:
 
         schedule_section = build_schedule_section(schedule_list)
         contact_section, memory_section = build_context_sections(_contacts, _mem, current_context or {})
-        system_prompt = build_system_prompt(today, schedule_section, memory_section, contact_section)
+
+        # ── RAG 相似案例注入 ──────────────────────────────────────────────────
+        rag_section = ""
+        if session:
+            try:
+                from .rag_service import get_rag_service
+                rag_service = get_rag_service(session)
+                if rag_service.should_use_rag(language):
+                    examples = rag_service.get_relevant_examples(
+                        user_message=user_message,
+                        language=language,
+                        top_k=3,
+                    )
+                    if examples:
+                        rag_section = rag_service.format_examples_for_prompt(examples, language)
+            except Exception as e:
+                print(f"[AIService] RAG retrieval failed: {str(e)[:80]}")
+
+        system_prompt = build_system_prompt(today, schedule_section, memory_section, contact_section, rag_section)
 
         # 過濾內部 key（_pre_intent 等）再注入，但保留 hint
         pre_intent = current_context.pop("_pre_intent", None) if current_context else None

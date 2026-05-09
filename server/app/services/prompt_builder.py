@@ -82,7 +82,8 @@ def build_context_sections(contacts: list, memory: list, context: dict) -> tuple
 
 
 def build_system_prompt(today: datetime, schedule_section: str,
-                        memory_section: str, contact_section: str) -> str:
+                        memory_section: str, contact_section: str,
+                        rag_section: str = "") -> str:
     today_str = today.strftime("%Y-%m-%d %A")
 
     # ── Inject learned constraints (auto-accumulated from past errors) ────────
@@ -96,6 +97,8 @@ def build_system_prompt(today: datetime, schedule_section: str,
     except Exception:
         pass
 
+    rag_note = f"\n\n{rag_section}" if rag_section else ""
+
     return f"""你是行程規劃助理，專門幫用戶建立、修改、刪除、查詢行程。請用與用戶相同的語言回覆。
 
 ## 🚨 服務範圍（最高優先）
@@ -105,7 +108,7 @@ def build_system_prompt(today: datetime, schedule_section: str,
 
 現在時間（台灣）：{today.strftime("%Y-%m-%d %H:%M")}（{today_str}）
 
-{schedule_section}{memory_section}{contact_section}{_error_section}
+{schedule_section}{memory_section}{contact_section}{rag_note}{_error_section}
 
 ## 🚨 回覆簡潔規則
 - create/update/delete 的 reply：**一句確認**，不加引導語、補充、客套（「✅ 已將時間改為下午3點」✅；「✅ 已更新！如需調整其他內容請告訴我 😊」❌）

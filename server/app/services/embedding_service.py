@@ -1,14 +1,13 @@
 """
-Embedding service — 使用 Google Gemini text-embedding-004 API。
-不需要本地模型，Cloud Run 記憶體使用量大幅降低（省去 ~250MB ONNX model）。
-Free tier: 1500 requests/day, 100 req/min
-輸出 512 維（與現有 pgvector schema 相容）。
+Embedding service — 使用 bge-base-zh-v1.5 本地模型（推薦）或 Gemini API 備用。
+本地模型: 400MB 模型 + ~1GB 記憶體，無 API 呼叫成本
+輸出 768 維（bge-base-zh-v1.5 標準）
 """
 from __future__ import annotations
 import json
 import os
 import urllib.request
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -16,7 +15,34 @@ _GEMINI_EMBED_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "text-embedding-004:embedContent"
 )
-_EMBED_DIMS = 512
+_GEMINI_DIMS = 512
+_BGE_DIMS = 768
+
+# Global model instance for caching
+_model = None
+_use_local = os.getenv("EMBEDDING_USE_LOCAL", "true").lower() == "true"
+
+
+def _get_local_model():
+    """Lazy load sentence-transformers model."""
+    global _model
+    if _model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            model_name = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-zh-v1.5")
+            _model = SentenceTransformer(model_name)
+        except ImportError:
+            raise RuntimeError(
+                "sentence-transformers not installed. "
+                "Install with: pip install sentence-transformers"
+            )
+    return _model
+
+
+def _call_local_embed(text: str) -> List[float]:
+    model = _get_local_model()
+    embedding = model.encode(text or " ", normalize_embeddings=True)
+    return embedding.tolist()
 
 
 def _call_gemini_embed(text: str) -> List[float]:
@@ -25,7 +51,7 @@ def _call_gemini_embed(text: str) -> List[float]:
         raise RuntimeError("GEMINI_API_KEY not set")
     payload = json.dumps({
         "content": {"parts": [{"text": text or " "}]},
-        "outputDimensionality": _EMBED_DIMS,
+        "outputDimensionality": _GEMINI_DIMS,
     }).encode()
     req = urllib.request.Request(
         f"{_GEMINI_EMBED_URL}?key={api_key}",
@@ -34,22 +60,38 @@ def _call_gemini_embed(text: str) -> List[float]:
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         result = json.loads(resp.read())
+    # Normalize Gemini output to match bge dims
     return result["embedding"]["values"]
 
 
 class EmbeddingService:
-    DIMS = _EMBED_DIMS
+    DIMS = _BGE_DIMS  # bge-base-zh-v1.5 uses 768 dims
 
     @classmethod
     def embed(cls, text: str) -> List[float]:
-        arr = np.array(_call_gemini_embed(text), dtype=np.float32)
-        norm = np.linalg.norm(arr)
-        if norm > 0:
-            arr = arr / norm
-        return arr.tolist()
+        if _use_local:
+            try:
+                return _call_local_embed(text)
+            except Exception as e:
+                print(f"Local embedding failed: {e}, falling back to Gemini")
+                return _call_gemini_embed(text)
+        else:
+            arr = np.array(_call_gemini_embed(text), dtype=np.float32)
+            norm = np.linalg.norm(arr)
+            if norm > 0:
+                arr = arr / norm
+            return arr.tolist()
 
     @classmethod
     def embed_batch(cls, texts: List[str]) -> List[List[float]]:
+        if _use_local:
+            try:
+                model = _get_local_model()
+                embeddings = model.encode(texts, normalize_embeddings=True)
+                return embeddings.tolist()
+            except Exception as e:
+                print(f"Local batch embedding failed: {e}, falling back to Gemini")
+                return [_call_gemini_embed(t) for t in texts]
         return [cls.embed(t) for t in texts]
 
     @classmethod

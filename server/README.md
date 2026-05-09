@@ -90,3 +90,6 @@ flutter clean && flutter run -d chrome --web-port=7800 --dart-define-from-file=.
 
 // 上版語法
 ./deploy.sh
+
+
+

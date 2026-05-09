@@ -116,6 +116,40 @@ migrations = [
     CREATE INDEX IF NOT EXISTS idx_ai_test_result_model
     ON schedule_management.ai_test_result (model_name);
     """,
+
+    # ── RAG 訓練範例（用於檢索增強生成） ────────────────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.rag_example (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        language VARCHAR(10) NOT NULL DEFAULT 'zh-TW',
+        category VARCHAR(100) NOT NULL,
+        user_message TEXT NOT NULL,
+        context JSONB,
+        intent VARCHAR(50) NOT NULL,
+        is_complete BOOLEAN DEFAULT FALSE,
+        parsed_data JSONB,
+        embedding vector(768),
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_rag_example_language
+    ON schedule_management.rag_example (language);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_rag_example_category
+    ON schedule_management.rag_example (category);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_rag_example_intent
+    ON schedule_management.rag_example (intent);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_rag_example_embedding_hnsw
+    ON schedule_management.rag_example
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+    """,
 ]
 
 with engine.connect() as conn:

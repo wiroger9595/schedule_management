@@ -38,11 +38,15 @@ class ScheduleState(TypedDict):
 
 def collect_info_node(state: ScheduleState) -> ScheduleState:
     from .ai_service import ai_service
+    current_data = state.get("current_data", {})
+    session = current_data.pop("_session", None) if isinstance(current_data, dict) else None
+
     ai_result = ai_service.process_conversation(
         state["user_message"],
-        state["current_data"],
+        current_data,
         conversation_history=state["conversation_history"],
         schedule_list=state.get("schedule_list"),
+        session=session,
     )
     return {
         **state,
