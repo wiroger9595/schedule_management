@@ -826,6 +826,8 @@ def chat_schedule(
     _pending_lon = current_context.get("_pending_confirm_lon")
     _pending_past_id_pre = current_context.get("_pending_past_edit_id")
 
+    _pending_delete_id = current_context.get("delete_schedule_id")
+
     if _is_affirm and _pending_lat and _pending_lon:
         request = request.model_copy(update={
             "confirm_location": True,
@@ -835,6 +837,9 @@ def chat_schedule(
     elif _is_affirm and _pending_past_id_pre:
         # 用戶打字確認過期行程修改（不是按按鈕）
         request = request.model_copy(update={"confirm_past_edit": True})
+    elif _is_affirm and _pending_delete_id:
+        # 用戶打字確認刪除行程（不是按按鈕）
+        request = request.model_copy(update={"confirm_delete": True})
 
     # ── Past-edit context tracking ────────────────────────────────────────────
     _pending_past_id = current_context.get("_pending_past_edit_id")
