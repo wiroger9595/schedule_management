@@ -37,8 +37,15 @@ def _get_hf_client():
 
 def _call_hf_embed(text: str) -> List[float]:
     """HuggingFace Inference API for bge-base-zh-v1.5 (768 dims, truncated to 512)."""
-    client = _get_hf_client()
-    result = client.feature_extraction(text or " ", model=_HF_MODEL)
+    import socket
+    # Force timeout on socket-level so HF API can't hang forever
+    old_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(8.0)
+    try:
+        client = _get_hf_client()
+        result = client.feature_extraction(text or " ", model=_HF_MODEL)
+    finally:
+        socket.setdefaulttimeout(old_timeout)
     # Returns numpy array of shape (768,)
     arr = np.array(result, dtype=np.float32).flatten()
     # Truncate 768 → 512

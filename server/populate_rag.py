@@ -18,6 +18,9 @@ from app.data.rag_training_data_en import RAG_TRAINING_DATA_EN
 from app.data.rag_training_data_en_v2 import RAG_TRAINING_DATA_EN_V2
 from app.data.rag_training_data_en_v3 import RAG_TRAINING_DATA_EN_V3
 
+# 過期行程處理（針對 past_schedule 失敗類別）
+from app.data.rag_past_schedule import RAG_PAST_SCHEDULE_ZH, RAG_PAST_SCHEDULE_EN
+
 
 def populate_from_dataset(dataset, language: str):
     """Insert dataset into database."""
@@ -83,6 +86,7 @@ def main():
         ("zh V1", RAG_TRAINING_DATA),
         ("zh V2", RAG_TRAINING_DATA_V2),
         ("zh V3", RAG_TRAINING_DATA_V3),
+        ("zh past_schedule", RAG_PAST_SCHEDULE_ZH),
     ]:
         try:
             count = populate_from_dataset(dataset, "zh-TW")
@@ -96,6 +100,7 @@ def main():
         ("en V1", RAG_TRAINING_DATA_EN),
         ("en V2", RAG_TRAINING_DATA_EN_V2),
         ("en V3", RAG_TRAINING_DATA_EN_V3),
+        ("en past_schedule", RAG_PAST_SCHEDULE_EN),
     ]:
         try:
             count = populate_from_dataset(dataset, "en")

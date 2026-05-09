@@ -395,13 +395,15 @@ class AIService:
                 from .rag_service import get_rag_service
                 rag_service = get_rag_service(session)
                 if rag_service.should_use_rag(language):
+                    # 檢索 top 5（多取一些供模型對照）
                     examples = rag_service.get_relevant_examples(
                         user_message=user_message,
                         language=language,
-                        top_k=3,
+                        top_k=5,
                     )
                     if examples:
                         rag_section = rag_service.format_examples_for_prompt(examples, language)
+                        print(f"[RAG] Injected {len(examples)} examples")
             except Exception as e:
                 print(f"[AIService] RAG retrieval failed: {str(e)[:80]}")
 
@@ -830,6 +832,8 @@ class AIService:
         schedule_list: list = None,
         memory_snippets: list = None,
         contact_hints: list = None,
+        session = None,
+        language: str = "zh-TW",
     ) -> dict:
         """
         Process conversation using a specific provider (for model comparison).
@@ -857,6 +861,8 @@ class AIService:
                 schedule_list=schedule_list,
                 memory_snippets=memory_snippets,
                 contact_hints=contact_hints,
+                session=session,
+                language=language,
             )
 
             # Restore original providers

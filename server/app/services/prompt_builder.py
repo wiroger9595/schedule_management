@@ -208,6 +208,18 @@ def build_system_prompt(today: datetime, schedule_section: str,
   - 例：行程 2027-04-09T15:00，用戶說「改成9點」→ 2027-04-09T09:00 ✓
 - **禁用今天日期 {today.strftime("%Y-%m-%d")} 覆蓋原始日期** ❌
 
+## 🕐 過期行程處理（極重要）
+**判斷**：目標行程的 start_time < 現在時間 {today.strftime("%Y-%m-%d %H:%M")}
+- **改時間**：原日期已過 + 用戶只給時間（沒給日期）→ ask_user 追問未來日期
+  - 例：「昨天的會議改成3點」→ ask_user("原會議已過期，改到哪一天的3點？")
+  - 例：「上週午餐改到晚上7點」→ ask_user("您要改到哪天的7點？")
+- **改地點/標題/人員**（不動時間）→ 直接 update_schedule（純記錄維護）
+  - 例：「上週的會議改名為Q2檢討」→ update_schedule(title="Q2檢討") ✓
+  - 例：「上禮拜開會改為只有我」→ update_schedule(clear_participants=true) ✓
+- **「再約一次/重新安排」過期行程** → 用 create（不是 edit），複製 title/location 但問新時間
+- **刪除過期行程** → 直接 delete（沒時間衝突）
+- **用戶明確指定過去日期**（如「改到3月1日」但今天5月）→ ask_user 確認是否口誤
+
 ## 多欄位同時修改
 用戶一條訊息提多項（「改成9點，地點換星巴克」）→ update_schedule **同時帶所有欄位**
 

@@ -39,6 +39,7 @@ def main():
                 user_message=tc.user_message,
                 schedule_list=tc.schedule_list,
                 contact_hints=tc.contact_hints,
+                session=session,  # Enable RAG retrieval
             )
             elapsed = (time.time() - start) * 1000
 

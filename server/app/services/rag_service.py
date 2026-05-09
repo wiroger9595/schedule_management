@@ -37,20 +37,30 @@ class RAGService:
 
         lines = []
         if language == "zh-TW":
-            lines.append("## 相似的成功案例（供參考）:")
+            lines.append("## 🎯 相似案例（請仔細對照判斷 intent 和 is_complete）:")
+            lines.append("⚠️ 特別注意 is_complete：個人行程不需 participants；多人會議需 title+time+location+participants")
         else:
-            lines.append("## Similar successful examples (for reference):")
+            lines.append("## 🎯 Similar examples (carefully match intent and is_complete):")
+            lines.append("⚠️ Note is_complete: personal events don't need participants; meetings need title+time+location+participants")
 
         for i, ex in enumerate(examples, 1):
-            lines.append(f"\n### 案例 {i}:")
-            lines.append(f"**用戶**: {ex.user_message}")
-            lines.append(f"**意圖**: {ex.intent}")
-            lines.append(f"**完整**: {ex.is_complete}")
+            # 強調 intent 與 is_complete
+            complete_marker = "✅ True (可直接執行)" if ex.is_complete else "❌ False (需追問)"
+            lines.append(f"\n### 案例 {i}: 「{ex.user_message}」")
+            lines.append(f"  → intent = **{ex.intent}**")
+            lines.append(f"  → is_complete = **{complete_marker}**")
 
             if ex.parsed_data:
-                lines.append("**提取結果**:")
-                for key, value in ex.parsed_data.items():
-                    lines.append(f"  - {key}: {value}")
+                # 過濾掉內部欄位
+                meaningful = {k: v for k, v in ex.parsed_data.items()
+                              if not k.startswith("_") and v}
+                if meaningful:
+                    parts = [f"{k}={v}" for k, v in meaningful.items()]
+                    lines.append(f"  → 提取: {', '.join(parts[:4])}")
+
+                # 修正提示（從失敗案例生成的特別重要）
+                if "_correction_note" in ex.parsed_data:
+                    lines.append(f"  ⚠️ {ex.parsed_data['_correction_note']}")
 
         return "\n".join(lines)
 
