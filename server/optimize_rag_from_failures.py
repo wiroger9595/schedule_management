@@ -14,13 +14,33 @@ from app.repositories.rag_repository import RAGRepository
 
 
 def extract_failures(session, limit=90):
-    """取出最近一輪測試中失敗的案例。"""
+    """取出可作為訓練資料的失敗案例（過濾雜訊）。"""
     results = session.exec(
         select(AITestResult)
         .order_by(AITestResult.created_at.desc())
         .limit(limit)
     ).all()
-    return [r for r in results if not r.passed and r.actual_intent != "ERROR"]
+    failures = []
+    for r in results:
+        # 過濾條件：
+        if r.passed:
+            continue
+        if r.actual_intent == "ERROR":
+            continue
+        # 過濾 1：模型回應為空（通常是 rate limit 後 API 異常）
+        if not r.model_reply or len(r.model_reply.strip()) < 5:
+            continue
+        # 過濾 2：相同 user_message 已有正確答案（重複測試）
+        # （此案例真正是 model 不一致，不該作訓練）
+        same_msg_passed = session.exec(
+            select(AITestResult)
+            .where(AITestResult.user_message == r.user_message)
+            .where(AITestResult.passed == True)
+        ).first()
+        if same_msg_passed:
+            continue
+        failures.append(r)
+    return failures
 
 
 def is_chinese(text: str) -> bool:
