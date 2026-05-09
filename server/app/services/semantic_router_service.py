@@ -1,82 +1,76 @@
 """
-Semantic Router — 本地 intent 預分類，減少 30-40% 的 Cerebras API 呼叫。
+Semantic Router — 從 DB 載入 intent 錨點，替代硬編碼 INTENT_EXAMPLES。
 
 用法：
     from .semantic_router_service import semantic_router
     result = semantic_router.route(user_message)
     # result: {"intent": "create"|"edit"|"delete"|"query"|None, "confidence": 0.0~1.0}
-    # confidence < THRESHOLD 時 intent=None，讓 AI 決定
 
-架構：
-- 使用與 embedding_service 相同的 sentence-transformers 模型
-- 將 user_message embed 後與預設例句做 cosine similarity
-- 取最高分的 intent（若 < 閾值則不預判）
-- 結果 cache 在 module level，embeddings 只算一次
+新加 intent 例句的方式：
+    INSERT INTO intent_anchor (intent, example, language) VALUES (...);
+    然後重啟 server（或呼叫 semantic_router.reload()）
+
+如果 DB 沒資料，會 fallback 到舊的硬編碼 INTENT_EXAMPLES 確保服務不中斷。
 """
 from __future__ import annotations
 from typing import Optional
 import numpy as np
 
-# ── 每個 intent 的代表例句（中文為主，英文備用）─────────────────────────────
-INTENT_EXAMPLES: dict[str, list[str]] = {
-    "create": [
-        "幫我安排明天下午三點的會議",
-        "新增一個行程",
-        "我要約人吃飯",
-        "記錄一下週五打球",
-        "安排一個活動",
-        "建立行程",
-        "我要預約",
-        "下週二跟客戶開會",
-        "晚上八點看電影",
-        "明天早上九點牙醫",
-    ],
-    "edit": [
-        "把打球時間改到下午五點",
-        "更改昨天的會議地點",
-        "把跟Robert的約會延後一小時",
-        "修改行程",
-        "換一個時間",
-        "調整一下",
-        "改到明天",
-        "推遲一個小時",
-        "提早半小時",
-        "地點換到星巴克",
-    ],
-    "delete": [
-        "取消打球活動",
-        "刪除明天的會議",
-        "移除那個行程",
-        "取消跟王醫生的約",
-        "不去了",
-        "刪掉",
-        "取消這個",
-        "移除行程",
-    ],
-    "query": [
-        "我今天有什麼行程",
-        "下週有哪些安排",
-        "查一下我的行程",
-        "找找看跟Robert的約",
-        "有什麼活動",
-        "什麼時候有空",
-        "最近有哪些行程",
-    ],
+# ── Fallback 例句（DB 為空或載入失敗時使用，避免服務中斷）────────────────────
+_FALLBACK_INTENT_EXAMPLES: dict[str, list[str]] = {
+    "create": ["幫我安排明天下午三點的會議", "新增一個行程"],
+    "edit":   ["把打球時間改到下午五點", "修改行程"],
+    "delete": ["取消打球活動", "刪除明天的會議"],
+    "query":  ["我今天有什麼行程", "查一下我的行程"],
 }
 
 CONFIDENCE_THRESHOLD = 0.45  # 低於此值不預判，交給 AI
 
 
 class SemanticRouter:
-    _example_embeddings: dict[str, list] | None = None  # {intent: [vec, vec, ...]}
+    _intent_data: dict[str, list] | None = None  # {intent: [{"example", "embedding"}, ...]}
+    _used_fallback: bool = False
 
-    def _ensure_embeddings(self) -> None:
-        if self._example_embeddings is not None:
+    def reload(self) -> None:
+        """Force reload from DB. Call after adding new anchors via SQL."""
+        self._intent_data = None
+        self._ensure_loaded()
+
+    def _ensure_loaded(self) -> None:
+        if self._intent_data is not None:
             return
+
+        # 嘗試從 DB 載入
+        try:
+            from ..db.database import engine
+            from sqlmodel import Session
+            from ..repositories.intent_anchor_repository import IntentAnchorRepository
+
+            session = Session(engine)
+            repo = IntentAnchorRepository(session)
+            data = repo.get_all_by_language(language="zh-TW")
+            session.close()
+
+            if data and any(data.values()):
+                self._intent_data = data
+                total = sum(len(v) for v in data.values())
+                print(f"[SemanticRouter] Loaded {total} anchors from DB")
+                return
+            else:
+                print("[SemanticRouter] DB has no anchors, using fallback")
+        except Exception as e:
+            print(f"[SemanticRouter] DB load failed: {e}, using fallback")
+
+        # Fallback 到硬編碼例句
+        self._used_fallback = True
         from .embedding_service import EmbeddingService
-        self._example_embeddings = {}
-        for intent, examples in INTENT_EXAMPLES.items():
-            self._example_embeddings[intent] = EmbeddingService.embed_batch(examples)
+        self._intent_data = {}
+        for intent, examples in _FALLBACK_INTENT_EXAMPLES.items():
+            embeddings = EmbeddingService.embed_batch(examples)
+            self._intent_data[intent] = [
+                {"example": ex, "embedding": emb}
+                for ex, emb in zip(examples, embeddings)
+            ]
 
     def route(self, message: str) -> dict:
         """
@@ -84,16 +78,16 @@ class SemanticRouter:
         intent=None 表示信心不足，應讓 AI 自行判斷。
         """
         try:
-            self._ensure_embeddings()
+            self._ensure_loaded()
             from .embedding_service import EmbeddingService
             msg_vec = np.array(EmbeddingService.embed(message))
 
             best_intent: Optional[str] = None
             best_score = 0.0
 
-            for intent, vecs in self._example_embeddings.items():
+            for intent, items in self._intent_data.items():
                 # 取該 intent 所有例句的平均相似度（更穩定）
-                scores = [float(np.dot(msg_vec, np.array(v))) for v in vecs]
+                scores = [float(np.dot(msg_vec, np.array(it["embedding"]))) for it in items]
                 avg_score = float(np.mean(scores))
                 if avg_score > best_score:
                     best_score = avg_score
@@ -111,9 +105,8 @@ class SemanticRouter:
 
 semantic_router = SemanticRouter()
 
-# Precompute example embeddings at module load so the first request doesn't spike memory
+# Eager-load at module import so first request doesn't pay the cost
 try:
-    semantic_router._ensure_embeddings()
-    print("[SemanticRouter] Example embeddings precomputed.")
-except Exception as _sr_init_err:
-    print(f"[SemanticRouter] Precompute skipped (non-critical): {_sr_init_err}")
+    semantic_router._ensure_loaded()
+except Exception as _err:
+    print(f"[SemanticRouter] Eager load skipped (non-critical): {_err}")

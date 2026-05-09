@@ -93,3 +93,61 @@ flutter clean && flutter run -d chrome --web-port=7800 --dart-define-from-file=.
 
 
 
+// RAG 練習
+完整指南已寫入 server/RAG_TRAINING_GUIDE.md，涵蓋 7 個章節：
+
+你以後可以自己做的步驟
+🔄 每次優化的標準流程（5 步驟）
+
+# Step 1: 跑測試找出失敗
+python run_test_v2.py --provider cerebras --n 90 --rag
+
+# Step 2: 看哪些案例失敗（指南有給查詢腳本）
+
+# Step 3: 建訓練檔案
+touch server/app/data/rag_<topic>.py
+
+# Step 4: 灌入資料庫（指南有腳本範本）
+
+# Step 5: 重跑測試驗證提升
+python run_test_v2.py --provider cerebras --n 90 --rag
+指南最有用的部分
+✨ 第 3 章：如何寫「好」範例
+最有效的技巧 = 對比組（4 個相似輸入，不同結果）：
+
+
+# 缺地點 → False
+{"user_message": "明天3點打球", "is_complete": False},
+# 齊全 → True  
+{"user_message": "明天3點在大安公園打球", "is_complete": True},
+# 多人齊全 → True
+{"user_message": "明天3點跟小明在大安公園打球", "is_complete": True},
+# 多人缺地點 → False
+{"user_message": "明天3點跟小明打球", "is_complete": False},
+✨ 第 5 章：失敗驅動的迭代循環
+每輪預期改進：
+
+Round 1：51% → 58%（基礎範例）
+Round 2：58% → 62%（自動回灌）
+Round 3：62% → 67%（過期行程）
+Round 4：67% → 72%（補其他類別）
+5+ 輪後 plateau → 考慮 fine-tune
+✨ 第 7 章：建議補的訓練檔案
+按優先順序：
+
+rag_edge_cases.py — 邊界情況
+rag_parsing.py — 時間/地點解析
+rag_location.py — 地點歧義
+rag_validation.py — 資料驗證
+rag_intent.py — 意圖邊界
+自助診斷模板
+每次新增範例後，照指南第 6 章的檢查清單跑：
+
+ 中文 + 英文都有？
+ ≥ 10 個範例？
+ 有正反對比？
+ 每個都有 rule？
+ 邊界有覆蓋？
+ 不和既有範例衝突？
+ 灌 DB 後測試驗證？
+接下來你就可以完全自主建任何主題的 RAG 訓練資料了。🎉

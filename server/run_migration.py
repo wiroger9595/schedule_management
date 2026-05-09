@@ -117,6 +117,75 @@ migrations = [
     ON schedule_management.ai_test_result (model_name);
     """,
 
+    # ── Intent 錨點（替代硬編碼的 INTENT_EXAMPLES） ───────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.intent_anchor (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        intent VARCHAR(50) NOT NULL,
+        example VARCHAR(500) NOT NULL,
+        language VARCHAR(10) NOT NULL DEFAULT 'zh-TW',
+        embedding vector(512),
+        enabled BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_intent_anchor_intent
+    ON schedule_management.intent_anchor (intent);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_intent_anchor_lang
+    ON schedule_management.intent_anchor (language);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_intent_anchor_embedding_hnsw
+    ON schedule_management.intent_anchor
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+    """,
+
+    # ── Prompt 規則（動態注入到 system prompt） ────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.prompt_rule (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        topic VARCHAR(100) NOT NULL,
+        trigger_phrase TEXT NOT NULL,
+        rule_text TEXT NOT NULL,
+        priority INT DEFAULT 0,
+        language VARCHAR(10) NOT NULL DEFAULT 'zh-TW',
+        embedding vector(512),
+        enabled BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_prompt_rule_topic
+    ON schedule_management.prompt_rule (topic);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_prompt_rule_embedding_hnsw
+    ON schedule_management.prompt_rule
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+    """,
+
+    # ── Lexicon（關鍵字字典，stop_word/non_name/edit_verb 等）────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS schedule_management.lexicon (
+        id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        kind VARCHAR(50) NOT NULL,
+        word VARCHAR(100) NOT NULL,
+        language VARCHAR(10) NOT NULL DEFAULT 'zh-TW',
+        enabled BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (kind, word, language)
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_lexicon_kind_lang
+    ON schedule_management.lexicon (kind, language);
+    """,
+
     # ── RAG 訓練範例（用於檢索增強生成） ────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS schedule_management.rag_example (
