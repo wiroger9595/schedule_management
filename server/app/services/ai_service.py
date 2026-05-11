@@ -44,32 +44,17 @@ class _MockResponse:
 class AIService:
     def __init__(self):
         # ── Provider cascade: rate-limit / auth error 時依序 fallback ──────────
-        # 順序：Cerebras → Groq 70B → Gemini → OpenRouter → Groq 8B → Together → Cloudflare
+        # 順序：Cerebras → Gemini → HuggingFace（按中文品質）
         cerebras_key   = os.getenv("CEREBRAS_API_KEY")
         gemini_key     = os.getenv("GEMINI_API_KEY")
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        groq_key       = os.getenv("GROQ_API_KEY")
-        together_key   = os.getenv("TOGETHER_API_KEY")
-        cf_account     = os.getenv("CLOUDFLARE_ACCOUNT_ID")
-        cf_token       = os.getenv("CLOUDFLARE_API_TOKEN")
 
         self._providers: list[tuple] = []  # (client, model_name, label)
 
-        # ── Provider cascade: HuggingFace 優先（測試對象）→ Groq → Cerebras → Gemini ──
-        # HuggingFace (主力，免費無限) → Groq (備援) → Cerebras (備援) → Gemini (最終)
-        hf_key = os.getenv("HUGGINGFACE_API_KEY")
-
-        if hf_key and InferenceClient:
-            try:
-                hf_client = InferenceClient(api_key=hf_key)
-                # 使用 Mistral-Large（HuggingFace 推薦的開源模型，自動選擇最適版本）
-                self._providers.append((hf_client, "Qwen/Qwen2.5-7B-Instruct", "HuggingFace/Qwen2.5-7B"))
-            except Exception as e:
-                print(f"[AIService] HuggingFace init failed: {e}")
-
-        if groq_key:
-            _groq = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
-            self._providers.append((_groq, "llama-3.3-70b-versatile", "Groq/llama-3.3-70b"))
+        # ── Provider cascade（按中文品質排序，避免「成中天」幻覺）─────────────
+        # 1. Cerebras Qwen-235B：中文最強，主力（CLAUDE.md 指定）
+        # 2. Gemini Flash：中文好，備援
+        # 3. HuggingFace Qwen-7B：中文還可以，但小模型偶爾亂碼，最終備援
+        # ❌ 移除 Groq Llama 3.3：中文會幻覺亂碼（「英丽地區」「成中天」等）
         if cerebras_key:
             self._providers.append((
                 OpenAI(api_key=cerebras_key, base_url="https://api.cerebras.ai/v1"),
@@ -82,7 +67,6 @@ class AIService:
                 "gemini-2.0-flash", "Gemini/gemini-2.0-flash",
             ))
 
-        # ── HuggingFace (備援)
         hf_key = os.getenv("HUGGINGFACE_API_KEY")
         if hf_key and InferenceClient:
             try:
@@ -90,6 +74,9 @@ class AIService:
                 self._providers.append((hf_client, "Qwen/Qwen2.5-7B-Instruct", "HuggingFace/Qwen2.5-7B"))
             except Exception as e:
                 print(f"[AIService] HuggingFace init failed: {e}")
+
+        # Groq 留著但只做極端備援（純英文 query 才適合，會被 cascade 跳過）
+        # 暫時不加，避免中文亂碼污染用戶體驗
 
         if not self._providers:
             raise ValueError("需要設定至少一個 AI API Key")

@@ -22,11 +22,10 @@ from app.services.ai_service import ai_service
 from optimize_ai_assistant import AIAssistantTester
 
 PROVIDER_MAP = {
-    "huggingface": 0,
-    "hf": 0,
-    "groq": 1,
-    "cerebras": 2,
-    "gemini": 3,
+    "cerebras": 0,
+    "gemini": 1,
+    "huggingface": 2,
+    "hf": 2,
 }
 
 
