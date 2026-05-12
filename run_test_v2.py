@@ -26,6 +26,11 @@ PROVIDER_MAP = {
     "gemini": 1,
     "huggingface": 2,
     "hf": 2,
+    "groq": 3,
+    "openrouter-qwen": 4,
+    "qwen": 4,
+    "openrouter-deepseek": 5,
+    "deepseek": 5,
 }
 
 

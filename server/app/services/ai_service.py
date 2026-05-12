@@ -78,6 +78,26 @@ class AIService:
         # Groq 留著但只做極端備援（純英文 query 才適合，會被 cascade 跳過）
         # 暫時不加，避免中文亂碼污染用戶體驗
 
+        # ── 測試用 provider（baseline 比較用，不參與 prod cascade fallback）──────
+        # 這些 provider 只在 run_test_v2.py 透過 --provider 明確指定時才會用到，
+        # prod 環境因為 Cerebras 永遠是第一順位，不會 fallback 到這裡。
+        groq_key = os.getenv("GROQ_API_KEY")
+        if groq_key:
+            self._providers.append((
+                OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1"),
+                "llama-3.3-70b-versatile", "Groq/llama-3.3-70b",
+            ))
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            self._providers.append((
+                OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1"),
+                "qwen/qwen-2.5-72b-instruct", "OpenRouter/qwen-2.5-72b",
+            ))
+            self._providers.append((
+                OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1"),
+                "deepseek/deepseek-chat", "OpenRouter/deepseek-chat",
+            ))
+
         if not self._providers:
             raise ValueError("需要設定至少一個 AI API Key")
 
