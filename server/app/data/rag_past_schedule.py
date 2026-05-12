@@ -130,10 +130,10 @@ RAG_PAST_SCHEDULE_ZH = [
     },
 
     # ========================================================================
-    # 場景 5：刪除過期行程（這個 OK，沒有時間衝突）
+    # 場景 5：刪除任何行程（含過期）→ 仍需確認
     # ========================================================================
     {
-        "scenario": "刪除過期行程",
+        "scenario": "刪除過期行程 - 仍需確認",
         "user_message": "刪掉昨天的會議",
         "context": {
             "schedule_list": [
@@ -141,8 +141,10 @@ RAG_PAST_SCHEDULE_ZH = [
             ]
         },
         "intent": "delete",
-        "is_complete": True,
-        "rule": "刪除過期行程沒有時間衝突問題 - 直接刪",
+        "is_complete": False,
+        "expected_action": "ask_user",
+        "expected_question": "確定要刪除昨天的「會議」嗎？",
+        "rule": "刪除任何行程（含過期）→ complete=False，先確認避免誤刪",
     },
 
     # ========================================================================
@@ -241,10 +243,10 @@ RAG_PAST_SCHEDULE_ZH = [
     },
 
     # ========================================================================
-    # 場景 9：「保留日期」的陷阱
+    # 場景 9：「只改一個欄位」→ 沿用其他欄位，complete=True
     # ========================================================================
     {
-        "scenario": "用戶想用過期日期+新時間（陷阱）",
+        "scenario": "過期行程只改時間 → 沿用原日期",
         "user_message": "把三月十五的開會改成晚上八點",
         "context": {
             "schedule_list": [
@@ -252,14 +254,15 @@ RAG_PAST_SCHEDULE_ZH = [
             ]
         },
         "intent": "edit",
-        "is_complete": False,
-        "expected_action": "ask_user",
-        "expected_question": "三月十五已過。您是要把這條過期記錄改成 2026-03-15T20:00（保留歷史）還是要重新安排到未來某天晚上8點？",
-        "rule": "用戶說「過期日期 + 新時間」可能是兩種意圖：(1) 修正歷史記錄 (2) 想重新安排但說錯日期 → 必須詢問",
-        "WRONG": "直接 update_schedule(start_time='2026-03-15T20:00:00') 不確認意圖",
+        "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "p12", "start_time": "2026-03-15T20:00:00"},
+        "rule": "用戶只改一個欄位（時間）→ 沿用原 schedule 其他欄位（日期），直接 update。「修正歷史記錄」是合法操作",
+        "WRONG": "ask_user('是要修正歷史還是重新安排？') 過度保守",
+        "CORRECT": "update_schedule(start_time='2026-03-15T20:00:00') 沿用原日期",
     },
     {
-        "scenario": "明確說「改到未來」的過期行程",
+        "scenario": "過期行程只改日期 → 沿用原時間",
         "user_message": "把三月十五的開會改到下禮拜五",
         "context": {
             "schedule_list": [
@@ -267,16 +270,105 @@ RAG_PAST_SCHEDULE_ZH = [
             ]
         },
         "intent": "edit",
+        "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "p13", "start_time": "下禮拜五T10:00:00"},
+        "rule": "用戶只改日期 → 沿用原時間（10:00），直接 update。不要追問「幾點」",
+        "WRONG": "ask_user('下禮拜五幾點？') 多餘追問",
+        "CORRECT": "update_schedule 沿用原 schedule 的 10:00",
+    },
+
+    # ========================================================================
+    # 場景 10：「只改一個欄位」對比組 - 強化「沿用其他欄位」模式
+    # ========================================================================
+    {
+        "scenario": "過期行程只改時間（昨天的同日改時間）",
+        "user_message": "昨天的會議改成上午 9 點",
+        "context": {
+            "schedule_list": [
+                {"id": "p14", "title": "會議", "start_time": "2026-04-29T14:00:00"}
+            ]
+        },
+        "intent": "edit",
+        "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "p14", "start_time": "2026-04-29T09:00:00"},
+        "rule": "「昨天的 X 改成 HH:MM」→ 保留昨天日期，只更新時間",
+    },
+    {
+        "scenario": "過期行程只改地點 → 沿用原時間/標題/參與者",
+        "user_message": "上周三的午餐改到新竹",
+        "context": {
+            "schedule_list": [
+                {"id": "p15", "title": "午餐", "start_time": "2026-04-23T12:00:00", "location": "台北"}
+            ]
+        },
+        "intent": "edit",
+        "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "p15", "location": "新竹"},
+        "rule": "用戶只說「改到 [地點]」→ 只更新 location，其他保持不變",
+        "WRONG": "ask_user('要新建還是修正歷史？') 過度確認",
+    },
+    {
+        "scenario": "過期行程只改人員 → 沿用其他",
+        "user_message": "上次的開會加上小華",
+        "context": {
+            "schedule_list": [
+                {"id": "p16", "title": "開會", "start_time": "2026-04-25T10:00:00",
+                 "participants": ["@小明"]}
+            ]
+        },
+        "intent": "edit",
+        "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "p16", "participants_add": ["@小華"]},
+        "rule": "「加上某人」= 在原 participants 後追加，不需追問",
+    },
+
+    # ========================================================================
+    # 場景 11：刪除過期行程 → 仍需確認（避免誤刪）
+    # ========================================================================
+    {
+        "scenario": "刪除過期行程 - 仍應先確認",
+        "user_message": "刪除昨天那個被取消的會議",
+        "context": {
+            "schedule_list": [
+                {"id": "p17", "title": "取消的會議", "start_time": "2026-04-29T10:00:00"}
+            ]
+        },
+        "intent": "delete",
         "is_complete": False,
         "expected_action": "ask_user",
-        "expected_question": "下禮拜五幾點？",
-        "rule": "用戶明確說「改到 [未來時間]」→ 接受未來，但缺具體時間時追問",
+        "expected_question": "確定要刪除「取消的會議」嗎？",
+        "rule": "刪除任何行程（含過期）→ complete=False，先確認避免誤刪",
+        "WRONG": "直接刪除沒確認",
+        "CORRECT": "intent=delete + is_complete=False + 詢問確認",
+    },
+
+    # ========================================================================
+    # 場景 12：模糊未來時間（保留原行為）
+    # ========================================================================
+    {
+        "scenario": "過期改到模糊未來時間（暑假）→ 仍需追問",
+        "user_message": "三月底的旅遊改到暑假",
+        "context": {
+            "schedule_list": [
+                {"id": "p18", "title": "旅遊", "start_time": "2026-03-30T09:00:00"}
+            ]
+        },
+        "intent": "edit",
+        "is_complete": False,
+        "expected_action": "ask_user",
+        "expected_question": "暑假哪一天出發？大概幾天？",
+        "rule": "「暑假/年底/下次」是模糊時段，無法解析具體日期 → 必須追問",
+        "WRONG": "假設「暑假 = 7/1」自動填入",
     },
 ]
 
 RAG_PAST_SCHEDULE_EN = [
     {
-        "scenario": "Edit past schedule - user only says time, needs date",
+        "scenario": "Edit past schedule - only change time, preserve original date",
         "user_message": "Change yesterday's meeting to 3pm",
         "context": {
             "schedule_list": [
@@ -284,10 +376,11 @@ RAG_PAST_SCHEDULE_EN = [
             ]
         },
         "intent": "edit",
-        "is_complete": False,
-        "expected_action": "ask_user",
-        "expected_question": "The original schedule has passed. Which day's 3pm do you want?",
-        "rule": "Past schedule + only time → ask for future date, don't preserve past date",
+        "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "abc", "start_time": "2026-05-08T15:00:00"},
+        "rule": "User only changes time field → keep original date, update time only",
+        "WRONG": "ask_user('which day?') — user already implied yesterday by saying 'yesterday's meeting'",
     },
     {
         "scenario": "Edit past schedule - user provides full future time",
@@ -342,7 +435,7 @@ RAG_PAST_SCHEDULE_EN = [
         "rule": "If new time would also be past → confirm with user",
     },
     {
-        "scenario": "Delete past schedule - safe to delete",
+        "scenario": "Delete past schedule - still requires confirmation",
         "user_message": "Delete yesterday's meeting",
         "context": {
             "schedule_list": [
@@ -350,7 +443,38 @@ RAG_PAST_SCHEDULE_EN = [
             ]
         },
         "intent": "delete",
+        "is_complete": False,
+        "expected_action": "ask_user",
+        "expected_question": "Delete 'Meeting' from yesterday?",
+        "rule": "Delete any schedule (incl. past) → complete=False, confirm first to avoid accidental deletion",
+    },
+    {
+        "scenario": "Only change location → preserve other fields",
+        "user_message": "Move last Wednesday's lunch to Hsinchu",
+        "context": {
+            "schedule_list": [
+                {"id": "L1", "title": "Lunch", "start_time": "2026-04-23T12:00:00", "location": "Taipei"}
+            ]
+        },
+        "intent": "edit",
         "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "L1", "location": "Hsinchu"},
+        "rule": "User specifies only location change → update location, preserve time/title",
+    },
+    {
+        "scenario": "Only change date → preserve original time",
+        "user_message": "Move yesterday's meeting to next Friday",
+        "context": {
+            "schedule_list": [
+                {"id": "M1", "title": "Meeting", "start_time": "2026-05-08T10:00:00"}
+            ]
+        },
+        "intent": "edit",
+        "is_complete": True,
+        "expected_action": "update_schedule",
+        "parsed_data": {"schedule_id": "M1", "start_time": "2026-05-15T10:00:00"},
+        "rule": "User only changes date → preserve original time (10:00). Don't ask 'what time?'",
     },
     {
         "scenario": "User specifies past date as new time - likely typo",
