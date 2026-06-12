@@ -98,7 +98,7 @@ class ChatResponse(BaseModel):
     location_details: Optional[dict] = None
     location_candidates: Optional[List[dict]] = None  # multiple candidates for user to pick
     location_not_found: bool = False          # true when HERE/Nominatim can't find the location
-    confirm_delete: Optional[dict] = None  # {id, title, start_time} — prompts delete confirmation UI
+    confirm_delete: Optional[List[dict]] = None  # [{id, title, start_time}, ...] — prompts delete confirmation UI
     schedule_deleted: bool = False  # true after successful delete
     confirm_past_edit: Optional[dict] = None  # {id, title, start_time} — prompts past-schedule edit confirmation UI
 

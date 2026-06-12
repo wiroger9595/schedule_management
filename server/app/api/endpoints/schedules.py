@@ -681,26 +681,41 @@ def chat_schedule(
 
     # ── confirm_delete=True: user confirmed deletion ──────────────────────────
     if request.confirm_delete:
-        delete_id = current_context.get("delete_schedule_id")
-        if not delete_id:
+        # Support both multi (delete_schedule_ids) and single (delete_schedule_id)
+        delete_ids = current_context.get("delete_schedule_ids") or []
+        if not delete_ids:
+            single = current_context.get("delete_schedule_id")
+            if single:
+                delete_ids = [single]
+        if not delete_ids:
             _del_msg = _build_schedule_list_reply(
                 "請問您要刪除哪個行程呢？", request.schedule_list or []
             )
             return ChatResponse(ai_reply=_del_msg, updated_data=current_context, is_complete=False)
         from sqlmodel import delete as sql_delete
         repo = ScheduleRepository(session)
-        target = repo.get_by_schedule_id(delete_id)
-        if not target or target.user_id != current_user.user_id:
+        deleted_titles = []
+        for delete_id in delete_ids:
+            target = repo.get_by_schedule_id(delete_id)
+            if not target or target.user_id != current_user.user_id:
+                continue
+            session.execute(sql_delete(attend).where(attend.schedule_id == delete_id))
+            session.delete(target)
+            deleted_titles.append(target.title)
+        if not deleted_titles:
             _del_msg2 = _build_schedule_list_reply(
                 "找不到可刪除的行程（可能已刪除或非您建立），請選擇要刪除的行程：",
                 request.schedule_list or [],
             )
             return ChatResponse(ai_reply=_del_msg2, updated_data=current_context, is_complete=False)
-        session.execute(sql_delete(attend).where(attend.schedule_id == delete_id))
-        session.delete(target)
         session.commit()
+        if len(deleted_titles) == 1:
+            reply_msg = f"✅ 已刪除行程「{deleted_titles[0]}」。"
+        else:
+            items = "、".join(f"「{t}」" for t in deleted_titles)
+            reply_msg = f"✅ 已刪除 {len(deleted_titles)} 個行程：{items}。"
         return ChatResponse(
-            ai_reply=f"✅ 已刪除行程「{target.title}」。",
+            ai_reply=reply_msg,
             updated_data={},
             is_complete=True,
             schedule_deleted=True,
@@ -826,7 +841,9 @@ def chat_schedule(
     _pending_lon = current_context.get("_pending_confirm_lon")
     _pending_past_id_pre = current_context.get("_pending_past_edit_id")
 
-    _pending_delete_id = current_context.get("delete_schedule_id")
+    _pending_delete_ids = current_context.get("delete_schedule_ids") or (
+        [current_context["delete_schedule_id"]] if current_context.get("delete_schedule_id") else []
+    )
 
     if _is_affirm and _pending_lat and _pending_lon:
         request = request.model_copy(update={
@@ -837,7 +854,7 @@ def chat_schedule(
     elif _is_affirm and _pending_past_id_pre:
         # 用戶打字確認過期行程修改（不是按按鈕）
         request = request.model_copy(update={"confirm_past_edit": True})
-    elif _is_affirm and _pending_delete_id:
+    elif _is_affirm and _pending_delete_ids:
         # 用戶打字確認刪除行程（不是按按鈕）
         request = request.model_copy(update={"confirm_delete": True})
 
@@ -976,23 +993,30 @@ def chat_schedule(
                     updated_data={}, is_complete=False,
                 )
             delete_ctx = dict(current_context)
-            delete_ctx["delete_schedule_id"] = target_schedule_id
-            # Find schedule details for display
-            confirm_info = None
-            if target_schedule_id:
-                repo = ScheduleRepository(session)
-                del_target = repo.get_by_schedule_id(target_schedule_id)
+            # Support multi-delete: target_schedule_ids (list) takes precedence
+            target_ids = graph_state.get("target_schedule_ids") or (
+                [target_schedule_id] if target_schedule_id else []
+            )
+            delete_ctx["delete_schedule_ids"] = target_ids
+            # Keep legacy key for single-delete backward compat
+            if len(target_ids) == 1:
+                delete_ctx["delete_schedule_id"] = target_ids[0]
+            # Fetch schedule details for all targets
+            repo = ScheduleRepository(session)
+            confirm_items = []
+            for tid in target_ids:
+                del_target = repo.get_by_schedule_id(tid)
                 if del_target:
-                    confirm_info = {
-                        "id": target_schedule_id,
+                    confirm_items.append({
+                        "id": tid,
                         "title": del_target.title,
                         "start_time": del_target.meeting_start_time.isoformat() if isinstance(del_target.meeting_start_time, datetime) else str(del_target.meeting_start_time) if del_target.meeting_start_time else None,
-                    }
+                    })
             return ChatResponse(
                 ai_reply=ai_reply,
                 updated_data=delete_ctx,
                 is_complete=False,
-                confirm_delete=confirm_info,
+                confirm_delete=confirm_items if confirm_items else None,
             )
 
         # ── Edit intent: validate mentioned person exists in contacts ────────
@@ -1619,7 +1643,6 @@ def chat_schedule(
 
             if intent != "edit" and participants and isinstance(participants, list):
                 from ...models.contact import Contact
-                from ...models.attend import attend
                 from sqlmodel import select
                 
                 for p_name in participants:

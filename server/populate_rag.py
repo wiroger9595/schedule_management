@@ -8,17 +8,8 @@ from sqlmodel import Session
 from app.db.database import engine
 from app.repositories.rag_repository import RAGRepository
 
-# Chinese datasets (V1 + V2 + V3)
-from app.data.rag_training_data import RAG_TRAINING_DATA
-from app.data.rag_training_data_v2 import RAG_TRAINING_DATA_V2
-from app.data.rag_training_data_v3 import RAG_TRAINING_DATA_V3
-
-# English datasets (V1 + V2 + V3)
+from app.data.rag_training_data_zh import RAG_TRAINING_DATA_ZH
 from app.data.rag_training_data_en import RAG_TRAINING_DATA_EN
-from app.data.rag_training_data_en_v2 import RAG_TRAINING_DATA_EN_V2
-from app.data.rag_training_data_en_v3 import RAG_TRAINING_DATA_EN_V3
-
-# 過期行程處理（針對 past_schedule 失敗類別）
 from app.data.rag_past_schedule import RAG_PAST_SCHEDULE_ZH, RAG_PAST_SCHEDULE_EN
 
 
@@ -83,9 +74,7 @@ def main():
 
     # Chinese datasets
     for name, dataset in [
-        ("zh V1", RAG_TRAINING_DATA),
-        ("zh V2", RAG_TRAINING_DATA_V2),
-        ("zh V3", RAG_TRAINING_DATA_V3),
+        ("zh", RAG_TRAINING_DATA_ZH),
         ("zh past_schedule", RAG_PAST_SCHEDULE_ZH),
     ]:
         try:
@@ -97,9 +86,7 @@ def main():
 
     # English datasets
     for name, dataset in [
-        ("en V1", RAG_TRAINING_DATA_EN),
-        ("en V2", RAG_TRAINING_DATA_EN_V2),
-        ("en V3", RAG_TRAINING_DATA_EN_V3),
+        ("en", RAG_TRAINING_DATA_EN),
         ("en past_schedule", RAG_PAST_SCHEDULE_EN),
     ]:
         try:

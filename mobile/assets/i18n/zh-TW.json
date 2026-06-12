@@ -245,6 +245,7 @@
   "manualSelectedLocation": "已手動選擇地點：{address}",
   "contactsLoaded": "成功載入 {count} 位聯絡人！",
   "confirmDeleteTitle": "確定要刪除「{title}」嗎？",
+  "confirmDeleteBatch": "確定要刪除以下 {count} 個行程嗎？",
   "confirmDelete": "確認刪除",
   "notHere": "不是這裡",
   "confirmOnGoogleMaps": "在 Google Maps 確認",

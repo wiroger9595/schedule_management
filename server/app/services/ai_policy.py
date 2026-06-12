@@ -92,12 +92,21 @@ def is_off_topic(user_message: str, reply_text: str = "") -> bool:
 
 def needs_list_injection(question: str) -> bool:
     """
-    Return True when ask_user's question implies 'can't find the schedule'
-    but doesn't include a numbered list — the schedule list should be injected.
+    Return True when the backend should replace ask_user's question with a
+    proper schedule list built from real data.
+
+    Two cases:
+    1. Model says it can't find schedule (CANT_FIND_KEYWORDS) but has no list yet.
+    2. Model already generated a numbered list with datetime stamps — the model
+       may be hallucinating schedule titles/locations (HuggingFace fallback issue),
+       so always replace model-generated schedule lists with verified data.
     """
+    import re as _re
     has_list      = any(c in question for c in LIST_INDICATOR_CHARS)
     has_cant_find = any(k in question for k in CANT_FIND_KEYWORDS)
-    return has_cant_find and not has_list
+    # Detect model-generated schedule list: numbered + datetime pattern "MM/DD HH:mm"
+    has_datetime_list = has_list and bool(_re.search(r'\d{2}/\d{2} \d{2}:\d{2}', question))
+    return (has_cant_find and not has_list) or has_datetime_list
 
 
 def build_inline_list(schedule_list: list, verb: str = "操作") -> str:

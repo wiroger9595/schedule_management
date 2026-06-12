@@ -62,7 +62,10 @@ class ChatWidgetState extends State<ChatWidget> {
       final schedules = await apiService.getSchedules();
       if (mounted) {
         setState(() {
-          _scheduleList = schedules.map((s) => s.toJson()).toList();
+          _scheduleList = schedules
+              .where((s) => s.status != 'C')
+              .map((s) => s.toJson())
+              .toList();
         });
       }
     } catch (_) {}
@@ -470,16 +473,21 @@ class ChatWidgetState extends State<ChatWidget> {
             widget.onScheduleCreated();
             _loadScheduleList();
           } else if (data['confirm_delete'] != null) {
-            // Backend wants user to confirm deletion
-            final del = data['confirm_delete'] as Map<String, dynamic>;
+            // Backend wants user to confirm deletion (single or batch)
+            final delList = (data['confirm_delete'] as List<dynamic>)
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
             if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
             _messages.add(
               DeleteConfirmMessage(
-                title: del['title'] as String? ?? '',
-                startTime: del['start_time'] as String?,
+                items: delList,
                 onConfirm: () {
                   _currentContext ??= {};
-                  _currentContext!['delete_schedule_id'] = del['id'];
+                  _currentContext!['delete_schedule_ids'] =
+                      delList.map((d) => d['id'] as String).toList();
+                  if (delList.length == 1) {
+                    _currentContext!['delete_schedule_id'] = delList[0]['id'];
+                  }
                   _sendMessage(text: 'confirmDelete'.tr(), confirmDelete: true);
                 },
                 onCancel: () {
@@ -1081,15 +1089,13 @@ class LocationCandidatesMessage extends StatelessWidget {
 }
 
 class DeleteConfirmMessage extends StatefulWidget {
-  final String title;
-  final String? startTime;
+  final List<Map<String, dynamic>> items;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
 
   const DeleteConfirmMessage({
     super.key,
-    required this.title,
-    this.startTime,
+    required this.items,
     required this.onConfirm,
     required this.onCancel,
   });
@@ -1113,7 +1119,8 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
 
   @override
   Widget build(BuildContext context) {
-    final timeStr = _formatTime(widget.startTime);
+    if (widget.items.isEmpty) return const SizedBox.shrink();
+    final isBatch = widget.items.length > 1;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       child: Card(
@@ -1130,16 +1137,27 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'confirmDeleteTitle'.tr(namedArgs: {'title': widget.title}),
+                      isBatch
+                          ? 'confirmDeleteBatch'.tr(namedArgs: {'count': '${widget.items.length}'})
+                          : 'confirmDeleteTitle'.tr(namedArgs: {'title': widget.items[0]['title'] as String? ?? ''}),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
-              if (timeStr != null) ...[
-                const SizedBox(height: 4),
-                Text(timeStr, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-              ],
+              const SizedBox(height: 6),
+              ...widget.items.map((item) {
+                final timeStr = _formatTime(item['start_time'] as String?);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    timeStr != null
+                        ? '• ${item['title']}  $timeStr'
+                        : '• ${item['title']}',
+                    style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                  ),
+                );
+              }),
               const SizedBox(height: 12),
               Row(
                 children: [

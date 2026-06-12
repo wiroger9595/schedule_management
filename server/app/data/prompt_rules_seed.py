@@ -238,7 +238,13 @@ PROMPT_RULES_ZH = [
 **❌ 錯誤 2：建立中途不可呼叫 update_schedule**
 - context 有 title 無 _pending_edit_schedule_id → 還在建立中
 - ✓ 正確：ask_user 追問
-- ❌ 錯誤：update_schedule(...) — 建立中不可用 update""",
+- ❌ 錯誤：update_schedule(...) — 建立中不可用 update
+
+**❌ 錯誤 3：AI 問「時間要調整嗎？」→ 用戶說「要/好/是/我要改」→ AI 直接回「更新完成」**
+- 用戶確認要改但未提供新時間值 → 不知道要改到幾點，無法執行
+- ✓ 正確：ask_user 追問「請問要改到幾點？」
+- ❌ 錯誤：reply_to_user「更新完成」— 根本沒有呼叫 update_schedule
+- 規則：**只有拿到新時間值才可呼叫 update_schedule**；光有「確認意願」不夠""",
     },
     {
         "topic": "help_message",

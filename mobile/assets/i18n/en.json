@@ -245,6 +245,7 @@
   "manualSelectedLocation": "Manually selected location: {address}",
   "contactsLoaded": "Successfully loaded {count} contacts!",
   "confirmDeleteTitle": "Are you sure you want to delete \"{title}\"?",
+  "confirmDeleteBatch": "Are you sure you want to delete these {count} schedules?",
   "confirmDelete": "Confirm Delete",
   "notHere": "Not Here",
   "confirmOnGoogleMaps": "Confirm on Google Maps",

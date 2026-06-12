@@ -5,7 +5,7 @@ import '../utils/constants.dart';
 class SettingsProvider extends ChangeNotifier {
   static const _key = 'visible_schedule_statuses';
 
-  // Default: show all statuses
+  // Default: show all statuses except cancelled
   static const List<String> allStatuses = [
     ScheduleStatus.pending,
     ScheduleStatus.comingSoon,
@@ -13,7 +13,6 @@ class SettingsProvider extends ChangeNotifier {
     ScheduleStatus.attend,
     ScheduleStatus.notGoing,
     ScheduleStatus.notAttended,
-    ScheduleStatus.cancel,
   ];
 
   Set<String> _visibleStatuses = Set.from(allStatuses);

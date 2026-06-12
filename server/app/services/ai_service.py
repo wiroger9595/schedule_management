@@ -244,7 +244,7 @@ class AIService:
             "type": "function",
             "function": {
                 "name": "create_schedule",
-                "description": "建立新行程。title/start_time/end_time/location 齊全才呼叫。participants 可為空（個人行程）。",
+                "description": "建立新行程。title/start_time/end_time/location 齊全才呼叫。participants 可為空（個人行程）。⚠️ 每次只能建立一個行程；若用戶要求一次建立多個，改用 ask_user 告知「目前每次只能新增一個行程，請一個一個來」。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -267,6 +267,7 @@ class AIService:
                 "description": (
                     "修改現有行程。必須先從行程清單找到目標行程的 id，且用戶已明確說明要改成什麼值。"
                     "若清單中有多個符合或找不到符合描述的行程，必須改用 ask_user 列出行程清單讓用戶選擇。"
+                    "⚠️ 每次只能修改一個行程；若用戶要求一次修改多個，改用 ask_user 告知「目前每次只能修改一個行程，請一個一個來」。"
                     "若更改地點且舊 title 含有舊地點名稱，一併更新 title（移除地點，只保留活動與對象）。"
                     "⚠️ 必須至少帶入一個修改欄位（title/start_time/location/description/participants），"
                     "若用戶尚未提供新值則改用 ask_user 追問，不可呼叫空的 update_schedule。"
@@ -303,14 +304,28 @@ class AIService:
             "type": "function",
             "function": {
                 "name": "delete_schedule",
-                "description": "準備刪除行程（系統會向用戶確認，尚未真正刪除）。若目標不明確或有多個符合，改用 ask_user 列出清單讓用戶選擇。",
+                "description": (
+                    "準備刪除一或多個行程（系統會向用戶確認，尚未真正刪除）。"
+                    "刪除單筆用 schedule_id + schedule_title；"
+                    "刪除多筆用 schedule_ids（ID 陣列）+ schedule_titles（標題陣列，順序對應）。"
+                    "若目標不明確，改用 ask_user 列出清單讓用戶選擇。"
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "schedule_id": {"type": "string"},
-                        "schedule_title": {"type": "string", "description": "行程標題，用於確認訊息"}
-                    },
-                    "required": ["schedule_id", "schedule_title"]
+                        "schedule_id": {"type": "string", "description": "單筆刪除時使用"},
+                        "schedule_title": {"type": "string", "description": "單筆刪除時的標題"},
+                        "schedule_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "多筆刪除時使用，ID 陣列"
+                        },
+                        "schedule_titles": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "多筆刪除時的標題陣列，順序與 schedule_ids 對應"
+                        }
+                    }
                 }
             }
         },
@@ -346,7 +361,7 @@ class AIService:
         valid_ids = {s.get("schedule_id") or s.get("id", "") for s in (schedule_list or [])}
         valid_ids.discard("")
 
-        if fn_name in ("update_schedule", "delete_schedule"):
+        if fn_name == "update_schedule":
             sid = args.get("schedule_id", "")
             if not sid:
                 errors.append("schedule_id 是必填欄位，不可省略")
@@ -356,6 +371,19 @@ class AIService:
                     f"schedule_id={sid!r} 不在行程清單中。"
                     f"有效的 id 範例：{sample}。請從清單中選擇正確的 id，不可自行編造。"
                 )
+
+        if fn_name == "delete_schedule":
+            ids = args.get("schedule_ids") or ([args["schedule_id"]] if args.get("schedule_id") else [])
+            if not ids:
+                errors.append("delete_schedule 必須提供 schedule_id（單筆）或 schedule_ids（多筆）")
+            elif valid_ids:
+                bad = [sid for sid in ids if sid not in valid_ids]
+                if bad:
+                    sample = ", ".join(list(valid_ids)[:3])
+                    errors.append(
+                        f"schedule_id {bad} 不在行程清單中。"
+                        f"有效的 id 範例：{sample}。請從清單中選擇正確的 id，不可自行編造。"
+                    )
 
         if fn_name == "update_schedule":
             allowed = {"title", "start_time", "location", "description",
@@ -556,6 +584,10 @@ class AIService:
                             response = _MockResponse(response_text)
                             use_tool_calling = False
                     elif use_tool_calling:
+                        # Disable Qwen-3 thinking mode to prevent hallucinated
+                        # schedule titles/locations leaking into tool arguments.
+                        _extra = ({"extra_body": {"thinking": {"type": "disabled"}}}
+                                  if "qwen-3" in _model.lower() else {})
                         response = _cli.chat.completions.create(
                             model=_model,
                             messages=messages,
@@ -563,8 +595,11 @@ class AIService:
                             tool_choice="required",
                             temperature=0.1,
                             timeout=8.0,
+                            **_extra,
                         )
                     else:
+                        _extra = ({"extra_body": {"thinking": {"type": "disabled"}}}
+                                  if "qwen-3" in _model.lower() else {})
                         response = _cli.chat.completions.create(
                             model=_model,
                             messages=messages + [{
@@ -578,6 +613,7 @@ class AIService:
                             temperature=0.1,
                             response_format={"type": "json_object"},
                             timeout=8.0,
+                            **_extra,
                         )
                     print(f"[AIService] Using {_label}")
                     break  # success
@@ -705,9 +741,12 @@ class AIService:
                      f"❌ 上一個工具呼叫有以下錯誤，請重新呼叫正確的工具：\n{_err_str}"},
                 ]
                 try:
+                    _retry_extra = ({"extra_body": {"thinking": {"type": "disabled"}}}
+                                    if "qwen-3" in _model.lower() else {})
                     _retry_resp = _cli.chat.completions.create(
                         model=_model, messages=_retry_msgs, tools=self.TOOLS,
                         tool_choice="required", temperature=0.1, timeout=8.0,
+                        **_retry_extra,
                     )
                     _retry_tc = (_retry_resp.choices[0].message.tool_calls or [None])[0]
                     if _retry_tc:
@@ -802,22 +841,29 @@ class AIService:
 
             # ── delete_schedule ─────────────────────────────────────────────
             if fn_name == "delete_schedule":
-                schedule_id = args.get("schedule_id")
-                if not schedule_id:
-                    print(f"[AI Tool] delete_schedule missing schedule_id, args={args}")
+                # Support both single (schedule_id) and multi (schedule_ids)
+                ids = args.get("schedule_ids") or ([args["schedule_id"]] if args.get("schedule_id") else [])
+                titles = args.get("schedule_titles") or ([args.get("schedule_title", "該行程")] if args.get("schedule_id") else [])
+                if not ids:
+                    print(f"[AI Tool] delete_schedule missing id(s), args={args}")
                     _q = build_inline_list(schedule_list or [], verb="刪除")
                     return {
                         "intent": "create", "target_schedule_id": None,
                         "updated_data": current_context, "missing_fields": [],
                         "is_complete": False, "reply": _q,
                     }
-                title = args.get("schedule_title", "該行程")
+                if len(ids) == 1:
+                    reply = f"確定要取消「{titles[0]}」嗎？"
+                else:
+                    items = "、".join(f"「{t}」" for t in titles[:len(ids)])
+                    reply = f"確定要取消以下 {len(ids)} 個行程嗎？\n{items}"
                 return {
                     "intent": "delete",
-                    "target_schedule_id": schedule_id,
+                    "target_schedule_ids": ids,
+                    "target_schedule_id": ids[0],
                     "updated_data": {}, "missing_fields": [],
                     "is_complete": False,
-                    "reply": f"確定要取消「{title}」嗎？",
+                    "reply": reply,
                 }
 
             # ── reply_to_user ────────────────────────────────────────────────
