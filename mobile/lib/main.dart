@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'theme/app_theme.dart';
@@ -7,14 +6,12 @@ import 'routes/app_routes.dart';
 import 'providers/auth_provider.dart';
 import 'providers/schedule_provider.dart';
 import 'providers/settings_provider.dart';
-import 'screens/ai_chat_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_completion_screen.dart';
 
 import 'services/notification_service.dart';
 import 'services/api_service.dart';
-import 'services/auth_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -117,7 +114,7 @@ class _StartupWrapperState extends State<_StartupWrapper> {
                   auth.user!['phone'].toString().isEmpty)) {
             return ProfileCompletionScreen();
           }
-          return AiChatScreen();
+          return const MainShell();
         } else {
           return LoginScreen();
         }

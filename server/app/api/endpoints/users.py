@@ -7,7 +7,7 @@ from ...models.user import User
 from ...models.attend import attend
 from ...models.schedule import Schedule
 from ...repositories.user_repository import UserRepository
-from ...schemas.user import UserUpdate, ProfilePictureUpdate
+from ...schemas.user import UserUpdate, ProfilePictureUpdate, UserRead
 from .auth import get_current_user
 from datetime import datetime
 
@@ -146,34 +146,32 @@ def respond_to_invitation(
     return {"ok": True, "status": att.status}
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserRead)
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.get("/search", response_model=List[User])
+@router.get("/search", response_model=List[UserRead])
 def search_users(q: str, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = UserRepository(session)
     if not q:
         return []
-    return repo.search_users(q)
+    return repo.search_users(q, exclude_user_id=current_user.user_id)
 
 
-@router.put("/me/profile_picture")
+@router.put("/me/profile_picture", response_model=UserRead)
 def update_profile_picture(data: ProfilePictureUpdate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = UserRepository(session)
     image_url = data.image_url
     if not image_url:
-        # handle error or specific logic
         pass
-        
-    current_user.profile_image_path = image_url
+
     current_user.profile_image_path = image_url
     return repo.update(current_user)
 
-@router.patch("/me")
+@router.patch("/me", response_model=UserRead)
 def update_user_me(data: UserUpdate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = UserRepository(session)
-    
+
     if data.full_name is not None:
         current_user.full_name = data.full_name
     if data.phone is not None:
@@ -184,18 +182,16 @@ def update_user_me(data: UserUpdate, current_user: User = Depends(get_current_us
         current_user.line_id = data.line_id
     if data.language is not None:
         current_user.language = data.language
-        
+
     return repo.update(current_user)
 
-@router.put("/{user_id}")
+@router.put("/{user_id}", response_model=UserRead)
 def update_user_profile(user_id: str, data: UserUpdate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    # Basic check
     if current_user.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
-        
+
     repo = UserRepository(session)
-    
-    # Update allowed fields
+
     if data.full_name is not None:
         current_user.full_name = data.full_name
     if data.phone is not None:
@@ -206,7 +202,7 @@ def update_user_profile(user_id: str, data: UserUpdate, current_user: User = Dep
         current_user.line_id = data.line_id
     if data.language is not None:
         current_user.language = data.language
-        
+
     return repo.update(current_user)
 
 @router.post("/upload-photo")

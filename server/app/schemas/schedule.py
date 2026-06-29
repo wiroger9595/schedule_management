@@ -72,11 +72,23 @@ class ChatRequest(BaseModel):
     confirm_location: bool = False
     confirm_delete: bool = False  # user confirmed delete action
     confirm_past_edit: bool = False  # user confirmed editing a past schedule
+    confirm_time_input: bool = False  # user picked a new time via time picker (bypasses AI)
+    new_start_time: Optional[str] = None  # ISO datetime from time picker
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     conversation_history: Optional[List[dict]] = None  # [{role, content}, ...]
     schedule_id: Optional[str] = None  # set after schedule created — triggers update instead of create
     schedule_list: Optional[List[dict]] = None  # user's schedules for AI edit/delete context
+
+
+class InviteItem(BaseModel):
+    contact_id: Optional[int] = None
+    email: Optional[str] = None
+    name: Optional[str] = None
+
+
+class ScheduleInviteRequest(BaseModel):
+    invites: List[InviteItem]
 
 
 class FeedbackRequest(BaseModel):
@@ -101,4 +113,6 @@ class ChatResponse(BaseModel):
     confirm_delete: Optional[List[dict]] = None  # [{id, title, start_time}, ...] — prompts delete confirmation UI
     schedule_deleted: bool = False  # true after successful delete
     confirm_past_edit: Optional[dict] = None  # {id, title, start_time} — prompts past-schedule edit confirmation UI
+    needs_time_input: bool = False  # true when backend needs user to pick a new future time (past-schedule reschedule)
+    needs_location_input: bool = False  # true when AI is asking for a location — show location picker instead of text
 

@@ -3,21 +3,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../screens/profile_screen.dart';
 import '../screens/call_log_screen.dart';
 import '../screens/contact_list_screen.dart';
-import '../screens/home_screen.dart';
-import '../screens/settings_screen.dart';
-import '../screens/tabbed_dashboard_screen.dart';
 import '../screens/invitations_screen.dart';
+import '../screens/main_shell.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 import 'user_avatar.dart';
 
-/// Reusable app drawer widget extracted from HomeScreen.
-/// Displays user profile header and navigation menu items.
 class AppDrawer extends StatefulWidget {
   final VoidCallback onLogout;
-
   const AppDrawer({Key? key, required this.onLogout}) : super(key: key);
 
   @override
@@ -40,223 +35,231 @@ class _AppDrawerState extends State<AppDrawer> {
     } catch (_) {}
   }
 
+  void _switchTab(int index) {
+    Navigator.pop(context);
+    MainShellState.current?.switchTo(index);
+  }
+
+  void _go(Widget screen) {
+    Navigator.pop(context);
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
+      backgroundColor: AppTheme.surface,
+      child: Column(
         children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.black, Colors.grey[800]!],
-              ),
-            ),
-            child: Consumer<AuthProvider>(
-              builder: (context, auth, _) {
-                final user = auth.user;
-                final displayUser = user ?? {
-                  'full_name': 'user'.tr(),
-                  'user_id': '',
-                  'profile_image_path': null,
-                };
+          // ── Header ────────────────────────────────────────
+          Consumer<AuthProvider>(
+            builder: (ctx, auth, _) {
+              final user = auth.user ?? {};
+              final name = (user['full_name'] as String?)?.isNotEmpty == true
+                  ? user['full_name'] as String
+                  : 'user'.tr();
+              final email = (user['email'] as String?) ?? '';
+              final imageUrl = user['profile_image_path'] as String?;
 
-                return Row(
+              return Container(
+                color: AppTheme.primary,
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 20,
+                  left: 20,
+                  right: 20,
+                  bottom: 24,
+                ),
+                child: Row(
                   children: [
                     GestureDetector(
                       onTap: () async {
-                        final result = await Navigator.pushNamed(
-                          context,
-                          '/profile',
-                        );
-                        if (result == true) {
-                          auth.fetchUserProfile();
-                        }
+                        final ok = await Navigator.pushNamed(ctx, '/profile');
+                        if (ok == true) auth.fetchUserProfile();
                       },
-                      child: UserAvatar(
-                        radius: 35,
-                        imageUrl: displayUser['profile_image_path'],
-                      ),
+                      child: UserAvatar(radius: 28, imageUrl: imageUrl),
                     ),
-                    SizedBox(width: 16),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            displayUser['full_name'] ??
-                                'user'.tr(),
-                            style: TextStyle(
+                            name,
+                            style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.2,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          SizedBox(height: 4),
-                          Text(
-                            displayUser['user_id'] ?? '',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
+                          if (email.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              email,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
                   ],
-                );
-              },
-            ),
-          ),
-          ListTile(
-            leading: Icon(Icons.smart_toy_outlined, color: Colors.blueAccent),
-            title: Text('aiChat'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, '/home');
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.list_alt, color: Colors.black87),
-            title: Text('mySchedules'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => HomeScreen()),
+                ),
               );
             },
           ),
-          ListTile(
-            leading: Icon(Icons.calendar_month, color: Colors.orange),
-            title: Text('calendar'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 0)),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.checklist, color: Colors.teal),
-            title: Text('todoList'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => TabbedDashboardScreen(initialTabIndex: 1)),
-              );
-            },
-          ),
-          ListTile(
-            leading: Stack(
-              clipBehavior: Clip.none,
+
+          // ── Nav items ────────────────────────────────────
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
-                const Icon(Icons.mail_outline, color: Colors.deepPurple),
-                if (_inviteCount > 0)
-                  Positioned(
-                    right: -6,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$_inviteCount',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ),
+                _NavItem(
+                  icon: Icons.smart_toy_outlined,
+                  label: 'aiChat'.tr(),
+                  color: AppTheme.primary,
+                  onTap: () => _switchTab(3),
+                ),
+                _NavItem(
+                  icon: Icons.list_alt_rounded,
+                  label: 'mySchedules'.tr(),
+                  color: const Color(0xFF0EA5E9),
+                  onTap: () => _switchTab(0),
+                ),
+                _NavItem(
+                  icon: Icons.calendar_month_rounded,
+                  label: 'calendar'.tr(),
+                  color: const Color(0xFFF59E0B),
+                  onTap: () => _switchTab(1),
+                ),
+                _NavItem(
+                  icon: Icons.checklist_rounded,
+                  label: 'todoList'.tr(),
+                  color: const Color(0xFF10B981),
+                  onTap: () => _switchTab(1),
+                ),
+                _NavItem(
+                  icon: Icons.mail_outline_rounded,
+                  label: 'invitations'.tr(),
+                  color: const Color(0xFF8B5CF6),
+                  badge: _inviteCount,
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const InvitationsScreen()));
+                    _loadInviteCount();
+                  },
+                ),
+                _NavItem(
+                  icon: Icons.people_outline_rounded,
+                  label: 'myContacts'.tr(),
+                  color: const Color(0xFF64748B),
+                  onTap: () => _go(ContactListScreen()),
+                ),
+                _NavItem(
+                  icon: Icons.person_outline_rounded,
+                  label: 'profile'.tr(),
+                  color: const Color(0xFF64748B),
+                  onTap: () => _switchTab(4),
+                ),
+                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+                  _NavItem(
+                    icon: Icons.phone_outlined,
+                    label: 'callLog'.tr(),
+                    color: const Color(0xFF22C55E),
+                    onTap: () => _go(CallLogScreen()),
                   ),
+                _NavItem(
+                  icon: Icons.settings_outlined,
+                  label: 'settings'.tr(),
+                  color: const Color(0xFF64748B),
+                  onTap: () => _switchTab(4),
+                ),
               ],
             ),
-            title: Row(
-              children: [
-                Text('invitations'.tr()),
-                if (_inviteCount > 0) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(10)),
-                    child: Text('$_inviteCount',
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 11)),
-                  ),
-                ],
-              ],
-            ),
-            onTap: () async {
-              Navigator.pop(context);
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const InvitationsScreen()),
-              );
-              _loadInviteCount(); // Refresh badge after returning
-            },
           ),
-          ListTile(
-            leading: Icon(Icons.people, color: Colors.black87),
-            title: Text('myContacts'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ContactListScreen()),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.person, color: Colors.black87),
-            title: Text('profile'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ProfileScreen()),
-              );
-            },
-          ),
-          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-            ListTile(
-              leading: Icon(Icons.phone, color: Colors.green),
-              title: Text('callLog'.tr()),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => CallLogScreen()),
-                );
-              },
-            ),
-          ListTile(
-            leading: Icon(Icons.settings, color: Colors.black87),
-            title: Text('settings'.tr()),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
-          ),
-          Divider(),
-          ListTile(
-            leading: Icon(Icons.logout, color: Colors.red),
-            title: Text('logout'.tr()),
+
+          // ── Footer ───────────────────────────────────────
+          const Divider(height: 1),
+          _NavItem(
+            icon: Icons.logout_rounded,
+            label: 'logout'.tr(),
+            color: AppTheme.statusC,
             onTap: widget.onLogout,
           ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
         ],
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final int badge;
+  final VoidCallback onTap;
+
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          leading: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          title: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          trailing: badge > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.statusC,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$badge',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700),
+                  ),
+                )
+              : null,
+          dense: true,
+        ),
       ),
     );
   }

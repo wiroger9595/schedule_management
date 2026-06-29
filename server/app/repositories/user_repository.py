@@ -24,14 +24,18 @@ class UserRepository:
         self.session.refresh(user)
         return user
 
-    def search_users(self, query: str) -> list[User]:
+    def search_users(self, query: str, exclude_user_id: Optional[str] = None) -> list[User]:
         from sqlmodel import or_
+        like = f"%{query}%"
         statement = select(User).where(
             or_(
                 User.phone == query,
-                User.email == query,
-                User.line_id == query
+                User.line_id == query,
+                User.email.ilike(like),
+                User.full_name.ilike(like),
             )
         )
+        if exclude_user_id:
+            statement = statement.where(User.user_id != exclude_user_id)
         return self.session.exec(statement).all()
 

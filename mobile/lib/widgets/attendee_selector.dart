@@ -28,7 +28,13 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
   // Data
   List<dynamic> _allContacts = [];
   List<dynamic> _selectedContacts = [];
-  bool _isLoadingContacts = true;
+
+  // User search
+  final TextEditingController _userSearchCtrl = TextEditingController();
+  List<dynamic> _userSearchResults = [];
+  bool _isSearchingUsers = false;
+  bool _hasSearchedUsers = false;
+  String? _addingUserId;
 
   // New Contact Form
   final _formKey = GlobalKey<FormState>();
@@ -104,6 +110,7 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
     _phoneController.dispose();
     _emailController.dispose();
     _lineIdController.dispose();
+    _userSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -119,16 +126,13 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
         if (mounted) {
           setState(() {
             _allContacts = jsonDecode(response.body);
-            _isLoadingContacts = false;
           });
         }
       } else {
         debugPrint('Failed to load contacts: ${response.statusCode}');
-        if (mounted) setState(() => _isLoadingContacts = false);
       }
     } catch (e) {
       debugPrint('Error loading contacts: $e');
-      if (mounted) setState(() => _isLoadingContacts = false);
     }
   }
 
@@ -144,6 +148,84 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
       }
       widget.onSelectionChanged(_selectedContacts);
     });
+  }
+
+  Future<void> _searchUsers() async {
+    final q = _userSearchCtrl.text.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _userSearchResults = [];
+        _hasSearchedUsers = false;
+      });
+      return;
+    }
+    setState(() => _isSearchingUsers = true);
+    try {
+      final results = await apiService.searchUsers(q);
+      if (mounted) {
+        setState(() {
+          _userSearchResults = results;
+          _hasSearchedUsers = true;
+          _isSearchingUsers = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isSearchingUsers = false);
+    }
+  }
+
+  bool _isUserSelected(Map<String, dynamic> user) {
+    final userId = user['user_id'] as String?;
+    final email = user['email'] as String?;
+    return _selectedContacts.any((c) =>
+        c['contact_user_id'] == userId ||
+        (email != null && email.isNotEmpty && c['email'] == email));
+  }
+
+  Future<void> _addSearchedUser(Map<String, dynamic> user) async {
+    if (_isUserSelected(user)) return;
+    final userId = user['user_id'] as String?;
+    final email = user['email'] as String?;
+
+    final existing = _allContacts.firstWhere(
+      (c) =>
+          c['contact_user_id'] == userId ||
+          (email != null && email.isNotEmpty && c['email'] == email),
+      orElse: () => null,
+    );
+    if (existing != null) {
+      setState(() {
+        _selectedContacts.add(existing);
+        widget.onSelectionChanged(_selectedContacts);
+      });
+      return;
+    }
+
+    setState(() => _addingUserId = userId);
+    try {
+      final newContact = await apiService.createContact(
+        (user['full_name'] as String?) ?? '',
+        '',
+        email ?? '',
+        '',
+        contactUserId: userId,
+      );
+      if (mounted) {
+        setState(() {
+          _allContacts.add(newContact);
+          _selectedContacts.add(newContact);
+          widget.onSelectionChanged(_selectedContacts);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('createFailed'.tr(namedArgs: {'error': e.toString()}))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _addingUserId = null);
+    }
   }
 
   Future<void> _createContact() async {
@@ -187,9 +269,6 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
             _emailController.clear();
             _lineIdController.clear();
             _isCreating = false;
-
-            // Switch to list tab
-            _tabController.animateTo(0);
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -231,13 +310,39 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
             ),
           ),
 
+          // Selected attendees
+          if (_selectedContacts.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: _selectedContacts.map((c) {
+                    final name = (c['nick_name'] as String?)?.isNotEmpty == true
+                        ? c['nick_name'] as String
+                        : (c['email'] as String?) ?? '?';
+                    return Chip(
+                      label: Text(name, style: TextStyle(fontSize: 12)),
+                      onDeleted: () => _toggleSelection(c),
+                      deleteIconColor: Colors.red[700],
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          if (_selectedContacts.isNotEmpty) SizedBox(height: 8),
+
           // Tabs
           TabBar(
             controller: _tabController,
             labelColor: Theme.of(context).primaryColor,
             unselectedLabelColor: Colors.grey,
             tabs: [
-              Tab(text: 'selectContact'.tr()),
+              Tab(text: 'searchUsers'.tr()),
               Tab(text: 'addContact'.tr()),
             ],
           ),
@@ -246,8 +351,8 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
             child: TabBarView(
               controller: _tabController,
               children: [
-                // Tab 1: List
-                _buildContactList(),
+                // Tab 1: Search registered users
+                _buildUserSearchTab(),
 
                 // Tab 2: Create Form
                 _buildCreateForm(),
@@ -284,41 +389,92 @@ class _AttendeeSelectorState extends State<AttendeeSelector>
     );
   }
 
-  Widget _buildContactList() {
-    if (_isLoadingContacts) {
-      return Center(child: CircularProgressIndicator());
-    }
-
-    if (_allContacts.isEmpty) {
-      return Center(child: Text('noContacts'.tr()));
-    }
-
-    return ListView.builder(
-      itemCount: _allContacts.length,
-      itemBuilder: (context, index) {
-        final contact = _allContacts[index];
-        final id = contact['id'];
-        final isSelected = _selectedContacts.any((c) => c['id'] == id);
-
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundImage: contact['profile_image_path'] != null
-                ? NetworkImage(contact['profile_image_path'])
-                : null,
-            backgroundColor: Colors.grey[200],
-            child: contact['profile_image_path'] == null
-                ? Icon(Icons.person, color: Colors.grey[500])
-                : null,
+  Widget _buildUserSearchTab() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _userSearchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'searchUsersHint'.tr(),
+                    isDense: true,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border:
+                        OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onSubmitted: (_) => _searchUsers(),
+                ),
+              ),
+              SizedBox(width: 8),
+              _isSearchingUsers
+                  ? SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : IconButton(
+                      onPressed: _searchUsers,
+                      icon: Icon(Icons.search),
+                    ),
+            ],
           ),
-          title: Text(contact['nick_name'] ?? contact['name'] ?? 'Unknown'),
-          subtitle: Text(contact['phone'] ?? contact['email'] ?? ''),
-          trailing: Checkbox(
-            value: isSelected,
-            onChanged: (val) => _toggleSelection(contact),
+          SizedBox(height: 12),
+          Expanded(
+            child: _userSearchResults.isEmpty
+                ? Center(
+                    child: Text(
+                      _hasSearchedUsers ? 'usersNotFound'.tr() : '',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _userSearchResults.length,
+                    itemBuilder: (context, index) {
+                      final user =
+                          _userSearchResults[index] as Map<String, dynamic>;
+                      final name = (user['full_name'] as String?) ?? '';
+                      final email = (user['email'] as String?) ?? '';
+                      final userId = user['user_id'] as String?;
+                      final selected = _isUserSelected(user);
+                      final adding = _addingUserId == userId;
+
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: user['profile_image_path'] != null
+                              ? NetworkImage(user['profile_image_path'])
+                              : null,
+                          backgroundColor: Colors.grey[200],
+                          child: user['profile_image_path'] == null
+                              ? Icon(Icons.person, color: Colors.grey[500])
+                              : null,
+                        ),
+                        title: Text(name.isNotEmpty ? name : email),
+                        subtitle: name.isNotEmpty ? Text(email) : null,
+                        trailing: adding
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : selected
+                                ? Icon(Icons.check_circle, color: Colors.green)
+                                : IconButton(
+                                    icon: Icon(Icons.add_circle_outline),
+                                    onPressed: () => _addSearchedUser(user),
+                                  ),
+                        onTap: (adding || selected)
+                            ? null
+                            : () => _addSearchedUser(user),
+                      );
+                    },
+                  ),
           ),
-          onTap: () => _toggleSelection(contact),
-        );
-      },
+        ],
+      ),
     );
   }
 

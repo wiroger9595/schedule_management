@@ -14,7 +14,7 @@ from ...services.ai_service import ai_service
 from ...services.here_service import HereService
 from ...services.notification_service import notification_service
 from ...utils.text_validator import validate_schedule_message
-from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse, FeedbackRequest
+from ...schemas.schedule import ScheduleCreate, ScheduleUpdate, StatusUpdate, ChatMessage, ChatRequest, ChatResponse, FeedbackRequest, ScheduleInviteRequest
 from ...models.ai_feedback import AIFeedback
 from ...services.schedule_graph import schedule_graph
 from ...services.chat_utils import (
@@ -493,26 +493,28 @@ def update_schedule(
              print(f"DEBUG: Auto-created Contact ID: {new_contact.id} and linked to schedule")
     
     print(f"DEBUG: update_schedule received data: {data}")
+    # Normalize: meeting_location and location are aliases
+    _new_location = data.location or data.meeting_location
+
     # If lat/lon explicit, use them (Manual Pick)
     if data.latitude is not None and data.longitude is not None:
-        print(f"DEBUG: setting manual lat/lon: {data.latitude}, {data.longitude}")
         schedule.latitude = data.latitude
         schedule.longitude = data.longitude
-        if data.location is not None:
-            schedule.meeting_location = data.location
-            schedule.location = data.location
-    
+        if _new_location is not None:
+            schedule.meeting_location = _new_location
+            schedule.location = _new_location
+
     # If only location string changed (Text Edit), try geocode
-    elif data.location is not None and data.location != schedule.meeting_location:
-        schedule.meeting_location = data.location
-        schedule.location = data.location
+    elif _new_location is not None and _new_location != schedule.meeting_location:
+        schedule.meeting_location = _new_location
+        schedule.location = _new_location
         try:
             coords = HereService.get_coordinates(schedule.meeting_location)
             if coords:
                 schedule.latitude = coords[0]
                 schedule.longitude = coords[1]
         except:
-            pass # Keep old coords or none if geocode fails
+            pass
             
     # Auto-revert status to PENDING when time is rescheduled to the future
     _revertable = {Status.COMING_SOON.value, "NA"}  # CS and notAttended
@@ -663,7 +665,7 @@ def chat_schedule(
     user_id = str(current_user.user_id)
 
     # ── Rate limit: 每10秒最多3次 AI 請求 ────────────────────────────────────
-    if not request.confirm_delete and not request.confirm_location and not request.confirm_past_edit:
+    if not request.confirm_delete and not request.confirm_location and not request.confirm_past_edit and not request.confirm_time_input:
         if not redis_client.check_ai_rate_limit(user_id):
             return ChatResponse(
                 ai_reply="請求太頻繁，請稍等一下再繼續。",
@@ -865,15 +867,49 @@ def chat_schedule(
     # then skip the past-edit guard in the DB section.
     _auto_past_confirmed = bool(_pending_past_id and not request.confirm_past_edit)
 
-    # ── confirm_past_edit=True (explicit button click): skip graph ────────────
-    if request.confirm_past_edit and current_context.get("_pending_past_edit_id"):
+    # ── confirm_time_input=True: user picked time via picker — bypass AI ─────
+    if request.confirm_time_input and request.new_start_time:
         updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
+        updated_data["start_time"] = request.new_start_time
         is_complete = True
         ai_reply = ""
         needs_location_confirm = False
         location_candidates: list = []
         location_details = None
         location_not_found = False
+        needs_time_input = False
+        needs_location_input = False
+        target_schedule_id = (
+            current_context.get("_pending_past_edit_id")
+            or current_context.get("_pending_edit_schedule_id")
+        )
+        intent = "edit" if target_schedule_id else "create"
+
+    # ── confirm_past_edit=True (explicit button click): skip graph ────────────
+    elif request.confirm_past_edit and current_context.get("_pending_past_edit_id"):
+        updated_data = {k: v for k, v in current_context.items() if not k.startswith("_")}
+        # Safety: if updated_data contains a start_time that is in the past, it was
+        # never explicitly confirmed by the user (likely leaked from stale context or
+        # AI hallucination).  Strip it so only the original schedule time is kept.
+        if updated_data.get("start_time"):
+            try:
+                from datetime import timezone as _tz2, timedelta as _td2
+                _confirm_dt = datetime.fromisoformat(updated_data["start_time"])
+                _confirm_tz = (_confirm_dt.replace(tzinfo=_tz2(_td2(hours=8)))
+                               if _confirm_dt.tzinfo is None else _confirm_dt)
+                if _confirm_tz < datetime.now(tz=_tz2(_td2(hours=8))):
+                    updated_data.pop("start_time", None)
+                    updated_data.pop("end_time", None)
+            except Exception:
+                pass
+        is_complete = True
+        ai_reply = ""
+        needs_location_confirm = False
+        location_candidates: list = []
+        location_details = None
+        location_not_found = False
+        needs_time_input = False
+        needs_location_input = False
         intent = "edit"
         target_schedule_id = current_context.get("_pending_past_edit_id")
 
@@ -888,6 +924,8 @@ def chat_schedule(
         location_candidates: list = []
         location_details = None
         location_not_found = False
+        needs_time_input = False
+        needs_location_input = False
         # If pending edit, resume edit intent instead of creating
         pending_edit_id = current_context.get("_pending_edit_schedule_id")
         if pending_edit_id:
@@ -930,6 +968,8 @@ def chat_schedule(
                 "reply": "",
                 "intent": "create",
                 "target_schedule_id": None,
+                "needs_time_input": False,
+                "needs_location_input": False,
                 "location_result": None,
                 "needs_location_confirm": False,
                 "location_candidates": [],
@@ -973,6 +1013,8 @@ def chat_schedule(
         location_not_found = graph_state.get("location_not_found", False)
         intent = graph_state.get("intent", "create")
         target_schedule_id = graph_state.get("target_schedule_id")
+        needs_time_input = graph_state.get("needs_time_input", False)
+        needs_location_input = graph_state.get("needs_location_input", False)
 
         # ── Preserve _pending_past_edit_id when auto-confirming but AI needs more info ──
         # Without this, if the user types after the past-edit warning and the AI still
@@ -1390,8 +1432,10 @@ def chat_schedule(
                             _s_time = None
                     if _s_time:
                         _s_aware = _s_time.replace(tzinfo=_tz(_td(hours=8))) if _s_time.tzinfo is None else _s_time
-                        # Skip guard if user already confirmed (button click or auto-confirm via new message)
-                        if _s_aware < _taipei_now and not request.confirm_past_edit and not _auto_past_confirmed:
+                        # Skip guard only when user already clicked confirm button.
+                        # _auto_past_confirmed (typed a new message) still needs the
+                        # "new time is also past" check — we only skip the dialog prompt.
+                        if _s_aware < _taipei_now and not request.confirm_past_edit and not request.confirm_time_input:
                             _past_info = {
                                 "id": existing.schedule_id,
                                 "title": existing.title,
@@ -1404,7 +1448,8 @@ def chat_schedule(
                             _past_str = f"{_t.month}月{_t.day}日 {_p}{_display_hour(_h)}點"
 
                             # If the new start_time is also in the past (AI kept original past date,
-                            # only replaced time) → ask user to specify a future date instead of confirming.
+                            # only replaced time) → always ask user for a future date/time,
+                            # even when _auto_past_confirmed (stale/hallucinated time in context).
                             _new_st_str = updated_data.get("start_time")
                             _new_time_also_past = False
                             if _new_st_str:
@@ -1415,18 +1460,26 @@ def chat_schedule(
                                 except Exception:
                                     pass
 
-                            if _new_time_also_past:
-                                # New time is also past — ask user for a future date/time
+                            if _new_time_also_past or not _new_st_str:
+                                # No new time provided, or new time is still in the past.
+                                # Always require a future time before allowing the edit to proceed —
+                                # editing a past schedule without rescheduling leaves it orphaned.
+                                # Strip any stale time so it doesn't persist.
                                 _ask_data = {k: v for k, v in updated_data.items() if k not in ("start_time", "end_time")}
                                 _ask_data["_pending_past_edit_id"] = existing.schedule_id
                                 _ask_data["_pending_edit_schedule_id"] = existing.schedule_id
+                                if location_lat:
+                                    _ask_data["latitude"] = location_lat
+                                if location_lon:
+                                    _ask_data["longitude"] = location_lon
                                 return ChatResponse(
-                                    ai_reply=f"「{existing.title}」原本是 {_past_str} 的行程，時間已過去了。請問您想改到什麼時候呢？",
+                                    ai_reply=f"「{existing.title}」原本是 {_past_str} 的行程，已經過去了。請問您想改到什麼時候呢？",
                                     updated_data=_ask_data,
                                     is_complete=False,
+                                    needs_time_input=True,
                                 )
-                            else:
-                                # New time is future (or only non-time fields changed) — standard confirmation
+                            elif not _auto_past_confirmed:
+                                # New future time explicitly provided — show confirm dialog
                                 _warn_data = dict(updated_data)
                                 _warn_data["_pending_past_edit_id"] = existing.schedule_id
                                 _warn_data["_pending_edit_schedule_id"] = existing.schedule_id
@@ -1435,11 +1488,12 @@ def chat_schedule(
                                 if location_lon:
                                     _warn_data["longitude"] = location_lon
                                 return ChatResponse(
-                                    ai_reply=f"「{existing.title}」是 {_past_str} 的行程，已經過去了，確定要修改嗎？",
+                                    ai_reply=f"「{existing.title}」是 {_past_str} 的行程，確定要修改嗎？",
                                     updated_data=_warn_data,
                                     is_complete=False,
                                     confirm_past_edit=_past_info,
                                 )
+                            # else: _auto_past_confirmed=True and new future time → proceed
                     # Only update fields that were explicitly provided in updated_data
                     if updated_data.get("title"): existing.title = updated_data["title"]
                     if updated_data.get("description"): existing.description = updated_data["description"]
@@ -1695,7 +1749,7 @@ def chat_schedule(
             )
 
     # 3. 儲存對話紀錄到 Redis（confirm_location / confirm_delete 不重複記錄）
-    if not request.confirm_location and not request.confirm_delete and not request.confirm_past_edit and ai_reply:
+    if not request.confirm_location and not request.confirm_delete and not request.confirm_past_edit and not request.confirm_time_input and ai_reply:
         redis_client.append_chat_turn(user_id, user_message, ai_reply)
 
     # 若對話完成或刪除，清除 context；否則更新 context
@@ -1711,7 +1765,9 @@ def chat_schedule(
         ai_reply=ai_reply,
         updated_data=return_data,
         is_complete=is_complete,
-        schedule=saved_schedule
+        schedule=saved_schedule,
+        needs_time_input=needs_time_input,
+        needs_location_input=needs_location_input,
     )
 
 
@@ -1750,3 +1806,148 @@ def submit_feedback(
             pass
 
     return {"ok": True}
+
+
+@router.get("/{schedule_id}/attends", response_model=List[dict])
+def get_schedule_attends(
+    schedule_id: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    from sqlmodel import select as _sel
+    schedule_obj = session.exec(_sel(Schedule).where(Schedule.schedule_id == schedule_id)).first()
+    if not schedule_obj:
+        raise HTTPException(status_code=404, detail="行程不存在")
+    if schedule_obj.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="無權限")
+    attends = session.exec(_sel(attend).where(attend.schedule_id == schedule_id)).all()
+    return [a.dict() for a in attends]
+
+
+@router.delete("/{schedule_id}/attends/{attend_id}", response_model=dict)
+def remove_attendee(
+    schedule_id: str,
+    attend_id: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    from sqlmodel import select as _sel
+    schedule_obj = session.exec(_sel(Schedule).where(Schedule.schedule_id == schedule_id)).first()
+    if not schedule_obj or schedule_obj.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="無權限")
+    att = session.exec(
+        _sel(attend).where(attend.attend_id == attend_id, attend.schedule_id == schedule_id)
+    ).first()
+    if not att:
+        raise HTTPException(status_code=404, detail="參與者不存在")
+    session.delete(att)
+    session.commit()
+    return {"removed": True}
+
+
+@router.post("/{schedule_id}/invite", response_model=dict)
+def invite_to_schedule(
+    schedule_id: str,
+    req: ScheduleInviteRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    from sqlmodel import select as _sel
+    from ...models.contact import Contact
+    from ...models.schedule import Schedule as ScheduleModel
+
+    # 驗證行程存在且屬於當前用戶
+    schedule_obj = session.exec(
+        _sel(ScheduleModel).where(ScheduleModel.schedule_id == schedule_id)
+    ).first()
+    if not schedule_obj:
+        raise HTTPException(status_code=404, detail="行程不存在")
+    if schedule_obj.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="無權限邀請此行程的參與者")
+
+    new_attends = []
+    contacts_map = {}
+
+    for item in req.invites:
+        contact = None
+
+        if item.contact_id:
+            contact = session.exec(
+                _sel(Contact).where(
+                    Contact.id == item.contact_id,
+                    Contact.user_id == current_user.user_id,
+                )
+            ).first()
+        elif item.email:
+            # 先找現有聯絡人（同 email + 同 user）
+            contact = session.exec(
+                _sel(Contact).where(
+                    Contact.user_id == current_user.user_id,
+                    Contact.email == item.email,
+                )
+            ).first()
+            if not contact:
+                contact = Contact(
+                    user_id=current_user.user_id,
+                    email=item.email,
+                    nick_name=item.name or item.email,
+                )
+                session.add(contact)
+                session.commit()
+                session.refresh(contact)
+
+        if not contact:
+            continue
+
+        # 若聯絡人尚未連結到已有帳號，嘗試自動連結
+        if not contact.contact_user_id and contact.email:
+            linked_user = session.exec(
+                _sel(User).where(User.email == contact.email)
+            ).first()
+            if linked_user:
+                contact.contact_user_id = linked_user.user_id
+                session.add(contact)
+                session.commit()
+                session.refresh(contact)
+
+        # 避免重複邀請
+        already = session.exec(
+            _sel(attend).where(
+                attend.schedule_id == schedule_id,
+                attend.contact_id == contact.id,
+            )
+        ).first()
+        if already:
+            continue
+
+        new_attend_obj = attend(
+            schedule_id=schedule_id,
+            contact_id=contact.id,
+            user_id=contact.contact_user_id,
+            status="P",
+        )
+        session.add(new_attend_obj)
+        new_attends.append(new_attend_obj)
+        contacts_map[contact.id] = contact
+
+    if new_attends:
+        session.commit()
+        for a in new_attends:
+            session.refresh(a)
+
+        # 組 users_map 供通知服務使用
+        user_ids = {c.contact_user_id for c in contacts_map.values() if c.contact_user_id}
+        users_map = {}
+        if user_ids:
+            linked_users = session.exec(_sel(User).where(User.user_id.in_(list(user_ids)))).all()
+            users_map = {u.user_id: u for u in linked_users}
+
+        notification_service.notify_attendees(
+            schedule_obj,
+            new_attends,
+            contacts_map,
+            users_map=users_map,
+            inviter_name=current_user.full_name or current_user.email or "某人",
+        )
+
+    return {"invited_count": len(new_attends), "message": "邀請已送出"}

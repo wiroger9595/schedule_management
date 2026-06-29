@@ -5,18 +5,15 @@ import 'package:provider/provider.dart';
 import '../models/schedule.dart';
 import '../providers/auth_provider.dart';
 import '../providers/schedule_provider.dart';
-import '../widgets/chat_widget.dart';
-import '../widgets/app_drawer.dart';
 import '../widgets/schedule_list_tile.dart';
-import '../utils/error_handler.dart';
-import '../widgets/add_action_sheet.dart';
-import 'add_schedule_screen.dart';
 import 'map_screen.dart';
 import '../services/notification_service.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
 import '../providers/settings_provider.dart';
+import '../theme/app_theme.dart';
+import 'main_shell.dart';
 import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
@@ -51,11 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _statusCheckTimer?.cancel();
     super.dispose();
-  }
-
-  void _logout() async {
-    await Provider.of<AuthProvider>(context, listen: false).logout();
-    Navigator.pushReplacementNamed(context, '/login');
   }
 
   Future<void> _refreshSchedules() async {
@@ -476,102 +468,101 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: Text('mySchedules'.tr()),
+        backgroundColor: AppTheme.surface,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded),
+          color: AppTheme.textSecond,
+          onPressed: () => MainShellState.scaffoldKey.currentState?.openDrawer(),
+        ),
+        title: const Text(
+          'Schedulo',
+          style: TextStyle(
+            color: AppTheme.primary,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            letterSpacing: -0.5,
+          ),
+        ),
         actions: [
           IconButton(
-            icon: Icon(Icons.filter_list),
+            icon: const Icon(Icons.tune_rounded, color: AppTheme.textSecond),
             onPressed: _showFilterDialog,
-            tooltip: 'Filter',
           ),
-          IconButton(icon: Icon(Icons.refresh), onPressed: _refreshSchedules),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.textSecond),
+            onPressed: _refreshSchedules,
+          ),
         ],
       ),
-      drawer: AppDrawer(onLogout: _logout),
-      body: Stack(
-        children: [
-          Consumer<ScheduleProvider>(
-            builder: (context, provider, child) {
-              if (provider.isLoading) {
-                return Center(child: CircularProgressIndicator());
-              }
+      body: CustomScrollView(
+        slivers: [
+          // ── Greeting header ──────────────────────────────
+          SliverToBoxAdapter(child: _GreetingHeader()),
 
+          // ── Schedule list ────────────────────────────────
+          Consumer2<ScheduleProvider, SettingsProvider>(
+            builder: (context, provider, settings, _) {
+              if (provider.isLoading) {
+                return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
+              }
               if (provider.error != null) {
-                return Center(
-                  child: Text('${'error'.tr()}: ${provider.error}'),
+                return SliverFillRemaining(
+                  child: Center(child: Text('${'error'.tr()}: ${provider.error}')),
                 );
               }
 
-              // Apply filters
-              final settingsProvider = context.watch<SettingsProvider>();
-              final filteredSchedules = provider.schedules.where((s) {
-                if (!settingsProvider.isVisible(s.status)) return false;
+              final filtered = provider.schedules.where((s) {
+                if (!settings.isVisible(s.status)) return false;
                 if (_filterStatus != null && s.status != _filterStatus) return false;
                 if (_filterLocation != null && _filterLocation!.isNotEmpty) {
                   if (s.location == null ||
-                      !s.location!.toLowerCase().contains(_filterLocation!.toLowerCase())) {
-                    return false;
-                  }
+                      !s.location!.toLowerCase().contains(_filterLocation!.toLowerCase())) return false;
                 }
                 if (_filterStartDate != null && _filterEndDate != null) {
-                  final endOfDay = _filterEndDate!
-                      .add(Duration(days: 1))
-                      .subtract(Duration(milliseconds: 1));
-                  if (s.startTime.isBefore(_filterStartDate!) ||
-                      s.startTime.isAfter(endOfDay)) {
-                    return false;
-                  }
+                  final endOfDay = _filterEndDate!.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+                  if (s.startTime.isBefore(_filterStartDate!) || s.startTime.isAfter(endOfDay)) return false;
                 }
                 return true;
               }).toList();
 
-              if (filteredSchedules.isEmpty) {
-                return Center(child: Text('noSchedules'.tr()));
+              if (filtered.isEmpty) {
+                return SliverFillRemaining(
+                  child: _EmptyState(),
+                );
               }
 
-              return ListView.builder(
-                itemCount: filteredSchedules.length,
-                itemBuilder: (context, index) {
-                  final schedule = filteredSchedules[index];
-                  return GestureDetector(
-                    onLongPress: () => _confirmDeleteSchedule(schedule),
-                    child: ScheduleListTile(
-                      schedule: schedule,
-                      onTap: () {
-                        if (schedule.status == ScheduleStatus.cancel) return;
-
-                        final now = DateTime.now();
-                        if (schedule.startTime.isBefore(now) &&
-                            schedule.status != ScheduleStatus.attend) {
-                          _showPastScheduleActionDialog(schedule);
-                        } else {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => MapScreen(schedule: schedule),
-                            ),
-                          ).then((_) {
-                            _refreshSchedules();
-                          });
-                        }
-                      },
-                    ),
-                  );
-                },
+              return SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final schedule = filtered[i];
+                    return GestureDetector(
+                      onLongPress: () => _confirmDeleteSchedule(schedule),
+                      child: ScheduleListTile(
+                        schedule: schedule,
+                        onTap: () {
+                          if (schedule.status == ScheduleStatus.cancel) return;
+                          final now = DateTime.now();
+                          if (schedule.startTime.isBefore(now) && schedule.status != ScheduleStatus.attend) {
+                            _showPastScheduleActionDialog(schedule);
+                          } else {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(schedule: schedule)))
+                                .then((_) => _refreshSchedules());
+                          }
+                        },
+                      ),
+                    );
+                  },
+                  childCount: filtered.length,
+                ),
               );
             },
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'add_schedule',
-        onPressed: () async {
-          await AddActionSheet.show(context);
-          _refreshSchedules();
-        },
-        backgroundColor: Colors.black,
-        child: const Icon(Icons.add),
       ),
     );
   }
@@ -815,6 +806,95 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     }
+  }
+}
+
+// ── Greeting header widget ────────────────────────────────────────────────────
+
+class _GreetingHeader extends StatelessWidget {
+  const _GreetingHeader();
+
+  String _greeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'greetingMorning'.tr();
+    if (h < 18) return 'greetingAfternoon'.tr();
+    return 'greetingEvening'.tr();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppTheme.surface,
+      padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Greeting + date
+          Consumer<AuthProvider>(
+            builder: (_, auth, __) {
+              final name = (auth.user?['full_name'] as String?)?.split(' ').first ?? '';
+              return Text(
+                name.isNotEmpty ? '${_greeting()}, $name' : _greeting(),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textPrimary,
+                  letterSpacing: -0.5,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            DateFormat('EEEE, d MMMM').format(DateTime.now()),
+            style: const TextStyle(fontSize: 14, color: AppTheme.textSecond),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'mySchedules'.tr(),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textSecond,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryLight,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.event_note_outlined, size: 40, color: AppTheme.primary),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'noSchedules'.tr(),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'noSchedulesHint'.tr(),
+            style: const TextStyle(fontSize: 14, color: AppTheme.textSecond),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
   }
 }
 

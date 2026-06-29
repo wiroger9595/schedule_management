@@ -158,6 +158,8 @@ class ApiService {
       bool confirmLocation = false,
       bool confirmDelete = false,
       bool confirmPastEdit = false,
+      bool confirmTimeInput = false,
+      String? newStartTime,
       double? latitude,
       double? longitude,
       List<Map<String, dynamic>>? scheduleList}) async {
@@ -178,6 +180,8 @@ class ApiService {
       'confirm_location': confirmLocation,
       'confirm_delete': confirmDelete,
       'confirm_past_edit': confirmPastEdit,
+      'confirm_time_input': confirmTimeInput,
+      if (newStartTime != null) 'new_start_time': newStartTime,
       'latitude': latitude,
       'longitude': longitude,
       if (scheduleId != null) 'schedule_id': scheduleId,
@@ -220,21 +224,23 @@ class ApiService {
     }
   }
 
-  Future<List<dynamic>> getContacts() async {
+  Future<List<dynamic>> getScheduleAttends(String scheduleId) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/contacts/'),
+      Uri.parse('$baseUrl/schedules/$scheduleId/attends'),
       headers: await getHeaders(),
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else if (response.statusCode == 401) {
-      await _authService.logout();
-      onUnauthorized.add(null);
-      throw Exception('Unauthorized');
-    } else {
-      throw Exception('Failed to load contacts');
-    }
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('Failed to get attends');
   }
+
+  Future<void> removeAttendee(String scheduleId, String attendId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/schedules/$scheduleId/attends/$attendId'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to remove attendee');
+  }
+
 
   Future<Map<String, dynamic>> createContact(
       String name, String phone, String email, String lineId,
@@ -598,5 +604,40 @@ class ApiService {
     } else if (response.statusCode != 200) {
       throw Exception('Failed to delete comment');
     }
+  }
+
+  Future<List<Map<String, dynamic>>> getContacts() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/contacts'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    }
+    if (response.statusCode != 200) return [];
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    return List<Map<String, dynamic>>.from(data as List);
+  }
+
+  Future<Map<String, dynamic>> inviteToSchedule(
+    String scheduleId,
+    List<Map<String, dynamic>> invites,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/schedules/$scheduleId/invite'),
+      headers: await getHeaders(),
+      body: jsonEncode({'invites': invites}),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    }
+    if (response.statusCode != 200) {
+      throw Exception('邀請失敗：${response.statusCode}');
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
   }
 }

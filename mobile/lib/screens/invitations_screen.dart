@@ -1,9 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
-import '../widgets/app_drawer.dart';
 
 class InvitationsScreen extends StatefulWidget {
   const InvitationsScreen({super.key});
@@ -35,13 +33,6 @@ class _InvitationsScreenState extends State<InvitationsScreen>
   void dispose() {
     _tabController?.dispose();
     super.dispose();
-  }
-
-  Future<void> _logout() async {
-    if (!mounted) return;
-    await Provider.of<AuthProvider>(context, listen: false).logout();
-    if (!mounted) return;
-    Navigator.pushReplacementNamed(context, '/login');
   }
 
   Future<void> _load() async {
@@ -117,13 +108,6 @@ class _InvitationsScreenState extends State<InvitationsScreen>
             );
           }),
         ),
-      ),
-      drawer: AppDrawer(onLogout: _logout),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'ai_chat',
-        onPressed: () => Navigator.pushNamed(context, '/home'),
-        backgroundColor: Colors.black,
-        child: const Icon(Icons.smart_toy_outlined, color: Colors.white),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

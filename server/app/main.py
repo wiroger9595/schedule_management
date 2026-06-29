@@ -38,6 +38,14 @@ def on_startup():
     from .models.contact import Contact
     from .models.attend import attend
     from .models.comment import Comment
+    from .models.ai_feedback import AIFeedback
+    from .models.ai_test_result import AITestResult
+    from .models.app_config import AppConfig
+    from .models.inference_default import InferenceDefault
+    from .models.intent_anchor import IntentAnchor
+    from .models.lexicon import Lexicon
+    from .models.prompt_rule import PromptRule
+    from .models.rag_example import RAGExample
     from .db.database import postgres_schema
     
     # Ensure the schema exists before creating tables

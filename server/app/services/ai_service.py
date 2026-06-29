@@ -218,11 +218,17 @@ class AIService:
             "type": "function",
             "function": {
                 "name": "ask_user",
-                "description": "缺少必要資訊、目標行程不明確、或清單中有多個/零個符合描述的行程時使用。目標不明確時，question 中必須列出行程清單供用戶選擇（格式：1️⃣ 名稱 — 時間 — 地點）",
+                "description": (
+                    "缺少必要資訊、目標行程不明確、或有多個/零個符合描述的行程時使用。"
+                    "question 必須是簡短通用問句（例如「請問您要操作哪個行程呢？」「請問您想改到什麼時候呢？」）。"
+                    "⚠️ 禁止在 question 裡自己列出行程名稱、時間、地點或任何從行程清單取得的資料——"
+                    "後端會自動注入真實行程清單，你只需提供問句本身。"
+                    "若是修改/刪除流程的追問，必須在 partial_data 帶入 schedule_id。"
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "question": {"type": "string", "description": "問用戶的問題"},
+                        "question": {"type": "string", "description": "簡短通用問句，禁止包含行程標題、時間或地點等具體資料"},
                         "partial_data": {
                             "type": "object",
                             "description": "目前已知的欄位（可為空 {}）。若是修改流程的追問，必須帶入 schedule_id",
@@ -254,7 +260,7 @@ class AIService:
                         "location": {"type": "string"},
                         "description": {"type": "string"},
                         "participants": {"type": "array", "items": {"type": "string"}},
-                        "reply": {"type": "string", "description": "給用戶的一句確認訊息（只說建立了什麼，禁止加引導語或建議）"}
+                        "reply": {"type": "string", "description": "給用戶的一句確認訊息（例如「✅ 行程已建立！」），禁止在 reply 裡重複行程名稱或具體資料，禁止加引導語或建議"}
                     },
                     "required": ["title", "start_time", "end_time", "location", "reply"]
                 }
@@ -294,7 +300,7 @@ class AIService:
                             "type": "boolean",
                             "description": "true = 移除全部參與者，改為個人行程（不需指定名字）"
                         },
-                        "reply": {"type": "string", "description": "給用戶的一句確認訊息（只說改了什麼，禁止加引導語或建議）"}
+                        "reply": {"type": "string", "description": "給用戶的一句確認訊息（例如「✅ 行程已更新！」），禁止在 reply 裡重複行程名稱或具體資料，禁止加引導語或建議"}
                     },
                     "required": ["schedule_id", "reply"]
                 }
@@ -584,13 +590,21 @@ class AIService:
                             response = _MockResponse(response_text)
                             use_tool_calling = False
                     elif use_tool_calling:
-                        # Disable Qwen-3 thinking mode to prevent hallucinated
-                        # schedule titles/locations leaking into tool arguments.
-                        _extra = ({"extra_body": {"thinking": {"type": "disabled"}}}
-                                  if "qwen-3" in _model.lower() else {})
+                        _is_qwen3 = "qwen-3" in _model.lower()
+                        # /no_think in the system message is a Qwen-3 chat-template
+                        # directive that disables thinking mode at the tokenizer level,
+                        # reliably across all providers (extra_body is provider-specific
+                        # and Cerebras may silently ignore it).
+                        _msgs = messages
+                        if _is_qwen3 and _msgs and _msgs[0].get("role") == "system":
+                            _msgs = [{"role": "system",
+                                      "content": "/no_think\n" + _msgs[0]["content"]}
+                                     ] + list(_msgs[1:])
+                        _extra = ({"extra_body": {"thinking": {"type": "disabled", "budget_tokens": 0}}}
+                                  if _is_qwen3 else {})
                         response = _cli.chat.completions.create(
                             model=_model,
-                            messages=messages,
+                            messages=_msgs,
                             tools=self.TOOLS,
                             tool_choice="required",
                             temperature=0.1,
@@ -598,11 +612,17 @@ class AIService:
                             **_extra,
                         )
                     else:
-                        _extra = ({"extra_body": {"thinking": {"type": "disabled"}}}
-                                  if "qwen-3" in _model.lower() else {})
+                        _is_qwen3 = "qwen-3" in _model.lower()
+                        _msgs = messages
+                        if _is_qwen3 and _msgs and _msgs[0].get("role") == "system":
+                            _msgs = [{"role": "system",
+                                      "content": "/no_think\n" + _msgs[0]["content"]}
+                                     ] + list(_msgs[1:])
+                        _extra = ({"extra_body": {"thinking": {"type": "disabled", "budget_tokens": 0}}}
+                                  if _is_qwen3 else {})
                         response = _cli.chat.completions.create(
                             model=_model,
-                            messages=messages + [{
+                            messages=_msgs + [{
                                 "role": "system",
                                 "content": (
                                     '請以 JSON 回應，格式：{"intent":"create|edit|delete",'
@@ -624,15 +644,12 @@ class AIService:
                         if _is_model_unsupported(_e):
                             print(f"[AIService] {_label} model not supported, skipping: {str(_e)[:80]}")
                             break  # move to next provider
-                        # 主力 model（第一順位）限速時：先 sleep 重試一次，仍失敗才報忙碌
-                        if _label == self._providers[0][2]:
-                            if _attempt == 0:
-                                print(f"[AIService] Primary {_label} rate limited → sleep 15s & retry")
-                                _time.sleep(15)
-                                continue  # retry same provider
-                            print(f"[AIService] Primary {_label} rate limited (after retry) → returning busy")
+                        # 主力 model rate limited → 直接 fallback 到下一個 provider
+                        if _label == self._providers[0][2] and len(self._providers) <= 1:
+                            # 沒有備援 provider → 才報忙碌
+                            print(f"[AIService] Primary {_label} rate limited, no fallback → returning busy")
                             raise RuntimeError("AI_RATE_LIMITED") from _e
-                        print(f"[AIService] {_label} skipped ({type(_e).__name__}): {str(_e)[:120]}")
+                        print(f"[AIService] {_label} rate limited → fallback to next provider")
                         break  # move to next provider
                     if use_tool_calling and _is_tool_unsupported(_e):
                         print(f"[AIService] {_label} no tool support → JSON mode")
@@ -741,10 +758,16 @@ class AIService:
                      f"❌ 上一個工具呼叫有以下錯誤，請重新呼叫正確的工具：\n{_err_str}"},
                 ]
                 try:
-                    _retry_extra = ({"extra_body": {"thinking": {"type": "disabled"}}}
-                                    if "qwen-3" in _model.lower() else {})
+                    _is_qwen3_retry = "qwen-3" in _model.lower()
+                    _retry_msgs_final = _retry_msgs
+                    if _is_qwen3_retry and _retry_msgs_final and _retry_msgs_final[0].get("role") == "system":
+                        _retry_msgs_final = [{"role": "system",
+                                              "content": "/no_think\n" + _retry_msgs_final[0]["content"]}
+                                             ] + list(_retry_msgs_final[1:])
+                    _retry_extra = ({"extra_body": {"thinking": {"type": "disabled", "budget_tokens": 0}}}
+                                    if _is_qwen3_retry else {})
                     _retry_resp = _cli.chat.completions.create(
-                        model=_model, messages=_retry_msgs, tools=self.TOOLS,
+                        model=_model, messages=_retry_msgs_final, tools=self.TOOLS,
                         tool_choice="required", temperature=0.1, timeout=8.0,
                         **_retry_extra,
                     )
@@ -791,15 +814,77 @@ class AIService:
                               or current_context.get("_pending_edit_schedule_id"))
                 if pending_id:
                     merged["_pending_edit_schedule_id"] = pending_id
-                question = args.get("question", "請問還有什麼需要補充的嗎？")
-                if needs_list_injection(question) and schedule_list:
+                _original_question = args.get("question", "請問還有什麼需要補充的嗎？")
+                question = _original_question
+
+                # ── Priority fix: if AI gave a valid schedule_id, replace any
+                # quoted title in the question with the REAL title from that schedule.
+                # This handles thinking-mode hallucinations even when the regex
+                # sanitization below can't run (e.g. sparse schedule_list).
+                if pending_id and schedule_list:
+                    _matched_sched = next(
+                        (s for s in schedule_list
+                         if (s.get("schedule_id") or s.get("id", "")) == pending_id),
+                        None,
+                    )
+                    if _matched_sched and _matched_sched.get("title"):
+                        _real_t = _matched_sched["title"]
+                        _qts = _re.findall(r'[「【]([^」】\n]{1,40})[」】]', question)
+                        if _qts and _qts[0] != _real_t:
+                            question = _re.sub(
+                                r'[「【][^」】\n]{1,40}[」】]',
+                                f'「{_real_t}」',
+                                question,
+                                count=1,
+                            )
+                            print(f"[AI ask_user] fixed hallucinated title {_qts[0]!r} → {_real_t!r}")
+
+                # Guard: if AI quoted a title (「X」) that isn't in the real schedule
+                # list, the model hallucinated it (thinking mode leak / garbled output).
+                # Replace the whole question with the verified schedule list.
+                _quoted_titles = _re.findall(r'[「【]([^」】\n]{1,40})[」】]', question)
+                if _quoted_titles and schedule_list:
+                    _real_titles = {(s.get("title") or "").strip() for s in schedule_list}
+                    _real_titles.discard("")
+                    if _real_titles and not any(
+                        any(rt in qt or qt in rt for rt in _real_titles)
+                        for qt in _quoted_titles
+                    ):
+                        print(f"[AI ask_user] hallucinated title {_quoted_titles} not in real list → injecting list")
+                        question = build_inline_list(schedule_list, verb="操作")
+                elif needs_list_injection(question) and schedule_list:
                     question = build_inline_list(schedule_list, verb="操作")
-                    print(f"[AI ask_user] injected schedule list (original: {args.get('question','')[:60]!r})")
+                    print(f"[AI ask_user] injected schedule list (original: {_original_question[:60]!r})")
+
+                # Signal Flutter to show TimePickerMessage when AI is asking for a time.
+                # Use _original_question so sanitization (which strips "什麼時候") doesn't
+                # prevent the time picker from appearing.
+                _TIME_ASK_KEYWORDS = (
+                    "什麼時候", "什麼時間", "哪個時間", "哪天", "幾點",
+                    "改到", "改成", "新的時間", "想改到", "幾月", "幾日",
+                    "what time", "when",
+                )
+                _LOC_ASK_KEYWORDS = (
+                    "哪裡", "哪個地點", "什麼地點", "在哪", "地點呢",
+                    "什麼地址", "哪個地方", "地方呢", "地點是",
+                    "where", "location", "address",
+                )
+                _needs_time = bool(
+                    pending_id
+                    and any(k in _original_question for k in _TIME_ASK_KEYWORDS)
+                    and not any(k in _original_question for k in _LOC_ASK_KEYWORDS)
+                )
+                _needs_location = bool(
+                    any(k in _original_question for k in _LOC_ASK_KEYWORDS)
+                    and not any(k in _original_question for k in _TIME_ASK_KEYWORDS)
+                )
                 return {
                     "intent": "edit" if pending_id else "create",
                     "target_schedule_id": pending_id,
                     "updated_data": merged, "missing_fields": [],
                     "is_complete": False,
+                    "needs_time_input": _needs_time,
+                    "needs_location_input": _needs_location,
                     "reply": question,
                 }
 
@@ -832,11 +917,60 @@ class AIService:
                     }
                 updated_data = {k: v for k, v in args.items()
                                 if k not in ("schedule_id", "reply") and v is not None}
+                _upd_reply = args.get("reply", "✅ 行程已更新！")
+                # Fix hallucinated title in reply text
+                if schedule_list:
+                    _upd_sched = next(
+                        (s for s in schedule_list
+                         if (s.get("schedule_id") or s.get("id", "")) == schedule_id),
+                        None,
+                    )
+                    if _upd_sched and _upd_sched.get("title"):
+                        _real_t2 = _upd_sched["title"]
+                        _qts2 = _re.findall(r'[「【]([^」】\n]{1,40})[」】]', _upd_reply)
+                        if _qts2 and _qts2[0] != _real_t2:
+                            _upd_reply = _re.sub(
+                                r'[「【][^」】\n]{1,40}[」】]',
+                                f'「{_real_t2}」',
+                                _upd_reply,
+                                count=1,
+                            )
+                # Detect: AI called update_schedule asking for time/location but gave no actual fields.
+                if not updated_data:
+                    _time_kws = (
+                        "什麼時候", "什麼時間", "幾點", "哪天", "改到",
+                        "哪個時間", "新的時間", "想改到", "幾月", "幾日",
+                    )
+                    _loc_kws = (
+                        "哪裡", "哪個地點", "什麼地點", "在哪", "地點呢",
+                        "什麼地址", "哪個地方", "地方呢", "where", "location", "address",
+                    )
+                    _ctx = {**current_context, "_pending_edit_schedule_id": schedule_id}
+                    if any(k in _upd_reply for k in _time_kws):
+                        print(f"[AI update_schedule] empty update + time-ask reply → needs_time_input")
+                        return {
+                            "intent": "edit", "target_schedule_id": schedule_id,
+                            "updated_data": _ctx, "missing_fields": [],
+                            "is_complete": False, "needs_time_input": True, "reply": _upd_reply,
+                        }
+                    if any(k in _upd_reply for k in _loc_kws):
+                        print(f"[AI update_schedule] empty update + location-ask reply → needs_location_input")
+                        return {
+                            "intent": "edit", "target_schedule_id": schedule_id,
+                            "updated_data": _ctx, "missing_fields": [],
+                            "is_complete": False, "needs_location_input": True, "reply": _upd_reply,
+                        }
+                    # Empty update, generic reply — show reply and keep context
+                    return {
+                        "intent": "edit", "target_schedule_id": schedule_id,
+                        "updated_data": current_context, "missing_fields": [],
+                        "is_complete": False, "reply": _upd_reply,
+                    }
                 return {
                     "intent": "edit",
                     "target_schedule_id": schedule_id,
                     "updated_data": updated_data, "missing_fields": [],
-                    "is_complete": True, "reply": args.get("reply", "✅ 行程已更新！"),
+                    "is_complete": True, "reply": _upd_reply,
                 }
 
             # ── delete_schedule ─────────────────────────────────────────────

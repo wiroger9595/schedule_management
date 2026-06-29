@@ -2,11 +2,14 @@ from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, Integer, Identity, String, Boolean, Text, DateTime, Float
 from typing import Optional
 from datetime import datetime
+import os
+
+_schema = os.getenv("POSTGRES_SCHEMA", "public")
 
 
 class AITestResult(SQLModel, table=True):
     __tablename__ = "ai_test_result"
-    __table_args__ = {"schema": "schedule_management"}
+    __table_args__ = {"schema": _schema}
 
     id: Optional[int] = Field(
         default=None,

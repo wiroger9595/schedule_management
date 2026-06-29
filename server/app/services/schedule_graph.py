@@ -27,6 +27,8 @@ class ScheduleState(TypedDict):
     reply: str
     intent: str
     target_schedule_id: Optional[str]
+    needs_time_input: bool
+    needs_location_input: bool
 
     # ── Location validation outputs ──
     location_result: Optional[dict]
@@ -56,6 +58,8 @@ def collect_info_node(state: ScheduleState) -> ScheduleState:
         "reply": ai_result.get("reply", ""),
         "intent": ai_result.get("intent", "create"),
         "target_schedule_id": ai_result.get("target_schedule_id"),
+        "needs_time_input": ai_result.get("needs_time_input", False),
+        "needs_location_input": ai_result.get("needs_location_input", False),
     }
 
 

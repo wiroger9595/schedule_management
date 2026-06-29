@@ -8,6 +8,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../screens/location_picker_screen.dart';
+import '../utils/constants.dart';
+import 'attendee_selector.dart';
 
 class ChatWidget extends StatefulWidget {
   final Function() onScheduleCreated;
@@ -37,8 +39,12 @@ class ChatWidgetState extends State<ChatWidget> {
       _conversationHistory.clear();
       _showMentionList = false;
       _isLoading = false;
-      _messages.add(ChatMessage(text: 'chatCleared'.tr(), isUser: false));
     });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('chatCleared'.tr())),
+      );
+    }
     // 同步清除 server-side Redis history
     ApiService().clearChatHistory();
     _loadScheduleList();
@@ -63,7 +69,7 @@ class ChatWidgetState extends State<ChatWidget> {
       if (mounted) {
         setState(() {
           _scheduleList = schedules
-              .where((s) => s.status != 'C')
+              .where((s) => s.status != ScheduleStatus.cancel)
               .map((s) => s.toJson())
               .toList();
         });
@@ -346,6 +352,8 @@ class ChatWidgetState extends State<ChatWidget> {
     bool confirmLocation = false,
     bool confirmDelete = false,
     bool confirmPastEdit = false,
+    bool confirmTimeInput = false,
+    String? newStartTime,
     double? latitude,
     double? longitude,
     List<Map<String, dynamic>>? scheduleList,
@@ -363,6 +371,8 @@ class ChatWidgetState extends State<ChatWidget> {
           confirmLocation: confirmLocation,
           confirmDelete: confirmDelete,
           confirmPastEdit: confirmPastEdit,
+          confirmTimeInput: confirmTimeInput,
+          newStartTime: newStartTime,
           latitude: latitude,
           longitude: longitude,
           scheduleList: scheduleList,
@@ -380,11 +390,11 @@ class ChatWidgetState extends State<ChatWidget> {
     throw Exception('AI unavailable after retries');
   }
 
-  Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, bool confirmPastEdit = false, double? overrideLat, double? overrideLon}) async {
+  Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, bool confirmPastEdit = false, bool confirmTimeInput = false, String? newStartTime, double? overrideLat, double? overrideLon}) async {
     final messageText = text ?? _controller.text.trim();
-    if (messageText.isEmpty && !forceCreate && !confirmPastEdit && !confirmDelete) return;
+    if (messageText.isEmpty && !forceCreate && !confirmPastEdit && !confirmDelete && !confirmTimeInput) return;
 
-    if (!forceCreate && !confirmPastEdit && !confirmDelete) {
+    if (!forceCreate && !confirmPastEdit && !confirmDelete && !confirmTimeInput) {
       // Record user turn in conversation history before sending
       _conversationHistory.add({'role': 'user', 'content': messageText});
       setState(() {
@@ -392,6 +402,13 @@ class ChatWidgetState extends State<ChatWidget> {
         _isLoading = true;
       });
       _controller.clear();
+      _scrollToBottom();
+    } else if (confirmTimeInput && messageText.isNotEmpty) {
+      // Show picked time as user bubble; don't add to AI history (AI is bypassed)
+      setState(() {
+        _messages.add(ChatMessage(text: messageText, isUser: true));
+        _isLoading = true;
+      });
       _scrollToBottom();
     } else {
       setState(() {
@@ -431,13 +448,15 @@ class ChatWidgetState extends State<ChatWidget> {
 
       final data = await _chatWithRetry(
         apiService,
-        message: (forceCreate || confirmPastEdit || confirmDelete) ? 'Confirm' : messageText,
+        message: (forceCreate || confirmPastEdit || confirmDelete || confirmTimeInput) ? 'Confirm' : messageText,
         currentContext: _currentContext,
         conversationHistory: _conversationHistory,
         forceCreate: forceCreate,
         confirmLocation: forceCreate,
         confirmDelete: confirmDelete,
         confirmPastEdit: confirmPastEdit,
+        confirmTimeInput: confirmTimeInput,
+        newStartTime: newStartTime,
         latitude: finalLat,
         longitude: finalLon,
         scheduleList: _scheduleList,
@@ -498,6 +517,9 @@ class ChatWidgetState extends State<ChatWidget> {
                 },
               ),
             );
+          } else if (data['needs_time_input'] == true) {
+            if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
+            _showTimePickerForEdit();
           } else if (data['confirm_past_edit'] != null) {
             final past = data['confirm_past_edit'] as Map<String, dynamic>;
             if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
@@ -528,6 +550,9 @@ class ChatWidgetState extends State<ChatWidget> {
                 },
               ),
             );
+          } else if (data['needs_location_input'] == true) {
+            if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
+            _showLocationPickerForEdit();
           } else if (data['needs_location_confirm'] == true) {
             _messages.add(_buildAiMessage(aiReply));
 
@@ -604,11 +629,33 @@ class ChatWidgetState extends State<ChatWidget> {
           } else {
             // Normal reply or schedule created
             if (data['schedule'] != null) {
-              final scheduleTitle = (data['updated_data']?['title'] as String?) ?? '';
+              final scheduleData = data['schedule'] as Map<String, dynamic>?;
+              final scheduleTitle = (data['updated_data']?['title'] as String?) ??
+                  (scheduleData?['title'] as String?) ?? '';
               final successMsg = aiReply.isNotEmpty
                   ? aiReply
                   : '✅ ${scheduleTitle.isNotEmpty ? 'scheduleCreatedWithTitle'.tr(namedArgs: {'title': scheduleTitle}) : 'scheduleCreated'.tr()}';
               _messages.add(_buildAiMessage(successMsg));
+
+              // 自動顯示邀請卡片
+              final scheduleId = scheduleData?['schedule_id'] as String?;
+              if (scheduleId != null) {
+                _messages.add(InviteCard(
+                  scheduleId: scheduleId,
+                  scheduleName: scheduleTitle,
+                  onDone: (int count) {
+                    if (count > 0) {
+                      setState(() {
+                        _messages.add(_buildAiMessage(
+                          'inviteSentSuccess'.tr(namedArgs: {'count': '$count'}),
+                        ));
+                      });
+                    }
+                    setState(() {});
+                    _scrollToBottom();
+                  },
+                ));
+              }
             } else if (aiReply.isNotEmpty) {
               _messages.add(_buildAiMessage(aiReply));
             }
@@ -677,6 +724,54 @@ class ChatWidgetState extends State<ChatWidget> {
     });
   }
 
+  void _showTimePickerForEdit() {
+    setState(() {
+      _messages.add(TimePickerMessage(
+        onConfirm: (DateTime picked) {
+          final hour = picked.hour;
+          final period = hour < 12 ? '上午' : (hour < 14 ? '中午' : (hour < 18 ? '下午' : (hour < 22 ? '晚上' : '深夜')));
+          final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+          final minStr = picked.minute == 0 ? '' : ':${picked.minute.toString().padLeft(2, '0')}';
+          final display = '時間改到${picked.year}年${picked.month}月${picked.day}日 $period$displayHour點$minStr';
+          _sendMessage(text: display, confirmTimeInput: true, newStartTime: picked.toIso8601String());
+        },
+        onCancel: () {
+          _currentContext = null;
+          setState(() => _messages.add(ChatMessage(text: 'editCancelled'.tr(), isUser: false)));
+        },
+      ));
+    });
+    _scrollToBottom();
+  }
+
+  void _showLocationPickerForEdit() {
+    setState(() {
+      _messages.add(LocationInputMessage(
+        onConfirm: (String address, double? lat, double? lon) {
+          _currentContext ??= {};
+          _currentContext!['location'] = address;
+          if (lat != null) _currentContext!['latitude'] = lat;
+          if (lon != null) _currentContext!['longitude'] = lon;
+          final isPendingEdit =
+              _currentContext!.containsKey('_pending_edit_schedule_id') ||
+              _currentContext!.containsKey('_pending_past_edit_id');
+          if (lat != null && lon != null && isPendingEdit) {
+            setState(() => _messages.add(ChatMessage(text: '地點：$address', isUser: true)));
+            _conversationHistory.add({'role': 'user', 'content': '地點：$address'});
+            _sendMessage(forceCreate: true, overrideLat: lat, overrideLon: lon);
+          } else {
+            _sendMessage(text: address);
+          }
+        },
+        onCancel: () {
+          _currentContext = null;
+          setState(() => _messages.add(ChatMessage(text: 'editCancelled'.tr(), isUser: false)));
+        },
+      ));
+    });
+    _scrollToBottom();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -687,21 +782,164 @@ class ChatWidgetState extends State<ChatWidget> {
           Expanded(
             child: _messages.isEmpty
                 ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          size: 64,
-                          color: Colors.grey[300],
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'aiChatHint'.tr(),
-                          style: TextStyle(color: Colors.grey[600]),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline,
+                            size: 64,
+                            color: Colors.grey[300],
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'aiChatHint'.tr(),
+                            style: TextStyle(color: Colors.grey[600]),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 32),
+                          Text(
+                            'intentSelectHint'.tr(),
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _IntentButton(
+                                  label: 'intentAdd'.tr(),
+                                  icon: Icons.add_circle_outline,
+                                  color: const Color(0xFF4CAF50),
+                                  onTap: () {
+                                    setState(() {
+                                      _messages.add(ChatMessage(
+                                        text: 'intentAddPrompt'.tr(),
+                                        isUser: false,
+                                      ));
+                                    });
+                                    _scrollToBottom();
+                                  },
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: _IntentButton(
+                                  label: 'intentEdit'.tr(),
+                                  icon: Icons.edit_outlined,
+                                  color: const Color(0xFFFF9800),
+                                  onTap: () async {
+                                    await _loadScheduleList();
+                                    if (!mounted) return;
+                                    setState(() {
+                                      _messages.add(ChatMessage(
+                                        text: 'intentEditPickPrompt'.tr(),
+                                        isUser: false,
+                                      ));
+                                      _messages.add(SchedulePickerMessage(
+                                        schedules: List.from(_scheduleList),
+                                        onSelect: (schedule) {
+                                          final id = schedule['id'] as String? ?? '';
+                                          final title = schedule['title'] as String? ?? '';
+                                          final startTimeStr = schedule['start_time'] as String?;
+                                          final isPast = startTimeStr != null &&
+                                              (DateTime.tryParse(startTimeStr)?.isBefore(DateTime.now()) ?? false);
+                                          _currentContext = {
+                                            '_pending_edit_schedule_id': id,
+                                            if (isPast) '_pending_past_edit_id': id,
+                                            ...schedule,
+                                          };
+                                          setState(() {
+                                            _messages.add(ChatMessage(text: '更新行程：$title', isUser: true));
+                                            if (isPast) {
+                                              _messages.add(ChatMessage(
+                                                text: 'scheduleExpiredEditWarning'.tr(namedArgs: {'title': title}),
+                                                isUser: false,
+                                              ));
+                                            }
+                                            _messages.add(EditOptionsMessage(
+                                              onEditTime: _showTimePickerForEdit,
+                                              onEditLocation: _showLocationPickerForEdit,
+                                              onCancel: () {
+                                                _currentContext = null;
+                                                setState(() => _messages.add(ChatMessage(text: 'editCancelled'.tr(), isUser: false)));
+                                              },
+                                            ));
+                                          });
+                                          _scrollToBottom();
+                                        },
+                                        onCancel: () {
+                                          _currentContext = null;
+                                          setState(() {
+                                            _messages.add(ChatMessage(text: 'editCancelled'.tr(), isUser: false));
+                                          });
+                                        },
+                                      ));
+                                    });
+                                    _scrollToBottom();
+                                  },
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: _IntentButton(
+                                  label: 'intentDelete'.tr(),
+                                  icon: Icons.delete_outline,
+                                  color: const Color(0xFFE53935),
+                                  onTap: () async {
+                                    await _loadScheduleList();
+                                    if (!mounted) return;
+                                    setState(() {
+                                      _messages.add(ChatMessage(
+                                        text: 'intentDeletePickPrompt'.tr(),
+                                        isUser: false,
+                                      ));
+                                      _messages.add(SchedulePickerMessage(
+                                        schedules: List.from(_scheduleList),
+                                        onSelect: (schedule) {
+                                          final id = schedule['id'] as String? ?? '';
+                                          final title = schedule['title'] as String? ?? '';
+                                          final startTime = schedule['start_time'] as String?;
+                                          setState(() {
+                                            _messages.add(ChatMessage(text: '刪除行程：$title', isUser: true));
+                                            _messages.add(DeleteConfirmMessage(
+                                              items: [{'id': id, 'title': title, 'start_time': startTime}],
+                                              onConfirm: () {
+                                                _currentContext = {
+                                                  'delete_schedule_ids': [id],
+                                                  'delete_schedule_id': id,
+                                                };
+                                                _sendMessage(confirmDelete: true);
+                                              },
+                                              onCancel: () {
+                                                _currentContext = null;
+                                                setState(() {
+                                                  _messages.add(ChatMessage(text: 'deleteCancelled'.tr(), isUser: false));
+                                                });
+                                              },
+                                            ));
+                                          });
+                                          _scrollToBottom();
+                                        },
+                                        onCancel: () {
+                                          _currentContext = null;
+                                          setState(() {
+                                            _messages.add(ChatMessage(text: 'deleteCancelled'.tr(), isUser: false));
+                                          });
+                                        },
+                                      ));
+                                    });
+                                    _scrollToBottom();
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -1089,7 +1327,7 @@ class LocationCandidatesMessage extends StatelessWidget {
 }
 
 class DeleteConfirmMessage extends StatefulWidget {
-  final List<Map<String, dynamic>> items;
+  final List<Map<String, dynamic>>? items;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
 
@@ -1119,8 +1357,9 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.items.isEmpty) return const SizedBox.shrink();
-    final isBatch = widget.items.length > 1;
+    final items = widget.items;
+    if (items == null || items.isEmpty) return const SizedBox.shrink();
+    final isBatch = items.length > 1;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       child: Card(
@@ -1138,15 +1377,15 @@ class _DeleteConfirmMessageState extends State<DeleteConfirmMessage> {
                   Expanded(
                     child: Text(
                       isBatch
-                          ? 'confirmDeleteBatch'.tr(namedArgs: {'count': '${widget.items.length}'})
-                          : 'confirmDeleteTitle'.tr(namedArgs: {'title': widget.items[0]['title'] as String? ?? ''}),
+                          ? 'confirmDeleteBatch'.tr(namedArgs: {'count': '${items.length}'})
+                          : 'confirmDeleteTitle'.tr(namedArgs: {'title': items[0]['title'] as String? ?? ''}),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
-              ...widget.items.map((item) {
+              ...items.map((item) {
                 final timeStr = _formatTime(item['start_time'] as String?);
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 2),
@@ -1582,6 +1821,777 @@ class _LocationManualInputMessageState extends State<LocationManualInputMessage>
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class TimePickerMessage extends StatefulWidget {
+  final void Function(DateTime) onConfirm;
+  final VoidCallback onCancel;
+
+  const TimePickerMessage({
+    super.key,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  State<TimePickerMessage> createState() => _TimePickerMessageState();
+}
+
+class _TimePickerMessageState extends State<TimePickerMessage> {
+  DateTime _selected = DateTime.now().add(const Duration(days: 1)).copyWith(
+    hour: 10, minute: 0, second: 0, millisecond: 0, microsecond: 0,
+  );
+  bool _tapped = false;
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selected,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365 * 2)),
+    );
+    if (!mounted) return;
+    if (picked != null) {
+      setState(() {
+        _selected = DateTime(picked.year, picked.month, picked.day,
+            _selected.hour, _selected.minute);
+      });
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _selected.hour, minute: _selected.minute),
+    );
+    if (!mounted) return;
+    if (picked != null) {
+      setState(() {
+        _selected = DateTime(_selected.year, _selected.month, _selected.day,
+            picked.hour, picked.minute);
+      });
+    }
+  }
+
+  String _formatDate() {
+    const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+    final w = weekdays[_selected.weekday - 1];
+    return '${_selected.month}月${_selected.day}日（$w）';
+  }
+
+  String _formatTime() {
+    final h = _selected.hour;
+    final period = h < 12 ? '上午' : (h < 14 ? '中午' : (h < 18 ? '下午' : (h < 22 ? '晚上' : '深夜')));
+    final display = h % 12 == 0 ? 12 : h % 12;
+    final min = _selected.minute.toString().padLeft(2, '0');
+    return '$period $display:$min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Card(
+        color: Colors.orange[50],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.schedule, color: Colors.orange, size: 20),
+                  const SizedBox(width: 6),
+                  Text('selectNewTime'.tr(),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Date row
+              InkWell(
+                onTap: _tapped ? null : _pickDate,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.orange.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 16, color: Colors.orange),
+                      const SizedBox(width: 8),
+                      Text(_formatDate(),
+                          style: const TextStyle(fontSize: 15)),
+                      const Spacer(),
+                      Icon(Icons.edit, size: 14, color: Colors.grey[400]),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Time row
+              InkWell(
+                onTap: _tapped ? null : _pickTime,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.orange.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.access_time, size: 16, color: Colors.orange),
+                      const SizedBox(width: 8),
+                      Text(_formatTime(),
+                          style: const TextStyle(fontSize: 15)),
+                      const Spacer(),
+                      Icon(Icons.edit, size: 14, color: Colors.grey[400]),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _tapped ? null : () {
+                        setState(() => _tapped = true);
+                        widget.onCancel();
+                      },
+                      child: Text('cancel'.tr()),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _tapped ? null : () {
+                        setState(() => _tapped = true);
+                        widget.onConfirm(_selected);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: Text('confirmNewTime'.tr()),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class LocationInputMessage extends StatefulWidget {
+  final void Function(String address, double? lat, double? lon) onConfirm;
+  final VoidCallback onCancel;
+
+  const LocationInputMessage({
+    super.key,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  State<LocationInputMessage> createState() => _LocationInputMessageState();
+}
+
+class _LocationInputMessageState extends State<LocationInputMessage> {
+  final TextEditingController _ctrl = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  bool _submitted = false;
+  bool _locating = false;
+  double? _lat;
+  double? _lon;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final address = _ctrl.text.trim();
+    if (address.isEmpty) return;
+    setState(() => _submitted = true);
+    widget.onConfirm(address, _lat, _lon);
+  }
+
+  Future<void> _useGPS() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('locationServiceDisabled'.tr())));
+      return;
+    }
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('locationPermissionDenied'.tr())));
+      return;
+    }
+    setState(() { _locating = true; _ctrl.text = 'locating'.tr(); });
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      final address = await _reverseGeocode(pos.latitude, pos.longitude);
+      if (mounted) setState(() { _ctrl.text = address; _lat = pos.latitude; _lon = pos.longitude; _locating = false; });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _locating = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('locationFailed'.tr())));
+      }
+    }
+  }
+
+  Future<void> _pickMap() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => LocationPickerScreen()),
+    );
+    if (result != null && mounted) {
+      final lat = (result['latitude'] as num?)?.toDouble();
+      final lon = (result['longitude'] as num?)?.toDouble();
+      final addr = result['address'] as String? ?? result['name'] as String? ?? '';
+      setState(() { _ctrl.text = addr; _lat = lat; _lon = lon; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_on_outlined, color: Colors.blue.shade700, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'selectLocation'.tr(),
+                style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue.shade800, fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _ctrl,
+            focusNode: _focusNode,
+            enabled: !_submitted && !_locating,
+            decoration: InputDecoration(
+              hintText: 'enterAddressHint'.tr(),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              isDense: true,
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_submitted || _locating) ? null : _useGPS,
+                  icon: _locating
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.my_location, size: 15),
+                  label: Text(_locating ? 'locating'.tr() : 'useCurrentLocation'.tr(), style: const TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_submitted || _locating) ? null : _pickMap,
+                  icon: const Icon(Icons.map_outlined, size: 15),
+                  label: Text('selectLocation'.tr(), style: const TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _submitted ? null : widget.onCancel,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: Text('cancel'.tr()),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: (_submitted || _locating) ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: Text('confirmAddress'.tr()),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EditOptionsMessage extends StatefulWidget {
+  final VoidCallback onEditTime;
+  final VoidCallback onEditLocation;
+  final VoidCallback onCancel;
+
+  const EditOptionsMessage({
+    super.key,
+    required this.onEditTime,
+    required this.onEditLocation,
+    required this.onCancel,
+  });
+
+  @override
+  State<EditOptionsMessage> createState() => _EditOptionsMessageState();
+}
+
+class _EditOptionsMessageState extends State<EditOptionsMessage> {
+  bool _tapped = false;
+
+  void _handle(VoidCallback cb) {
+    setState(() => _tapped = true);
+    cb();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'editOptionsTitle'.tr(),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _EditOptionBtn(
+                      icon: Icons.schedule,
+                      label: 'editTime'.tr(),
+                      color: Colors.orange,
+                      disabled: _tapped,
+                      onTap: () => _handle(widget.onEditTime),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _EditOptionBtn(
+                      icon: Icons.location_on_outlined,
+                      label: 'editLocation'.tr(),
+                      color: Colors.blue,
+                      disabled: _tapped,
+                      onTap: () => _handle(widget.onEditLocation),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: _tapped ? null : () => _handle(widget.onCancel),
+                style: TextButton.styleFrom(foregroundColor: Colors.grey[600]),
+                child: Text('cancel'.tr()),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EditOptionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool disabled;
+  final VoidCallback onTap;
+
+  const _EditOptionBtn({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: disabled ? null : onTap,
+      icon: Icon(icon, size: 16, color: disabled ? Colors.grey : color),
+      label: Text(label, style: TextStyle(color: disabled ? Colors.grey : color, fontSize: 13)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: disabled ? Colors.grey.shade300 : color.withValues(alpha: 0.5)),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+}
+
+class SchedulePickerMessage extends StatefulWidget {
+  final List<Map<String, dynamic>> schedules;
+  final void Function(Map<String, dynamic>) onSelect;
+  final VoidCallback onCancel;
+
+  const SchedulePickerMessage({
+    super.key,
+    required this.schedules,
+    required this.onSelect,
+    required this.onCancel,
+  });
+
+  @override
+  State<SchedulePickerMessage> createState() => _SchedulePickerMessageState();
+}
+
+class _SchedulePickerMessageState extends State<SchedulePickerMessage> {
+  bool _selected = false;
+
+  String _formatTime(String? iso) {
+    if (iso == null) return '';
+    try {
+      final dt = DateTime.parse(iso);
+      return DateFormat('MM/dd HH:mm').format(dt);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.schedules.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        child: Text('noSchedules'.tr(), style: TextStyle(color: Colors.grey[500])),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...widget.schedules.map((s) {
+            final title = s['title'] as String? ?? '';
+            final timeStr = _formatTime(s['start_time'] as String?);
+            final location = s['location'] as String? ?? '';
+            final subtitle = [timeStr, location].where((v) => v.isNotEmpty).join('  ');
+            return Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                leading: const Icon(Icons.event, color: Colors.black54),
+                title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: subtitle.isNotEmpty
+                    ? Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12))
+                    : null,
+                onTap: _selected ? null : () {
+                  setState(() => _selected = true);
+                  widget.onSelect(s);
+                },
+              ),
+            );
+          }),
+          TextButton(
+            onPressed: _selected ? null : widget.onCancel,
+            style: TextButton.styleFrom(foregroundColor: Colors.grey[600]),
+            child: Text('cancel'.tr()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IntentButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _IntentButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class InviteCard extends StatefulWidget {
+  final String scheduleId;
+  final String scheduleName;
+  final void Function(int invitedCount) onDone;
+
+  const InviteCard({
+    super.key,
+    required this.scheduleId,
+    required this.scheduleName,
+    required this.onDone,
+  });
+
+  @override
+  State<InviteCard> createState() => _InviteCardState();
+}
+
+class _InviteCardState extends State<InviteCard> {
+  final _apiService = ApiService();
+  List<Map<String, dynamic>> _initialAttendees = [];
+  List<Map<String, dynamic>> _selectedContacts = [];
+  bool _tapped = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentAttendees();
+  }
+
+  // Map raw attend records to the shape AttendeeSelector expects, same
+  // normalization AddScheduleScreen uses when editing (id -> contact_id).
+  Future<void> _loadCurrentAttendees() async {
+    try {
+      final list = await _apiService.getScheduleAttends(widget.scheduleId);
+      final mapped = list.map((att) {
+        final m = Map<String, dynamic>.from(att as Map);
+        m['attend_id'] = m['id'];
+        m['id'] = m['contact_id'];
+        return m;
+      }).toList();
+      if (mounted) {
+        setState(() {
+          _initialAttendees = mapped;
+          _selectedContacts = List<Map<String, dynamic>>.from(mapped);
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _showAttendeeSelector() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AttendeeSelector(
+        initialSelectedContacts: _selectedContacts,
+        onSelectionChanged: (contacts) {
+          setState(() => _selectedContacts = contacts.cast<Map<String, dynamic>>());
+        },
+      ),
+    );
+  }
+
+  bool get _hasChanges {
+    final initialIds = _initialAttendees.map((c) => c['id']?.toString() ?? '').toSet();
+    final currentIds = _selectedContacts.map((c) => c['id']?.toString() ?? '').toSet();
+    return initialIds.length != currentIds.length || !initialIds.containsAll(currentIds);
+  }
+
+  void _skip() {
+    if (_tapped) return;
+    setState(() => _tapped = true);
+    widget.onDone(0);
+  }
+
+  Future<void> _send() async {
+    if (_tapped || !_hasChanges) return;
+    setState(() => _tapped = true);
+    try {
+      final initialIds = _initialAttendees.map((c) => c['id']?.toString() ?? '').toSet();
+      final addedCount = _selectedContacts
+          .where((c) => !initialIds.contains(c['id']?.toString() ?? ''))
+          .length;
+      // Same PUT /schedules/{id} path the edit screen uses to persist attends.
+      await _apiService.updateSchedule(widget.scheduleId, {
+        'attends': _selectedContacts.map((c) {
+          return {
+            'user_id': c['contact_user_id'],
+            'contact_id': c['id'] ?? c['contact_id'],
+            'name': c['nick_name'] ?? c['name'] ?? c['full_name'],
+            'email': c['email'],
+            'phone': c['phone'],
+            'line_id': c['line_id'],
+            'status': c['status'] ?? 'P',
+          };
+        }).toList(),
+      });
+      widget.onDone(addedCount);
+    } catch (_) {
+      if (mounted) setState(() => _tapped = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 40, right: 8, top: 4, bottom: 4),
+      child: Card(
+        color: Colors.white,
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.person_add, size: 18, color: Colors.black54),
+                  SizedBox(width: 6),
+                  Text(
+                    'inviteCardTitle'.tr(),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ],
+              ),
+              SizedBox(height: 10),
+
+              // Selected attendees + entry point into the same selector edit uses
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  ..._selectedContacts.map((c) {
+                    final name = (c['nick_name'] as String?)?.isNotEmpty == true
+                        ? c['nick_name'] as String
+                        : (c['name'] as String?) ??
+                            (c['email'] as String?) ??
+                            (c['contact_user_id'] as String?) ??
+                            '?';
+                    return Chip(
+                      label: Text(name, style: TextStyle(fontSize: 12)),
+                      onDeleted: _tapped
+                          ? null
+                          : () => setState(() => _selectedContacts.remove(c)),
+                      deleteIcon: Icon(Icons.close, size: 14),
+                      deleteIconColor: Colors.red[700],
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                    );
+                  }),
+                  ActionChip(
+                    avatar: Icon(Icons.person_add, size: 16),
+                    label: Text('selectParticipants'.tr(), style: TextStyle(fontSize: 12)),
+                    onPressed: _tapped ? null : _showAttendeeSelector,
+                  ),
+                ],
+              ),
+
+              SizedBox(height: 12),
+
+              // Action buttons
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _tapped ? null : _skip,
+                    child: Text('inviteSkip'.tr(),
+                        style: TextStyle(color: Colors.black54)),
+                  ),
+                  SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: (_tapped || !_hasChanges) ? null : _send,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Text(
+                      _selectedContacts.isNotEmpty
+                          ? '${'inviteSend'.tr()} (${_selectedContacts.length})'
+                          : 'inviteSend'.tr(),
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

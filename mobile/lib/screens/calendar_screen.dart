@@ -7,6 +7,7 @@ import '../models/schedule.dart';
 import '../utils/constants.dart';
 import '../widgets/add_action_sheet.dart';
 import 'map_screen.dart';
+import '../theme/app_theme.dart';
 
 class CalendarScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -88,9 +89,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   Widget build(BuildContext context) {
     final innerTabBar = TabBar(
       controller: _tabController,
-      labelColor: Colors.white,
-      unselectedLabelColor: Colors.white60,
-      indicatorColor: Colors.white,
+      labelColor: widget.isEmbedded ? AppTheme.primary : Colors.white,
+      unselectedLabelColor: widget.isEmbedded ? AppTheme.textMuted : Colors.white60,
+      indicatorColor: widget.isEmbedded ? AppTheme.primary : Colors.white,
       tabs: [
         Tab(icon: Icon(Icons.calendar_month), text: 'month'.tr()),
         Tab(icon: Icon(Icons.view_week), text: 'week'.tr()),

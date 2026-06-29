@@ -69,8 +69,8 @@ def validate_contact(
 
     return ContactValidateResponse(is_valid=True, duplicate_field=None)
 
-@router.post("/", response_model=Contact)
-@router.post("", response_model=Contact, include_in_schema=False)
+@router.post("/", response_model=ContactRead)
+@router.post("", response_model=ContactRead, include_in_schema=False)
 def create_contact(contact_data: ContactCreate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     repo = ContactRepository(session)
     
@@ -189,8 +189,8 @@ def delete_contact(contact_id: int, current_user: User = Depends(get_current_use
     repo.delete(contact)
     return {"msg": "Deleted"}
 
-@router.put("/{contact_id}", response_model=Contact)
-@router.put("/{contact_id}/", response_model=Contact, include_in_schema=False)
+@router.put("/{contact_id}", response_model=ContactRead)
+@router.put("/{contact_id}/", response_model=ContactRead, include_in_schema=False)
 def update_contact(
     contact_id: int,
     contact_data: ContactUpdate,

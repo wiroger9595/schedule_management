@@ -1,196 +1,119 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../models/schedule.dart';
+import '../theme/app_theme.dart';
 import '../utils/constants.dart';
 
-/// Reusable schedule card widget extracted from HomeScreen.
-/// Displays a single schedule item with title, time, location, status, and attendees.
 class ScheduleListTile extends StatelessWidget {
   final Schedule schedule;
   final VoidCallback? onTap;
 
-  const ScheduleListTile({
-    Key? key,
-    required this.schedule,
-    this.onTap,
-  }) : super(key: key);
+  const ScheduleListTile({Key? key, required this.schedule, this.onTap})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      elevation: 4,
-      color: schedule.status == ScheduleStatus.cancel ? Colors.grey[200] : null,
-      child: ListTile(
-        contentPadding: EdgeInsets.all(16),
-        title: Text(
-          schedule.title,
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+    final color = _statusColor(schedule.status);
+    final cancelled = schedule.status == ScheduleStatus.cancel;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: cancelled ? AppTheme.surfaceVar : AppTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border),
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.access_time, size: 16, color: Colors.grey),
-                SizedBox(width: 8),
-                Text(_formatDateRange(schedule.startTime, schedule.endTime)),
-              ],
-            ),
-            if (schedule.location != null) ...[
-              SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(
-                    (schedule.isOnline == true) ? Icons.video_call : Icons.location_on,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      schedule.location!,
-                      style: (schedule.isOnline == true)
-                          ? TextStyle(
-                              color: Colors.blue,
-                              decoration: TextDecoration.underline,
-                            )
-                          : null,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(schedule.status),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _getStatusText(context, schedule.status),
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Left status stripe ──────────────────────────
+              Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: const BorderRadius.only(
+                    topLeft:    Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
                   ),
                 ),
-                if (schedule.isOwner == false) ...[
-                  SizedBox(width: 6),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.orange.shade300),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.person_outline, size: 11, color: Colors.orange.shade700),
-                        SizedBox(width: 3),
-                        Text(
-                          schedule.creatorName ?? '他人建立',
-                          style: TextStyle(
-                            color: Colors.orange.shade700,
-                            fontSize: 11,
+              ),
+              // ── Content ────────────────────────────────────
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Title row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              schedule.title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                color: cancelled
+                                    ? AppTheme.textMuted
+                                    : AppTheme.textPrimary,
+                                decoration: cancelled
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          _StatusPill(status: schedule.status, color: color),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Time
+                      _InfoRow(
+                        icon: Icons.schedule_rounded,
+                        text: _formatDateRange(schedule.startTime, schedule.endTime),
+                      ),
+
+                      // Location
+                      if (schedule.location != null) ...[
+                        const SizedBox(height: 4),
+                        _InfoRow(
+                          icon: schedule.isOnline == true
+                              ? Icons.videocam_outlined
+                              : Icons.location_on_outlined,
+                          text: schedule.location!,
+                          color: schedule.isOnline == true
+                              ? AppTheme.primary
+                              : null,
+                          maxLines: 1,
                         ),
                       ],
-                    ),
+
+                      // Creator badge
+                      if (schedule.isOwner == false) ...[
+                        const SizedBox(height: 8),
+                        _CreatorBadge(name: schedule.creatorName),
+                      ],
+
+                      // Attendees
+                      if (schedule.attends != null &&
+                          schedule.attends!.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        const Divider(height: 1),
+                        const SizedBox(height: 10),
+                        _AttendeesRow(attends: schedule.attends!),
+                      ],
+                    ],
                   ),
-                ],
-              ],
-            ),
-            if (schedule.attends != null && schedule.attends!.isNotEmpty) ...[
-              SizedBox(height: 8),
-              Divider(),
-              SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.people, size: 16, color: Colors.grey),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: schedule.attends!.map((attendee) {
-                        final name = attendee['nick_name'] ??
-                            attendee['name'] ??
-                            '?';
-                        final status = attendee['status'] as String? ?? 'P';
-                        final confirmed = status == 'AT';
-                        final declined = status == 'NG';
-                        return Tooltip(
-                          message: confirmed
-                              ? '$name（已確認）'
-                              : declined
-                                  ? '$name（已拒絕）'
-                                  : '$name（待回覆）',
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              CircleAvatar(
-                                radius: 12,
-                                backgroundColor: confirmed
-                                    ? Colors.green[100]
-                                    : declined
-                                        ? Colors.red[100]
-                                        : Colors.grey[300],
-                                child: Text(
-                                  name.isNotEmpty ? name[0] : '?',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ),
-                              if (confirmed)
-                                Positioned(
-                                  right: -2,
-                                  bottom: -2,
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle),
-                                    child: const Icon(Icons.check,
-                                        size: 8, color: Colors.white),
-                                  ),
-                                )
-                              else if (declined)
-                                Positioned(
-                                  right: -2,
-                                  bottom: -2,
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                        color: Colors.red,
-                                        shape: BoxShape.circle),
-                                    child: const Icon(Icons.close,
-                                        size: 8, color: Colors.white),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
-          ],
+          ),
         ),
-        onTap: onTap,
       ),
     );
   }
@@ -203,49 +126,192 @@ class ScheduleListTile extends StatelessWidget {
 
     final startStr = DateFormat('yyyy-MM-dd HH:mm').format(start);
     if (end == null) return startStr;
-    if (sameDay) return '$startStr - ${DateFormat('HH:mm').format(end)}';
+    if (sameDay) return '$startStr – ${DateFormat('HH:mm').format(end)}';
     return '$startStr\n→ ${DateFormat('yyyy-MM-dd HH:mm').format(end)}';
   }
 
-  Color _getStatusColor(String status) {
+  Color _statusColor(String status) {
     switch (status) {
-      case ScheduleStatus.pending:
-        return const Color.fromARGB(255, 66, 233, 0);
-      case ScheduleStatus.attend:
-        return const Color.fromARGB(255, 39, 45, 39);
-      case ScheduleStatus.notAttended:
-        return const Color.fromARGB(255, 213, 145, 43);
-      case ScheduleStatus.active:
-        return const Color.fromARGB(255, 41, 69, 80);
-      case ScheduleStatus.notGoing:
-        return const Color.fromARGB(255, 189, 203, 131);
-      case ScheduleStatus.cancel:
-        return Colors.red;
-      case ScheduleStatus.comingSoon:
-        return Colors.amber[800]!;
-      default:
-        return Colors.grey;
+      case ScheduleStatus.comingSoon:  return AppTheme.statusCS;
+      case ScheduleStatus.active:      return AppTheme.statusA;
+      case ScheduleStatus.pending:     return AppTheme.statusP;
+      case ScheduleStatus.attend:      return AppTheme.statusAT;
+      case ScheduleStatus.notGoing:    return AppTheme.statusNG;
+      case ScheduleStatus.notAttended: return AppTheme.statusNA;
+      case ScheduleStatus.cancel:      return AppTheme.statusC;
+      default:                         return AppTheme.textMuted;
     }
   }
+}
 
-  String _getStatusText(BuildContext context, String status) {
-    switch (status) {
-      case ScheduleStatus.pending:
-        return 'statusPending'.tr();
-      case ScheduleStatus.attend:
-        return 'statusAttend'.tr();
-      case ScheduleStatus.notAttended:
-        return 'statusNotAttend'.tr();
-      case ScheduleStatus.active:
-        return 'statusActive'.tr();
-      case ScheduleStatus.notGoing:
-        return 'statusNotGoing'.tr();
-      case ScheduleStatus.cancel:
-        return 'statusCancelled'.tr();
-      case ScheduleStatus.comingSoon:
-        return 'statusComingSoon'.tr();
-      default:
-        return status;
+// ── Sub-widgets ─────────────────────────────────────────────────────────────
+
+class _StatusPill extends StatelessWidget {
+  final String status;
+  final Color color;
+  const _StatusPill({required this.status, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Text(
+        _label(status),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
+  String _label(String s) {
+    switch (s) {
+      case ScheduleStatus.comingSoon:  return 'statusComingSoon'.tr();
+      case ScheduleStatus.active:      return 'statusActive'.tr();
+      case ScheduleStatus.pending:     return 'statusPending'.tr();
+      case ScheduleStatus.attend:      return 'statusAttend'.tr();
+      case ScheduleStatus.notGoing:    return 'statusNotGoing'.tr();
+      case ScheduleStatus.notAttended: return 'statusNotAttend'.tr();
+      case ScheduleStatus.cancel:      return 'statusCancelled'.tr();
+      default:                         return s;
     }
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color? color;
+  final int maxLines;
+  const _InfoRow({
+    required this.icon,
+    required this.text,
+    this.color,
+    this.maxLines = 2,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = color ?? AppTheme.textSecond;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: fg),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 13, color: fg, height: 1.4),
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CreatorBadge extends StatelessWidget {
+  final String? name;
+  const _CreatorBadge({this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.person_outline, size: 12, color: Colors.orange.shade700),
+          const SizedBox(width: 4),
+          Text(
+            name ?? '他人建立',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.orange.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AttendeesRow extends StatelessWidget {
+  final List<dynamic> attends;
+  const _AttendeesRow({required this.attends});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.group_outlined, size: 14, color: AppTheme.textMuted),
+        const SizedBox(width: 8),
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: attends.map((a) {
+            final name   = (a['nick_name'] ?? a['name'] ?? '?') as String;
+            final status = (a['status'] as String?) ?? 'P';
+            final ok  = status == 'AT';
+            final no  = status == 'NG';
+            final bg  = ok  ? AppTheme.statusAT.withOpacity(0.15)
+                       : no ? AppTheme.statusC.withOpacity(0.12)
+                            : AppTheme.border;
+            final fg  = ok  ? AppTheme.statusAT
+                       : no ? AppTheme.statusC
+                            : AppTheme.textSecond;
+            return Tooltip(
+              message: ok ? '$name（已確認）' : no ? '$name（已拒絕）' : '$name（待回覆）',
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 13,
+                    backgroundColor: bg,
+                    child: Text(
+                      name.isNotEmpty ? name[0] : '?',
+                      style: TextStyle(fontSize: 11, color: fg, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (ok || no)
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(1),
+                        decoration: BoxDecoration(
+                          color: ok ? AppTheme.statusAT : AppTheme.statusC,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: Icon(
+                          ok ? Icons.check : Icons.close,
+                          size: 7,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
   }
 }
