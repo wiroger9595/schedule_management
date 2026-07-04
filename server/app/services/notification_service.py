@@ -25,12 +25,12 @@ class NotificationService:
         """
         users_map = users_map or {}
         schedule_title = schedule.title if hasattr(schedule, 'title') else "Unknown"
-        print(f"\n[NotificationService] Notifying attendees for schedule: '{schedule_title}'\n" + "-"*60)
+        logger.info(f"\n[NotificationService] Notifying attendees for schedule: '{schedule_title}'\n" + "-"*60)
 
         for attendee in attendees:
             contact = contacts_map.get(attendee.contact_id)
             if not contact:
-                print(f"[ERROR] Could not find contact details for attendee contact_id: {attendee.contact_id}")
+                logger.info(f"[ERROR] Could not find contact details for attendee contact_id: {attendee.contact_id}")
                 continue
 
             name = contact.nick_name or "Unknown User"
@@ -55,11 +55,11 @@ class NotificationService:
                             "schedule_id": str(schedule.schedule_id),
                         },
                     )
-                    print(f"[PUSH] Sent invite push to user '{name}'")
+                    logger.info(f"[PUSH] Sent invite push to user '{name}'")
 
                 user_email = user.email if user else contact.email
                 if user_email:
-                    print(f"[RSVP EMAIL] Sending RSVP invite to user '{name}' ({user_email})")
+                    logger.info(f"[RSVP EMAIL] Sending RSVP invite to user '{name}' ({user_email})")
                     email_service.send_attend_invitation_to_user(
                         email=user_email,
                         user_name=name,
@@ -68,12 +68,12 @@ class NotificationService:
                         inviter_name=inviter_name
                     )
                 else:
-                    print(f"[RSVP SKIP] User '{name}' (ID: {contact.contact_user_id}) has no email on record.")
+                    logger.info(f"[RSVP SKIP] User '{name}' (ID: {contact.contact_user_id}) has no email on record.")
             else:
                 # Attendee is an external contact — check if they have an email
                 if contact.email:
                     # Send registration invitation
-                    print(f"[REG EMAIL] Sending registration invite to '{name}' at {contact.email}")
+                    logger.info(f"[REG EMAIL] Sending registration invite to '{name}' at {contact.email}")
                     email_service.send_registration_invitation(
                         email=contact.email,
                         contact_name=name,
@@ -84,11 +84,11 @@ class NotificationService:
                     # Fall back to LINE/SMS
                     method = contact.default_notification_method or "mobile"
                     if method == "line" and contact.line_id:
-                        print(f"[LINE MESSAGE] Sending LINE msg to '{name}' at Line ID {contact.line_id}")
+                        logger.info(f"[LINE MESSAGE] Sending LINE msg to '{name}' at Line ID {contact.line_id}")
                     else:
-                        print(f"[SMS] Sending SMS to '{name}' at {contact.phone or '(No Phone)'}")
+                        logger.info(f"[SMS] Sending SMS to '{name}' at {contact.phone or '(No Phone)'}")
 
-        print("-" * 60 + "\n[NotificationService] Finished sending notifications.\n")
+        logger.info("-" * 60 + "\n[NotificationService] Finished sending notifications.\n")
 
     @staticmethod
     def notify_creator_of_decline(schedule: Any, attendee_name: str, creator_user: Any):
@@ -100,10 +100,10 @@ class NotificationService:
         :param creator_user: User object of the schedule creator
         """
         if not creator_user or not creator_user.email:
-            print(f"[NotificationService] Creator has no email, skipping decline notification.")
+            logger.info(f"[NotificationService] Creator has no email, skipping decline notification.")
             return
 
-        print(f"[DECLINE NOTIFY] Notifying creator '{creator_user.full_name}' that '{attendee_name}' declined '{schedule.title}'")
+        logger.info(f"[DECLINE NOTIFY] Notifying creator '{creator_user.full_name}' that '{attendee_name}' declined '{schedule.title}'")
         email_service.send_decline_notification(
             creator_email=creator_user.email,
             creator_name=creator_user.full_name or "您",

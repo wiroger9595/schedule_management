@@ -1,28 +1,35 @@
-fastapi
-uvicorn
-sqlmodel
-requests
-python-dotenv
-asyncpg
-redis
-python-jose[cryptography]
-passlib
-bcrypt>=4.0.1
-python-multipart
-email-validator
-openai
-cloudinary
-psycopg2-binary
-arrow
-line-bot-sdk
-shortuuid
+# 版本鎖定於 2026-07-04（依當時 venv 實測可運作的版本）
+# 升級流程：改版本 → 全套測試 → commit。不要裸寫套件名，避免部署時裝到 breaking 版本。
+
+fastapi==0.136.3
+uvicorn==0.49.0
+sqlmodel==0.0.38
+requests==2.34.2
+python-dotenv==1.2.2
+asyncpg==0.31.0
+redis==8.0.0
+python-jose[cryptography]==3.5.0
+passlib==1.7.4
+bcrypt==5.0.0
+python-multipart==0.0.32
+email-validator==2.3.0
+openai==2.41.0
+cloudinary==1.44.2
+psycopg2-binary==2.9.12
+arrow==1.4.0
+line-bot-sdk==3.23.0
+shortuuid==1.0.13
 firebase-admin>=6.0.0
+pgvector==0.4.2         # SQLModel Vector 欄位（models/rag_example.py 等），先前漏列
 
 # ── AI 強化套件 ───────────────────────────────────────────────────────────────
-numpy<2                 # embedding / semantic router
-instructor>=1.3.0       # Structured output / JSON fallback
-huggingface_hub>=0.20.0 # RAG embedding via HF Inference API (no local model needed)
+numpy==2.5.0            # embedding / semantic router（實測 2.x 可用，原 <2 約束已過時）
+instructor==1.15.1      # Structured output / JSON fallback
+huggingface_hub==1.18.0 # RAG embedding via HF Inference API (no local model needed)
+
+# ── 本地 embedding（EMBEDDING_LOCAL=1 時使用，見 embedding_service.py）────────
+sentence-transformers==5.6.0
 
 # ── 地圖路徑估算（/estimate endpoint）─────────────────────────────────────────
-osmnx
-networkx
+osmnx==2.1.0
+networkx==3.6.1

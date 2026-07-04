@@ -2,12 +2,12 @@
 
 ## Project Overview
 AI-powered schedule management app. Flutter mobile + FastAPI backend + PostgreSQL.
-AI chat (LangGraph + Qwen-3-235B via Cerebras) helps users create schedules in Chinese.
+AI chat (LangGraph + GLM-4.7 via Cerebras) helps users create schedules in Chinese.
 
 ## Stack
 - **Backend**: FastAPI, SQLModel, PostgreSQL, LangGraph, HERE API, Firebase Admin (FCM)
 - **Mobile**: Flutter, Provider, easy_localization, firebase_messaging, url_launcher, geolocator
-- **AI**: Cerebras API → `qwen-3-235b-a22b-instruct-2507`, LangGraph StateGraph
+- **AI**: Cerebras API → `zai-glm-4.7`, LangGraph StateGraph
 
 ## Key Files — Read These Before Editing
 

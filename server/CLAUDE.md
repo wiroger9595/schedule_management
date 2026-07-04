@@ -18,7 +18,7 @@
 3. Run: `python run_migration.py`
 
 ## AI Service (`ai_service.py`)
-- Model: `qwen-3-235b-a22b-instruct-2507` via Cerebras
+- Model: `zai-glm-4.7` via Cerebras
 - `process_conversation(messages, context)` → returns dict with `is_complete`, `title`, `start_time`, `end_time`, `location`, `participants`
 - Always strip markdown code fences before `json.loads()`
 - Time rule: if user says "下午六點" with no date → use today's date, don't ask

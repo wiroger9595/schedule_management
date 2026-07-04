@@ -9,6 +9,8 @@ from ...repositories.user_repository import UserRepository
 from ...schemas.auth import RegisterRequest, LoginRequest, OAuthRequest, ForgotPasswordRequest, ResetPasswordRequest
 from ...schemas.user import UserRead
 from jose import jwt, JWTError
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 security = HTTPBearer()
@@ -66,7 +68,7 @@ def login(user_data: LoginRequest, session: Session = Depends(get_session)):
     
     # Store in Redis
     if not redis_client.store_token(user.user_id, access_token):
-        print("Warning: Redis unavailable")
+        logger.info("Warning: Redis unavailable")
         
     return {"access_token": access_token, "token_type": "bearer", "user": UserRead.model_validate(user)}
 

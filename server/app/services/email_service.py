@@ -4,6 +4,8 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import TYPE_CHECKING
+import logging
+logger = logging.getLogger(__name__)
 
 
 def _fmt_time(value, fmt="%Y-%m-%d %H:%M") -> str:
@@ -34,10 +36,10 @@ class EmailService:
         如果未設定 SMTP 帳號密碼，則僅印出驗證碼到控制台 (用於開發測試)
         """
         if not self.enabled:
-            print(f"============================================")
-            print(f"[EmailService] Mock Send to {email}")
-            print(f"[EmailService] Reset Code: {code}")
-            print(f"============================================")
+            logger.info(f"============================================")
+            logger.info(f"[EmailService] Mock Send to {email}")
+            logger.info(f"[EmailService] Reset Code: {code}")
+            logger.info(f"============================================")
             return True
 
         try:
@@ -57,7 +59,7 @@ class EmailService:
             server.quit()
             return True
         except Exception as e:
-            print(f"Failed to send email: {e}")
+            logger.info(f"Failed to send email: {e}")
             return False
 
     def send_event_invitation(self, email: str, contact_name: str, schedule: "Any"):
@@ -65,13 +67,13 @@ class EmailService:
         Send an HTML email invitation for an event to a non-user contact.
         """
         if not self.enabled:
-            print(f"============================================")
-            print(f"[EmailService] Mock Send Event Invitation to {email} ({contact_name})")
-            print(f"[EmailService] Event: {schedule.title}")
-            print(f"[EmailService] Time: {schedule.meeting_start_time} - {schedule.meeting_end_time}")
-            print(f"[EmailService] Location: {schedule.meeting_location}")
-            print(f"[EmailService] Description: {schedule.description}")
-            print(f"============================================")
+            logger.info(f"============================================")
+            logger.info(f"[EmailService] Mock Send Event Invitation to {email} ({contact_name})")
+            logger.info(f"[EmailService] Event: {schedule.title}")
+            logger.info(f"[EmailService] Time: {schedule.meeting_start_time} - {schedule.meeting_end_time}")
+            logger.info(f"[EmailService] Location: {schedule.meeting_location}")
+            logger.info(f"[EmailService] Description: {schedule.description}")
+            logger.info(f"============================================")
             return True
 
         try:
@@ -132,7 +134,7 @@ class EmailService:
             server.quit()
             return True
         except Exception as e:
-            print(f"Failed to send event email: {e}")
+            logger.info(f"Failed to send event email: {e}")
             return False
 
     def send_attend_invitation_to_user(self, email: str, user_name: str, schedule: "Any", attend_id: str, inviter_name: str = "某人"):
@@ -148,12 +150,12 @@ class EmailService:
         location_str = schedule.meeting_location or "未定"
 
         if not self.enabled:
-            print(f"============================================")
-            print(f"[EmailService] Mock RSVP Invite to {email} ({user_name})")
-            print(f"[EmailService] Event: {schedule.title} | {start_time_str} - {end_time_str}")
-            print(f"[EmailService] Accept: {accept_url}")
-            print(f"[EmailService] Decline: {decline_url}")
-            print(f"============================================")
+            logger.info(f"============================================")
+            logger.info(f"[EmailService] Mock RSVP Invite to {email} ({user_name})")
+            logger.info(f"[EmailService] Event: {schedule.title} | {start_time_str} - {end_time_str}")
+            logger.info(f"[EmailService] Accept: {accept_url}")
+            logger.info(f"[EmailService] Decline: {decline_url}")
+            logger.info(f"============================================")
             return True
 
         try:
@@ -205,7 +207,7 @@ class EmailService:
             server.quit()
             return True
         except Exception as e:
-            print(f"Failed to send RSVP invitation email: {e}")
+            logger.info(f"Failed to send RSVP invitation email: {e}")
             return False
 
     def send_registration_invitation(self, email: str, contact_name: str, schedule: "Any", inviter_name: str = "某人"):
@@ -218,11 +220,11 @@ class EmailService:
         location_str = schedule.meeting_location or "未定"
 
         if not self.enabled:
-            print(f"============================================")
-            print(f"[EmailService] Mock Registration Invite to {email} ({contact_name})")
-            print(f"[EmailService] Event: {schedule.title} | {start_time_str} - {end_time_str}")
-            print(f"[EmailService] Register URL: {register_url}")
-            print(f"============================================")
+            logger.info(f"============================================")
+            logger.info(f"[EmailService] Mock Registration Invite to {email} ({contact_name})")
+            logger.info(f"[EmailService] Event: {schedule.title} | {start_time_str} - {end_time_str}")
+            logger.info(f"[EmailService] Register URL: {register_url}")
+            logger.info(f"============================================")
             return True
 
         try:
@@ -272,7 +274,7 @@ class EmailService:
             server.quit()
             return True
         except Exception as e:
-            print(f"Failed to send registration invitation email: {e}")
+            logger.info(f"Failed to send registration invitation email: {e}")
             return False
 
     def send_decline_notification(self, creator_email: str, creator_name: str, attendee_name: str, schedule_title: str):
@@ -280,10 +282,10 @@ class EmailService:
         通知活動建立者有人拒絕了邀請
         """
         if not self.enabled:
-            print(f"============================================")
-            print(f"[EmailService] Mock Decline Notification to {creator_email}")
-            print(f"[EmailService] {attendee_name} 拒絕了「{schedule_title}」的邀請")
-            print(f"============================================")
+            logger.info(f"============================================")
+            logger.info(f"[EmailService] Mock Decline Notification to {creator_email}")
+            logger.info(f"[EmailService] {attendee_name} 拒絕了「{schedule_title}」的邀請")
+            logger.info(f"============================================")
             return True
 
         try:
@@ -313,7 +315,7 @@ class EmailService:
             server.quit()
             return True
         except Exception as e:
-            print(f"Failed to send decline notification email: {e}")
+            logger.info(f"Failed to send decline notification email: {e}")
             return False
 
 

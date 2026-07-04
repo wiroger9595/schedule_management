@@ -10,6 +10,8 @@ from ...repositories.user_repository import UserRepository
 from ...schemas.user import UserUpdate, ProfilePictureUpdate, UserRead
 from .auth import get_current_user
 from datetime import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -245,5 +247,5 @@ async def upload_photo(
         
         return {"photo_url": result['url'], "message": "頭像上傳成功"}
     except Exception as e:
-        print(f"Error uploading photo: {e}")
+        logger.info(f"Error uploading photo: {e}")
         raise HTTPException(status_code=500, detail=f"上傳失敗：{str(e)}")

@@ -9,6 +9,8 @@ from .auth import get_current_user
 import random
 import string
 import json
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -61,7 +63,7 @@ async def line_webhook(
                     pass
                     
     except Exception as e:
-        print(f"Webhook Error: {e}")
+        logger.info(f"Webhook Error: {e}")
         # Build URL for Line Webhook verification
         # Line sends a verification event which might fail signature if not configured correctly or using mock
         # For now return 200 to keep Line happy logic

@@ -5,6 +5,8 @@ from typing import Dict, Optional, Literal
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel, Field
+import logging
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -51,14 +53,16 @@ class AIService:
         self._providers: list[tuple] = []  # (client, model_name, label)
 
         # ── Provider cascade（按中文品質排序，避免「成中天」幻覺）─────────────
-        # 1. Cerebras Qwen-235B：中文最強，主力（CLAUDE.md 指定）
+        # 1. Cerebras GLM-4.7：中文原生模型，主力
+        #    （2026-07 更新：Cerebras 已下架全部 Qwen 模型，
+        #      qwen-3-235b-a22b-instruct-2507 會 404，改用 zai-glm-4.7）
         # 2. Gemini Flash：中文好，備援
         # 3. HuggingFace Qwen-7B：中文還可以，但小模型偶爾亂碼，最終備援
         # ❌ 移除 Groq Llama 3.3：中文會幻覺亂碼（「英丽地區」「成中天」等）
         if cerebras_key:
             self._providers.append((
                 OpenAI(api_key=cerebras_key, base_url="https://api.cerebras.ai/v1"),
-                "qwen-3-235b-a22b-instruct-2507", "Cerebras/qwen-3-235b",
+                "zai-glm-4.7", "Cerebras/zai-glm-4.7",
             ))
         if gemini_key:
             self._providers.append((
@@ -73,7 +77,7 @@ class AIService:
                 hf_client = InferenceClient(api_key=hf_key)
                 self._providers.append((hf_client, "Qwen/Qwen2.5-7B-Instruct", "HuggingFace/Qwen2.5-7B"))
             except Exception as e:
-                print(f"[AIService] HuggingFace init failed: {e}")
+                logger.info(f"[AIService] HuggingFace init failed: {e}")
 
         # Groq 留著但只做極端備援（純英文 query 才適合，會被 cascade 跳過）
         # 暫時不加，避免中文亂碼污染用戶體驗
@@ -105,7 +109,7 @@ class AIService:
         self.client, self.model_name, _ = self._providers[0]
         self.api_key = getattr(self.client, "api_key", None)  # HuggingFace doesn't have api_key attribute
         labels = " → ".join(p[2] for p in self._providers)
-        print(f"[AIService] Cascade ({len(self._providers)}): {labels}")
+        logger.info(f"[AIService] Cascade ({len(self._providers)}): {labels}")
 
         # instructor client（JSON mode，自動重試 + Pydantic 驗證）
         try:
@@ -179,9 +183,9 @@ class AIService:
                 return json.loads(text)
             except Exception as e:
                 last_err = e
-                print(f"[AIService] {_label} extract_schedule_info failed: {str(e)[:80]}")
+                logger.info(f"[AIService] {_label} extract_schedule_info failed: {str(e)[:80]}")
                 continue
-        print(f"AI API Error: {last_err}")
+        logger.info(f"AI API Error: {last_err}")
         raise ValueError("AI 無法理解訊息格式，請提供更清楚的資訊")
     
     def generate_confirmation_message(self, schedule_data: Dict) -> str:
@@ -406,7 +410,8 @@ class AIService:
                              memory_snippets: list = None,
                              contact_hints: list = None,
                              session = None,
-                             language: str = "zh-TW") -> dict:
+                             language: str = "zh-TW",
+                             query_embedding: list = None) -> dict:
         """
         使用 Tool Use（Function Calling）處理對話，支援建立、修改、刪除行程。
         回傳格式與舊版相同，LangGraph / chat endpoint 無需改動。
@@ -430,13 +435,14 @@ class AIService:
         contact_section, memory_section = build_context_sections(_contacts, _mem, current_context or {})
 
         # ── 預先 embed user_message（給 RAG 和 prompt_rule 共用，省一次 API）──
-        cached_query_embedding = None
-        if session:
+        # 呼叫端（chat endpoint）已算好時直接重用，不再打 embedding API
+        cached_query_embedding = query_embedding
+        if cached_query_embedding is None and session:
             try:
                 from .embedding_service import EmbeddingService
                 cached_query_embedding = EmbeddingService.embed(user_message)
             except Exception as e:
-                print(f"[AIService] Pre-embed failed: {str(e)[:80]}")
+                logger.info(f"[AIService] Pre-embed failed: {str(e)[:80]}")
 
         # ── RAG 相似案例注入 ──────────────────────────────────────────────────
         rag_section = ""
@@ -453,9 +459,9 @@ class AIService:
                     )
                     if examples:
                         rag_section = rag_service.format_examples_for_prompt(examples, language)
-                        print(f"[RAG] Injected {len(examples)} examples")
+                        logger.info(f"[RAG] Injected {len(examples)} examples")
             except Exception as e:
-                print(f"[AIService] RAG retrieval failed: {str(e)[:80]}")
+                logger.info(f"[AIService] RAG retrieval failed: {str(e)[:80]}")
 
         system_prompt = build_system_prompt(
             today=today,
@@ -635,28 +641,28 @@ class AIService:
                             timeout=8.0,
                             **_extra,
                         )
-                    print(f"[AIService] Using {_label}")
+                    logger.info(f"[AIService] Using {_label}")
                     break  # success
                 except Exception as _e:
                     last_exception = _e
                     if _should_skip_provider(_e):
                         # 模型不支持的錯誤：直接跳過，不重試
                         if _is_model_unsupported(_e):
-                            print(f"[AIService] {_label} model not supported, skipping: {str(_e)[:80]}")
+                            logger.info(f"[AIService] {_label} model not supported, skipping: {str(_e)[:80]}")
                             break  # move to next provider
                         # 主力 model rate limited → 直接 fallback 到下一個 provider
                         if _label == self._providers[0][2] and len(self._providers) <= 1:
                             # 沒有備援 provider → 才報忙碌
-                            print(f"[AIService] Primary {_label} rate limited, no fallback → returning busy")
+                            logger.info(f"[AIService] Primary {_label} rate limited, no fallback → returning busy")
                             raise RuntimeError("AI_RATE_LIMITED") from _e
-                        print(f"[AIService] {_label} rate limited → fallback to next provider")
+                        logger.info(f"[AIService] {_label} rate limited → fallback to next provider")
                         break  # move to next provider
                     if use_tool_calling and _is_tool_unsupported(_e):
-                        print(f"[AIService] {_label} no tool support → JSON mode")
+                        logger.info(f"[AIService] {_label} no tool support → JSON mode")
                         use_tool_calling = False
                         continue
                     # Unknown error — skip provider rather than crash everything
-                    print(f"[AIService] {_label} unexpected error, skipping: {str(_e)[:120]}")
+                    logger.info(f"[AIService] {_label} unexpected error, skipping: {str(_e)[:120]}")
                     break
             else:
                 continue  # inner exhausted without break (shouldn't happen) → next provider
@@ -692,7 +698,7 @@ class AIService:
                             "reply": action.reply,
                         }
                     except Exception as _inst_err:
-                        print(f"[instructor] fallback failed: {_inst_err}")
+                        logger.info(f"[instructor] fallback failed: {_inst_err}")
 
                 # 最終 fallback：手動解析 content
                 content = _strip_thinking(getattr(msg, "content", "") or "")
@@ -709,6 +715,11 @@ class AIService:
                         result.setdefault("missing_fields", [])
                         result.setdefault("is_complete", False)
                         result.setdefault("reply", "好的，請繼續。")
+                        # query 是純回答，永遠不觸發建立/修改流程。
+                        # 模型回的 is_complete=true 意思是「我回答完了」，
+                        # 但 endpoint 會解讀成「可以寫 DB」→ 正確回答被丟棄。
+                        if result.get("intent") == "query":
+                            result["is_complete"] = False
                         return result
                     except Exception:
                         pass
@@ -723,19 +734,19 @@ class AIService:
             try:
                 args = json.loads(tc.function.arguments)
             except (json.JSONDecodeError, Exception) as _parse_err:
-                print(f"[AI Tool] malformed arguments for {fn_name}: {tc.function.arguments!r} — {_parse_err}")
+                logger.info(f"[AI Tool] malformed arguments for {fn_name}: {tc.function.arguments!r} — {_parse_err}")
                 return {
                     "intent": "create", "target_schedule_id": None,
                     "updated_data": current_context, "missing_fields": [],
                     "is_complete": False, "reply": "抱歉，我沒有理解清楚，可以再說一次嗎？",
                 }
-            print(f"[AI Tool] {fn_name}({args})")
+            logger.info(f"[AI Tool] {fn_name}({args})")
 
             # ── Auto-retry: validate output, re-ask model if invalid ─────────
             _errors = self._validate_tool_call(fn_name, args, schedule_list)
             if _errors:
                 _err_str = "\n".join(f"• {e}" for e in _errors)
-                print(f"[AI Validation] {fn_name} failed ({len(_errors)} errors), auto-retrying:\n{_err_str}")
+                logger.info(f"[AI Validation] {fn_name} failed ({len(_errors)} errors), auto-retrying:\n{_err_str}")
                 # Record each error so it's injected into future prompts
                 try:
                     from .constraint_store import record_error as _rec_err
@@ -748,7 +759,7 @@ class AIService:
                         elif "schedule_id 是必填" in _e:
                             _rec_err("missing_schedule_id_in_update", example=f"fn={fn_name}")
                 except Exception as _ce:
-                    print(f"[constraint_store] record failed (non-critical): {_ce}")
+                    logger.info(f"[constraint_store] record failed (non-critical): {_ce}")
                 _retry_msgs = messages + [
                     {"role": "assistant", "content": None,
                      "tool_calls": [{"id": tc.id, "type": "function",
@@ -776,14 +787,14 @@ class AIService:
                         _retry_args = json.loads(_retry_tc.function.arguments)
                         _retry_errors = self._validate_tool_call(_retry_tc.function.name, _retry_args, schedule_list)
                         if not _retry_errors:
-                            print(f"[AI Validation] retry succeeded → {_retry_tc.function.name}")
+                            logger.info(f"[AI Validation] retry succeeded → {_retry_tc.function.name}")
                             fn_name = _retry_tc.function.name
                             args = _retry_args
                             tc = _retry_tc
                         else:
-                            print(f"[AI Validation] retry still invalid: {_retry_errors}")
+                            logger.info(f"[AI Validation] retry still invalid: {_retry_errors}")
                 except Exception as _retry_err:
-                    print(f"[AI Validation] retry call failed: {_retry_err}")
+                    logger.info(f"[AI Validation] retry call failed: {_retry_err}")
 
             # ── Force list when wrong schedule_id survives retry ─────────────
             from .ai_policy import (
@@ -798,7 +809,7 @@ class AIService:
                 if _sid and _vids and _sid not in _vids:
                     _verb = "修改" if fn_name == "update_schedule" else "刪除"
                     _q = build_inline_list(schedule_list or [], verb=_verb)
-                    print(f"[AI Force-List] {fn_name} bad id={_sid!r} → showing list")
+                    logger.info(f"[AI Force-List] {fn_name} bad id={_sid!r} → showing list")
                     return {
                         "intent": "create", "target_schedule_id": None,
                         "updated_data": current_context, "missing_fields": [],
@@ -837,7 +848,7 @@ class AIService:
                                 question,
                                 count=1,
                             )
-                            print(f"[AI ask_user] fixed hallucinated title {_qts[0]!r} → {_real_t!r}")
+                            logger.info(f"[AI ask_user] fixed hallucinated title {_qts[0]!r} → {_real_t!r}")
 
                 # Guard: if AI quoted a title (「X」) that isn't in the real schedule
                 # list, the model hallucinated it (thinking mode leak / garbled output).
@@ -850,11 +861,11 @@ class AIService:
                         any(rt in qt or qt in rt for rt in _real_titles)
                         for qt in _quoted_titles
                     ):
-                        print(f"[AI ask_user] hallucinated title {_quoted_titles} not in real list → injecting list")
+                        logger.info(f"[AI ask_user] hallucinated title {_quoted_titles} not in real list → injecting list")
                         question = build_inline_list(schedule_list, verb="操作")
                 elif needs_list_injection(question) and schedule_list:
                     question = build_inline_list(schedule_list, verb="操作")
-                    print(f"[AI ask_user] injected schedule list (original: {_original_question[:60]!r})")
+                    logger.info(f"[AI ask_user] injected schedule list (original: {_original_question[:60]!r})")
 
                 # Signal Flutter to show TimePickerMessage when AI is asking for a time.
                 # Use _original_question so sanitization (which strips "什麼時候") doesn't
@@ -908,7 +919,7 @@ class AIService:
             if fn_name == "update_schedule":
                 schedule_id = args.get("schedule_id")
                 if not schedule_id:
-                    print(f"[AI Tool] update_schedule missing schedule_id, args={args}")
+                    logger.info(f"[AI Tool] update_schedule missing schedule_id, args={args}")
                     _q = build_inline_list(schedule_list or [], verb="修改")
                     return {
                         "intent": "create", "target_schedule_id": None,
@@ -947,14 +958,14 @@ class AIService:
                     )
                     _ctx = {**current_context, "_pending_edit_schedule_id": schedule_id}
                     if any(k in _upd_reply for k in _time_kws):
-                        print(f"[AI update_schedule] empty update + time-ask reply → needs_time_input")
+                        logger.info(f"[AI update_schedule] empty update + time-ask reply → needs_time_input")
                         return {
                             "intent": "edit", "target_schedule_id": schedule_id,
                             "updated_data": _ctx, "missing_fields": [],
                             "is_complete": False, "needs_time_input": True, "reply": _upd_reply,
                         }
                     if any(k in _upd_reply for k in _loc_kws):
-                        print(f"[AI update_schedule] empty update + location-ask reply → needs_location_input")
+                        logger.info(f"[AI update_schedule] empty update + location-ask reply → needs_location_input")
                         return {
                             "intent": "edit", "target_schedule_id": schedule_id,
                             "updated_data": _ctx, "missing_fields": [],
@@ -979,7 +990,7 @@ class AIService:
                 ids = args.get("schedule_ids") or ([args["schedule_id"]] if args.get("schedule_id") else [])
                 titles = args.get("schedule_titles") or ([args.get("schedule_title", "該行程")] if args.get("schedule_id") else [])
                 if not ids:
-                    print(f"[AI Tool] delete_schedule missing id(s), args={args}")
+                    logger.info(f"[AI Tool] delete_schedule missing id(s), args={args}")
                     _q = build_inline_list(schedule_list or [], verb="刪除")
                     return {
                         "intent": "create", "target_schedule_id": None,
@@ -1004,7 +1015,7 @@ class AIService:
             if fn_name == "reply_to_user":
                 reply_text = _strip_thinking(args.get("reply", ""))
                 if is_off_topic(user_message, reply_text):
-                    print(f"[AI Guard] off-topic reply intercepted. user={user_message[:60]!r}")
+                    logger.info(f"[AI Guard] off-topic reply intercepted. user={user_message[:60]!r}")
                     reply_text = OFF_TOPIC_REDIRECT
                 return {
                     "intent": "query", "target_schedule_id": None,
@@ -1021,7 +1032,7 @@ class AIService:
 
         except Exception as e:
             import traceback
-            print(f"AI Tool Parse Error: {e}")
+            logger.info(f"AI Tool Parse Error: {e}")
             traceback.print_exc()
             return {
                 "updated_data": current_context, "missing_fields": [],
@@ -1050,7 +1061,7 @@ class AIService:
         # Use the specified provider only, no cascade
         try:
             _cli, _model, _label = self._providers[provider_index]
-            print(f"[compare] Using {_label} (index {provider_index})")
+            logger.info(f"[compare] Using {_label} (index {provider_index})")
 
             # Reuse the same process_conversation logic but with single provider
             # by temporarily replacing _providers

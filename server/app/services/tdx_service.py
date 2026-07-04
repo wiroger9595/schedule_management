@@ -1,6 +1,8 @@
 import requests
 import time
 from typing import Optional
+import logging
+logger = logging.getLogger(__name__)
 
 class TDXService:
     def __init__(self, client_id: str, client_secret: str):
@@ -27,7 +29,7 @@ class TDXService:
             self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
             return self.access_token
         except Exception as e:
-            print(f"TDX Token Error: {e}")
+            logger.info(f"TDX Token Error: {e}")
             return None
 
     def get_transit_route(self, lat1, lon1, lat2, lon2):

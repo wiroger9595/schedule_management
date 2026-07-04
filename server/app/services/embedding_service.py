@@ -2,7 +2,8 @@
 Embedding service — 多 provider cascade，按免費額度從多到少排序。
 一個達到上限就自動切換到下一個。
 
-免費額度排序（每日）：
+優先序：
+  0. Local (bge-small-zh-v1.5)  無配額、無網路、原生 512 維 ← 設 EMBEDDING_LOCAL=1 啟用
   1. Jina AI         ~1B tokens/month ≈ 30M+/day（最多）
   2. Voyage AI       50M tokens/month ≈ 1.6M/day
   3. Cohere Trial    100 calls/min（trial 期內）
@@ -11,6 +12,12 @@ Embedding service — 多 provider cascade，按免費額度從多到少排序�
 
 只需要設定有 key 的 provider，沒設的自動跳過。
 所有 provider 統一輸出 512 維（與既有 schema 相容）。
+
+⚠️ 向量空間一致性：不同 provider 的向量「不可互相比較」。切換主力
+provider（例如啟用 EMBEDDING_LOCAL）後，必須跑：
+    python reembed_all.py            # rag_example / intent_anchor / prompt_rule
+    python reindex_all_embeddings.py # schedule / contact
+否則 pgvector 相似度查詢會回傳無意義的結果。
 """
 from __future__ import annotations
 import json
@@ -20,6 +27,8 @@ import urllib.request
 from typing import List, Callable, Optional
 
 import numpy as np
+import logging
+logger = logging.getLogger(__name__)
 
 _EMBED_DIMS = 512
 
@@ -52,6 +61,22 @@ def _normalize_to_512(values: list[float]) -> list[float]:
     if norm > 0:
         arr = arr / norm
     return arr.tolist()
+
+
+_local_model = None
+def _call_local(text: str) -> List[float]:
+    """本地 embedding — BAAI/bge-small-zh-v1.5（原生 512 維，中文）。
+    無配額、無 cooldown、CPU 單次 ~10-20ms。約吃 400MB RAM。
+    啟用：EMBEDDING_LOCAL=1 + pip install sentence-transformers
+    可用 EMBEDDING_LOCAL_MODEL 換模型（需確認輸出維度 ≤ 512）。"""
+    global _local_model
+    if _local_model is None:
+        from sentence_transformers import SentenceTransformer
+        model_name = os.getenv("EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5")
+        _local_model = SentenceTransformer(model_name, device="cpu")
+        logger.info(f"[Embedding] Local model loaded: {model_name}")
+    vec = _local_model.encode(text or " ", normalize_embeddings=True)
+    return _normalize_to_512(vec.tolist())
 
 
 def _call_jina(text: str) -> List[float]:
@@ -174,6 +199,7 @@ def _call_hf(text: str) -> List[float]:
 
 PROVIDERS = [
     # (name, env_key, daily_quota_label, function)
+    ("local",    "EMBEDDING_LOCAL",     "無限制（本地）",     _call_local),
     ("jina",     "JINA_API_KEY",        "~30M tokens/day",  _call_jina),
     ("voyage",   "VOYAGE_API_KEY",      "~1.6M tokens/day", _call_voyage),
     ("cohere",   "COHERE_API_KEY",      "~144K req/day",    _call_cohere),
@@ -194,11 +220,12 @@ def _mark_failed(name: str, error: Exception):
                              "quota", "exhausted", "too many")):
         cooldown = _get_failure_cooldown()
         _provider_failed_until[name] = time.time() + cooldown
-        print(f"[Embedding] {name} rate-limited, cooldown {cooldown}s")
-    elif any(k in s for k in ("400", "401", "API key", "invalid", "expired")):
-        # Key 問題 → 整個 session 跳過
+        logger.info(f"[Embedding] {name} rate-limited, cooldown {cooldown}s")
+    elif any(k in s for k in ("400", "401", "API key", "invalid", "expired",
+                               "No module named")):
+        # Key 問題 / 套件未安裝 → 整個 session 跳過
         _provider_failed_until[name] = time.time() + 86400  # 24h
-        print(f"[Embedding] {name} auth failed, skipping for 24h")
+        logger.info(f"[Embedding] {name} auth/import failed, skipping for 24h")
     else:
         _provider_failed_until[name] = time.time() + 60  # 短暫 1 分鐘
 
@@ -227,9 +254,9 @@ def _print_cascade_once():
             active.append(f"{name} ({quota})")
         else:
             skipped.append(name)
-    print(f"[Embedding] Cascade: {' → '.join(active) if active else 'NO PROVIDERS!'}")
+    logger.info(f"[Embedding] Cascade: {' → '.join(active) if active else 'NO PROVIDERS!'}")
     if skipped:
-        print(f"[Embedding] Skipped (no API key): {', '.join(skipped)}")
+        logger.info(f"[Embedding] Skipped (no API key): {', '.join(skipped)}")
 
 
 # ============================================================
@@ -255,7 +282,7 @@ class EmbeddingService:
                 return func(text)
             except Exception as e:
                 last_error = e
-                print(f"[Embedding] {name} failed: {str(e)[:80]}")
+                logger.info(f"[Embedding] {name} failed: {str(e)[:80]}")
                 _mark_failed(name, e)
                 continue
         raise RuntimeError(f"All providers failed. Last error: {last_error}")

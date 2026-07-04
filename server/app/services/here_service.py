@@ -2,13 +2,15 @@ import requests
 import os
 from difflib import SequenceMatcher
 from typing import List, Optional, Dict
+import logging
+logger = logging.getLogger(__name__)
 
 class HereService:
     @staticmethod
     def _get_api_key() -> str:
         key = os.getenv("HERE_API_KEY")
         if not key:
-            print("WARNING: HERE_API_KEY environment variable is not set!")
+            logger.info("WARNING: HERE_API_KEY environment variable is not set!")
         return key
 
     @staticmethod
@@ -56,10 +58,10 @@ class HereService:
                     })
                 return places
             else:
-                print(f"HERE Discover API error: {response.status_code} - {response.text}")
+                logger.info(f"HERE Discover API error: {response.status_code} - {response.text}")
                 return []
         except Exception as e:
-            print(f"HERE search failed: {e}")
+            logger.info(f"HERE search failed: {e}")
             return []
 
     @staticmethod
@@ -84,7 +86,7 @@ class HereService:
         try:
             response = requests.get(url, params=params, timeout=10)
             if response.status_code != 200:
-                print(f"HERE Taiwan-wide search error: {response.status_code}")
+                logger.info(f"HERE Taiwan-wide search error: {response.status_code}")
                 return []
             places = []
             for item in response.json().get("items", []):
@@ -101,7 +103,7 @@ class HereService:
                 })
             return places
         except Exception as e:
-            print(f"HERE Taiwan-wide search failed: {e}")
+            logger.info(f"HERE Taiwan-wide search failed: {e}")
             return []
 
     @staticmethod
@@ -134,7 +136,7 @@ class HereService:
 
         # Step 3: Nominatim fallback if best score is still weak
         if best_score < 0.65:
-            print(f"DEBUG [search]: best_score={best_score:.2f}, trying Nominatim for '{query}'")
+            logger.info(f"DEBUG [search]: best_score={best_score:.2f}, trying Nominatim for '{query}'")
             nom = HereService._search_nominatim(query)
             nom_scored = [{**p, "_score": HereService._name_score(query, p.get("name", ""))} for p in nom]
             deduped = HereService._dedup(nom_scored + deduped, threshold_km=0.15)
@@ -143,7 +145,7 @@ class HereService:
 
         # Step 4: Google Places fallback if still weak
         if best_score < 0.65:
-            print(f"DEBUG [search]: best_score={best_score:.2f}, trying Google Places for '{query}'")
+            logger.info(f"DEBUG [search]: best_score={best_score:.2f}, trying Google Places for '{query}'")
             goog = HereService._search_google_places(query)
             goog_scored = [{**p, "_score": HereService._name_score(query, p.get("name", ""))} for p in goog]
             deduped = HereService._dedup(goog_scored + deduped, threshold_km=0.15)
@@ -158,7 +160,7 @@ class HereService:
             if p_lat and p_lon and not HereService._coords_match_address(addr_str, p_lat, p_lon):
                 corrected = HereService._nominatim_geocode_address(addr_str)
                 if corrected:
-                    print(f"DEBUG [search]: fixed coords for '{p['name']}' ({p_lat:.4f},{p_lon:.4f}) → ({corrected[0]:.4f},{corrected[1]:.4f})")
+                    logger.info(f"DEBUG [search]: fixed coords for '{p['name']}' ({p_lat:.4f},{p_lon:.4f}) → ({corrected[0]:.4f},{corrected[1]:.4f})")
                     p = {**p, "lat": corrected[0], "lon": corrected[1]}
             # Strip internal scoring fields before returning to frontend
             fixed.append({k: v for k, v in p.items() if not k.startswith("_")})
@@ -174,7 +176,7 @@ class HereService:
         """
         api_key = os.getenv("GOOGLE_PLACES_API_KEY")
         if not api_key:
-            print("DEBUG [search]: GOOGLE_PLACES_API_KEY not set, skipping Google Places")
+            logger.info("DEBUG [search]: GOOGLE_PLACES_API_KEY not set, skipping Google Places")
             return []
         try:
             response = requests.post(
@@ -193,7 +195,7 @@ class HereService:
                 timeout=10,
             )
             if response.status_code != 200:
-                print(f"Google Places error: {response.status_code} - {response.text[:200]}")
+                logger.info(f"Google Places error: {response.status_code} - {response.text[:200]}")
                 return []
             places = []
             for item in response.json().get("places", []):
@@ -208,10 +210,10 @@ class HereService:
                     "type": "place",
                     "_source": "google",
                 })
-            print(f"DEBUG [search]: Google Places returned {len(places)} results")
+            logger.info(f"DEBUG [search]: Google Places returned {len(places)} results")
             return places
         except Exception as e:
-            print(f"Google Places search failed: {e}")
+            logger.info(f"Google Places search failed: {e}")
             return []
 
     @staticmethod
@@ -258,7 +260,7 @@ class HereService:
                 timeout=8,
             )
             if response.status_code != 200:
-                print(f"Nominatim error: {response.status_code}")
+                logger.info(f"Nominatim error: {response.status_code}")
                 return []
 
             results = []
@@ -281,7 +283,7 @@ class HereService:
                 })
             return results
         except Exception as e:
-            print(f"Nominatim search failed: {e}")
+            logger.info(f"Nominatim search failed: {e}")
             return []
 
     # Taiwan city/county keyword → (lat_min, lat_max, lon_min, lon_max)
@@ -320,7 +322,7 @@ class HereService:
             if keyword in address:
                 in_bbox = lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
                 if not in_bbox:
-                    print(f"DEBUG [location]: coord mismatch! address contains '{keyword}' "
+                    logger.info(f"DEBUG [location]: coord mismatch! address contains '{keyword}' "
                           f"but lat={lat:.4f},lon={lon:.4f} is outside {keyword} bbox")
                     return False
                 return True  # First matching keyword decided it
@@ -344,7 +346,7 @@ class HereService:
                 if results:
                     return float(results[0]["lat"]), float(results[0]["lon"])
         except Exception as e:
-            print(f"Nominatim address geocode failed: {e}")
+            logger.info(f"Nominatim address geocode failed: {e}")
         return None
 
     @staticmethod
@@ -414,7 +416,7 @@ class HereService:
 
         # ── Step 2: Nominatim fallback when HERE confidence is low ──
         if here_confidence < 0.75:
-            print(f"DEBUG [location]: HERE confidence={here_confidence:.2f} < 0.75, trying Nominatim...")
+            logger.info(f"DEBUG [location]: HERE confidence={here_confidence:.2f} < 0.75, trying Nominatim...")
             nom_places = HereService._search_nominatim(query)
             for place in nom_places:
                 score = HereService._name_score(query, place.get("name", ""))
@@ -424,7 +426,7 @@ class HereService:
         # ── Step 2b: Google Places fallback if still low ──
         best_so_far = scored[0]["_score"] if scored else 0.0
         if best_so_far < 0.65:
-            print(f"DEBUG [location]: score={best_so_far:.2f} < 0.65, trying Google Places...")
+            logger.info(f"DEBUG [location]: score={best_so_far:.2f} < 0.65, trying Google Places...")
             goog_places = HereService._search_google_places(query)
             for place in goog_places:
                 score = HereService._name_score(query, place.get("name", ""))
@@ -448,7 +450,7 @@ class HereService:
         if not HereService._coords_match_address(best_address, best_lat, best_lon):
             fixed = HereService._nominatim_geocode_address(best_address)
             if fixed:
-                print(f"DEBUG [location]: corrected coords from ({best_lat:.4f},{best_lon:.4f}) to ({fixed[0]:.4f},{fixed[1]:.4f})")
+                logger.info(f"DEBUG [location]: corrected coords from ({best_lat:.4f},{best_lon:.4f}) to ({fixed[0]:.4f},{fixed[1]:.4f})")
                 best = {**best, "lat": fixed[0], "lon": fixed[1], "_coord_fixed": True}
                 # Also fix matching candidate in deduped list
                 deduped[0] = best
@@ -460,7 +462,7 @@ class HereService:
 
         needs_selection = confidence < 0.75 or len(candidates) > 1
 
-        print(f"DEBUG [location]: best='{best['name']}' confidence={confidence:.2f} source={best.get('_source','?')} needs_selection={needs_selection}")
+        logger.info(f"DEBUG [location]: best='{best['name']}' confidence={confidence:.2f} source={best.get('_source','?')} needs_selection={needs_selection}")
 
         return {
             "best": best,
@@ -517,11 +519,11 @@ class HereService:
                         
                     return addr.get("label", "")
             else:
-                print(f"HERE RevGeocode API error: {response.status_code} - {response.text}")
+                logger.info(f"HERE RevGeocode API error: {response.status_code} - {response.text}")
                 
             return None
         except Exception as e:
-            print(f"HERE reverse geocode failed: {e}")
+            logger.info(f"HERE reverse geocode failed: {e}")
             return None
 
     @staticmethod
@@ -586,10 +588,10 @@ class HereService:
                 pois.sort(key=lambda x: x['distance'])
                 return pois
             else:
-                print(f"HERE Browse API error: {response.status_code} - {response.text}")
+                logger.info(f"HERE Browse API error: {response.status_code} - {response.text}")
                 return []
         except Exception as e:
-            print(f"HERE Browse failed: {e}")
+            logger.info(f"HERE Browse failed: {e}")
             return []
 
 

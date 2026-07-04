@@ -1,7 +1,7 @@
 """Repository for RAG training examples."""
 
 from typing import List
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from ..models.rag_example import RAGExample
 from ..services.embedding_service import EmbeddingService
 
@@ -67,20 +67,26 @@ class RAGRepository:
         intent: str = None,
         top_k: int = 5,
         query_embedding=None,
+        max_distance: float = 0.45,
     ) -> List[RAGExample]:
-        """Search similar examples using vector similarity."""
+        """Search similar examples using vector similarity.
+
+        max_distance: cosine distance 門檻（0=完全相同，1=不相關）。
+        距離超過門檻的案例寧可不注入，避免低相關案例誤導模型。
+        0.45 是用實際資料校準的：好匹配 <0.36，誤導匹配 >0.52，取斷層中間。
+        """
         if query_embedding is None:
             query_embedding = self.embedding_service.embed(user_message)
+
+        distance = RAGExample.embedding.cosine_distance(query_embedding)
 
         stmt = select(RAGExample).where(RAGExample.language == language)
         if intent:
             stmt = stmt.where(RAGExample.intent == intent)
+        if max_distance is not None:
+            stmt = stmt.where(distance < max_distance)
 
-        # PgVector distance query (cosine similarity)
-        # embedding <-> query_embedding gives distance, order by distance ascending
-        stmt = stmt.order_by(
-            RAGExample.embedding.cosine_distance(query_embedding)
-        ).limit(top_k)
+        stmt = stmt.order_by(distance).limit(top_k)
 
         return self.session.exec(stmt).all()
 
@@ -97,6 +103,8 @@ class RAGRepository:
         return self.session.exec(stmt).all()
 
     def count_by_language(self, language: str) -> int:
-        """Count examples by language."""
-        stmt = select(RAGExample).where(RAGExample.language == language)
-        return len(self.session.exec(stmt).all())
+        """Count examples by language (COUNT(*)，不載入 rows 和 embedding)."""
+        stmt = select(func.count()).select_from(RAGExample).where(
+            RAGExample.language == language
+        )
+        return self.session.exec(stmt).one()

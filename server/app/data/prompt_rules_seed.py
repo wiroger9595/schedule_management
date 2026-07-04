@@ -9,6 +9,8 @@ Priority 規則：
   方法 A（推薦）：直接 INSERT 進 DB，呼叫 prompt_rule_service.reload()
   方法 B：在這個 list 加一筆，跑 seed_prompt_rules.py
 """
+import logging
+logger = logging.getLogger(__name__)
 
 PROMPT_RULES_ZH = [
     # ============================================================
@@ -292,11 +294,11 @@ PROMPT_RULES_EN = [
 
 
 def stats():
-    print(f"prompt_rules: zh={len(PROMPT_RULES_ZH)}, en={len(PROMPT_RULES_EN)}")
+    logger.info(f"prompt_rules: zh={len(PROMPT_RULES_ZH)}, en={len(PROMPT_RULES_EN)}")
     always_on = [r for r in PROMPT_RULES_ZH if r["priority"] >= 100]
     conditional = [r for r in PROMPT_RULES_ZH if r["priority"] < 100]
-    print(f"  always-on (priority>=100): {len(always_on)}")
-    print(f"  conditional: {len(conditional)}")
+    logger.info(f"  always-on (priority>=100): {len(always_on)}")
+    logger.info(f"  conditional: {len(conditional)}")
 
 
 if __name__ == "__main__":

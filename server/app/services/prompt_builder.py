@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import Optional
 
 import arrow
+import logging
+logger = logging.getLogger(__name__)
 
 
 def _to_taipei(dt) -> "arrow.Arrow | None":
@@ -125,7 +127,7 @@ def _load_rules_from_db(user_message: str = "", language: str = "zh-TW",
         return "\n\n".join(r.rule_text for r in all_rules)
 
     except Exception as e:
-        print(f"[PromptBuilder] Rule loading failed (non-critical): {e}")
+        logger.info(f"[PromptBuilder] Rule loading failed (non-critical): {e}")
         return ""
 
 
@@ -183,7 +185,7 @@ def _load_inference_defaults(language: str = "zh-TW") -> str:
         return "\n\n".join(sections) if sections else ""
 
     except Exception as e:
-        print(f"[PromptBuilder] Inference defaults load failed: {e}")
+        logger.info(f"[PromptBuilder] Inference defaults load failed: {e}")
         return ""
 
 

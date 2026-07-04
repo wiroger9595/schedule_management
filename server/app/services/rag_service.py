@@ -1,9 +1,15 @@
 """RAG (Retrieval Augmented Generation) service for AI assistant."""
 
+import time
 from typing import List, Optional
 from sqlmodel import Session
 from ..repositories.rag_repository import RAGRepository
 from ..models.rag_example import RAGExample
+
+# 例句庫數量快取：{language: (count, cached_at)}。例句庫變動頻率極低，
+# 不需要每則訊息都 COUNT 一次。
+_rag_count_cache: dict[str, tuple[int, float]] = {}
+_RAG_COUNT_TTL_SEC = 300
 
 
 class RAGService:
@@ -70,8 +76,12 @@ class RAGService:
         return "\n".join(lines)
 
     def should_use_rag(self, language: str = "zh-TW") -> bool:
-        """Check if RAG is available and should be used."""
+        """Check if RAG is available and should be used (count 快取 5 分鐘)."""
+        cached = _rag_count_cache.get(language)
+        if cached and (time.time() - cached[1]) < _RAG_COUNT_TTL_SEC:
+            return cached[0] > 0
         count = self.repo.count_by_language(language)
+        _rag_count_cache[language] = (count, time.time())
         return count > 0
 
 

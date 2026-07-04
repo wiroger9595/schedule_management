@@ -254,6 +254,23 @@ migrations = [
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
     """,
+
+    # ── 業務表索引（熱路徑查詢，原本只有 PK 會全表掃描）───────────────────────
+    # schedule：查「某用戶的行程」+ 按時間排序/篩選，composite 一次涵蓋
+    f"""
+    CREATE INDEX IF NOT EXISTS idx_schedule_user_start
+    ON {s}.schedule (user_id, meeting_start_time);
+    """,
+    # attend：既有 unique 索引 leading column 是 attend_id，
+    # 對 schedule_id / user_id 單獨查詢無效，需另建
+    f"""
+    CREATE INDEX IF NOT EXISTS idx_attend_schedule_id
+    ON {s}.attend (schedule_id);
+    """,
+    f"""
+    CREATE INDEX IF NOT EXISTS idx_attend_user_id
+    ON {s}.attend (user_id);
+    """,
 ]
 
 with engine.connect() as conn:

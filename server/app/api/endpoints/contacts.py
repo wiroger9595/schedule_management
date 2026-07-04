@@ -8,6 +8,8 @@ from ...repositories.contact_repository import ContactRepository
 from ...repositories.schedule_repository import ScheduleRepository
 from ...schemas.contact import ContactCreate, ContactUpdate, ContactRead, ContactValidateRequest, ContactValidateResponse
 from .auth import get_current_user
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -128,7 +130,7 @@ def create_contact(contact_data: ContactCreate, current_user: User = Depends(get
         emb = EmbeddingService.embed_contact(saved.nick_name or "", saved.comment or "")
         ScheduleRepository(session).upsert_contact_embedding(saved.id, saved.user_id, emb)
     except Exception as _e:
-        print(f"[contact_embedding] create failed (non-critical): {_e}")
+        logger.info(f"[contact_embedding] create failed (non-critical): {_e}")
     return saved
 
 @router.delete("/{contact_id}")
@@ -239,5 +241,5 @@ def update_contact(
         emb = EmbeddingService.embed_contact(updated.nick_name or "", updated.comment or "")
         ScheduleRepository(session).upsert_contact_embedding(updated.id, updated.user_id, emb)
     except Exception as _e:
-        print(f"[contact_embedding] update failed (non-critical): {_e}")
+        logger.info(f"[contact_embedding] update failed (non-critical): {_e}")
     return updated

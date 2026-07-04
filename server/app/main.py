@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api.api import api_router
+from .core.logging_config import setup_logging
 from .db.database import engine
+
+setup_logging()
 
 app = FastAPI(title="Schedule Management API")
 
@@ -22,6 +25,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ⚠️ TODO(security, 上線前必修):
+#   此 middleware 無條件印出所有請求路徑，prod 上是雜訊也可能洩漏資訊。
+#   上線前改用 logger.debug + env 開關（例如 DEBUG_REQUESTS=1 才開）。
 from fastapi import Request
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

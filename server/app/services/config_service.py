@@ -17,6 +17,8 @@ from typing import Any
 from sqlmodel import Session, select
 from ..db.database import engine
 from ..models.app_config import AppConfig
+import logging
+logger = logging.getLogger(__name__)
 
 _cache: dict[str, tuple[Any, float]] = {}  # {key: (parsed_value, fetched_at)}
 _TTL_SEC = 60
@@ -58,7 +60,7 @@ def config_get(key: str, default: Any = None) -> Any:
         return parsed
 
     except Exception as e:
-        print(f"[ConfigService] Failed to load {key}: {e}, using default")
+        logger.info(f"[ConfigService] Failed to load {key}: {e}, using default")
         return default
 
 

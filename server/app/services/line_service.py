@@ -4,6 +4,8 @@ import sys
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import TextMessage, TextSendMessage, MessageEvent
+import logging
+logger = logging.getLogger(__name__)
 
 # Retrieve credentials from environment
 access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
@@ -17,22 +19,22 @@ class LineService:
                 self.line_bot_api = LineBotApi(access_token)
                 self.handler = WebhookHandler(channel_secret)
                 self.enabled = True
-                print("LineService initialized.")
+                logger.info("LineService initialized.")
             except Exception as e:
-                print(f"Failed to initialize LineService: {e}")
+                logger.info(f"Failed to initialize LineService: {e}")
         else:
-            print("Line credentials not found in .env")
+            logger.info("Line credentials not found in .env")
 
     def push_message(self, user_id: str, message: str) -> bool:
         if not self.enabled:
-            print(f"[LineService Mock] Push to {user_id}: {message}")
+            logger.info(f"[LineService Mock] Push to {user_id}: {message}")
             return False
             
         try:
             self.line_bot_api.push_message(user_id, TextSendMessage(text=message))
             return True
         except Exception as e:
-            print(f"Failed to push Line message: {e}")
+            logger.info(f"Failed to push Line message: {e}")
             return False
 
     def handle_webhook(self, body: str, signature: str):

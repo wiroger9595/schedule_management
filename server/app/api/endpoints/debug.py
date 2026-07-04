@@ -12,6 +12,8 @@ from ...db.database import get_session
 from ...models.user import User
 from ...services.ai_service import ai_service
 from .auth import get_current_user
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/debug", tags=["debug"])
 
@@ -70,7 +72,7 @@ def compare_ai_models(
                     "quality_score": 0,
                     "quality_notes": ["❌ 提供者失敗"],
                 }
-                print(f"[compare-models] {_label} ✗: {result['error'][:60]}")
+                logger.info(f"[compare-models] {_label} ✗: {result['error'][:60]}")
                 continue
 
             # Assess quality
@@ -88,7 +90,7 @@ def compare_ai_models(
                 "quality_score": quality["score"],
                 "quality_notes": quality["notes"],
             }
-            print(f"[compare-models] {_label} ✓ (score: {quality['score']})")
+            logger.info(f"[compare-models] {_label} ✓ (score: {quality['score']})")
         except Exception as e:
             results[_label] = {
                 "model": _model,
@@ -96,7 +98,7 @@ def compare_ai_models(
                 "quality_score": 0,
                 "quality_notes": ["❌ 異常"],
             }
-            print(f"[compare-models] {_label} ✗: {str(e)[:60]}")
+            logger.info(f"[compare-models] {_label} ✗: {str(e)[:60]}")
 
     # Compute consensus and ranking
     consensus = _compute_consensus(results)

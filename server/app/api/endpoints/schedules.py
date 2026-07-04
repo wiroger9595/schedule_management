@@ -32,6 +32,8 @@ from .auth import get_current_user
 
 
 from ...services.ai_policy import build_schedule_list_reply as _build_schedule_list_reply
+import logging
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
@@ -63,7 +65,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
     # Check if manual creation (title present) or AI creation (message present)
     if data.title and data.title != "No Title":
         # Manual Creation
-        print(f"DEBUG: Manual creation with data: {data}")
+        logger.info(f"DEBUG: Manual creation with data: {data}")
         start_time_str = data.start_time or data.meeting_time
         start_time = datetime.fromisoformat(start_time_str) if start_time_str else datetime.now()
         
@@ -102,7 +104,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
 
         # If contact_id is missing but manual contact details are present, auto-create Contact
         if not contact_id and (data.contact_name or data.contact_phone or data.contact_email or data.contact_line_id):
-            print("DEBUG: Auto-creating or linking contact for schedule...")
+            logger.info("DEBUG: Auto-creating or linking contact for schedule...")
             from ...models.contact import Contact
             from sqlmodel import select
             
@@ -113,7 +115,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
 
             if existing_contact:
                 schedule.contact_id = existing_contact.id
-                print(f"DEBUG: Linked to existing Contact ID: {existing_contact.id}")
+                logger.info(f"DEBUG: Linked to existing Contact ID: {existing_contact.id}")
             else:
                 new_contact = Contact(
                     user_id=current_user.user_id,
@@ -125,7 +127,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
                 session.add(new_contact)
                 session.commit()
                 session.refresh(new_contact)
-                print(f"DEBUG: Auto-created Contact ID: {new_contact.id}")
+                logger.info(f"DEBUG: Auto-created Contact ID: {new_contact.id}")
                 schedule.contact_id = new_contact.id
     else:
         # AI Creation
@@ -174,7 +176,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
                 schedule.latitude = coords[0]
                 schedule.longitude = coords[1]
         except Exception as e:
-            print(f"Geocoding failed: {e}")
+            logger.info(f"Geocoding failed: {e}")
             
     # Save via repository
     repo = ScheduleRepository(session)
@@ -194,7 +196,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
     # Process attends
     attends_data = data.attends or []
     if attends_data:
-        print(f"DEBUG: Processing {len(attends_data)} attends")
+        logger.info(f"DEBUG: Processing {len(attends_data)} attends")
         
         # 1. Collect contact_ids to batch fetch linked user_ids
         contact_ids_to_fetch = []
@@ -224,7 +226,7 @@ def create_schedule(data: ScheduleCreate, current_user: User = Depends(get_curre
                         session.add(c)
                         session.commit()
                         session.refresh(c)
-                        print(f"DEBUG: Auto-linked contact {c.id} to user {matched_user.user_id} via email {c.email}")
+                        logger.info(f"DEBUG: Auto-linked contact {c.id} to user {matched_user.user_id} via email {c.email}")
                 if c.contact_user_id:
                     contact_user_map[c.id] = c.contact_user_id
 
@@ -423,20 +425,20 @@ def update_schedule(
     if schedule.user_id != current_user.user_id:
         raise HTTPException(status_code=403, detail="您不是此行程的建立者，無法修改")
 
-    print(f"DEBUG: update_schedule received data: {data.dict(exclude_unset=True)}")
+    logger.info(f"DEBUG: update_schedule received data: {data.dict(exclude_unset=True)}")
     
     # Update fields
     if data.title is not None: schedule.title = data.title
     if data.description is not None: schedule.description = data.description
     if data.start_time is not None: 
-        print(f"DEBUG: Updating start_time to {data.start_time}")
+        logger.info(f"DEBUG: Updating start_time to {data.start_time}")
         schedule.meeting_start_time = datetime.fromisoformat(data.start_time)
     if data.meeting_time is not None: schedule.meeting_start_time = datetime.fromisoformat(data.meeting_time) # Legacy support
     if data.end_time is not None: 
-        print(f"DEBUG: Updating end_time to {data.end_time}")
+        logger.info(f"DEBUG: Updating end_time to {data.end_time}")
         schedule.meeting_end_time = datetime.fromisoformat(data.end_time)
     else:
-        print("DEBUG: end_time is None in update data")
+        logger.info("DEBUG: end_time is None in update data")
         
     # Check for conflicts after updating times
     if data.start_time is not None or data.end_time is not None:
@@ -466,7 +468,7 @@ def update_schedule(
     # Assuming strict logic: If data has contact_name etc, we create or link a contract.
     
     if data.contact_id is None and (data.contact_name or data.contact_phone or data.contact_email or data.contact_line_id):
-         print("DEBUG: Auto-creating/linking contact for schedule update...")
+         logger.info("DEBUG: Auto-creating/linking contact for schedule update...")
          from ...models.contact import Contact
          from sqlmodel import select
          
@@ -477,7 +479,7 @@ def update_schedule(
 
          if existing_contact:
              schedule.contact_id = existing_contact.id
-             print(f"DEBUG: Linked to existing Contact ID: {existing_contact.id} during update")
+             logger.info(f"DEBUG: Linked to existing Contact ID: {existing_contact.id} during update")
          else:
              new_contact = Contact(
                 user_id=current_user.user_id,
@@ -490,9 +492,9 @@ def update_schedule(
              session.commit()
              session.refresh(new_contact)
              schedule.contact_id = new_contact.id
-             print(f"DEBUG: Auto-created Contact ID: {new_contact.id} and linked to schedule")
+             logger.info(f"DEBUG: Auto-created Contact ID: {new_contact.id} and linked to schedule")
     
-    print(f"DEBUG: update_schedule received data: {data}")
+    logger.info(f"DEBUG: update_schedule received data: {data}")
     # Normalize: meeting_location and location are aliases
     _new_location = data.location or data.meeting_location
 
@@ -525,9 +527,9 @@ def update_schedule(
             _now_tw = arrow.now("Asia/Taipei")
             if _st_tw and _st_tw > _now_tw.shift(hours=3):
                 schedule.status = Status.PENDING.value
-                print(f"DEBUG: Auto-reverted status to PENDING (Time > 3h away)")
+                logger.info(f"DEBUG: Auto-reverted status to PENDING (Time > 3h away)")
         except Exception as e:
-            print(f"DEBUG: Error checking time for status revert: {e}")
+            logger.info(f"DEBUG: Error checking time for status revert: {e}")
             
     updated_schedule = repo.update(schedule)
     
@@ -568,7 +570,7 @@ def update_schedule(
                         session.add(c)
                         session.commit()
                         session.refresh(c)
-                        print(f"DEBUG: Auto-linked contact {c.id} to user {matched_user.user_id} via email {c.email}")
+                        logger.info(f"DEBUG: Auto-linked contact {c.id} to user {matched_user.user_id} via email {c.email}")
                 if c.contact_user_id:
                     contact_user_map[c.id] = c.contact_user_id
 
@@ -614,7 +616,7 @@ def update_schedule(
 
     updated_schedule = repo.get_by_schedule_id(schedule_id) # Refresh to get latest state if needed
     result = updated_schedule.dict()
-    print(f"DEBUG: update_schedule returning: {result}")
+    logger.info(f"DEBUG: update_schedule returning: {result}")
     return result
 
 @router.post("/reindex", response_model=dict)
@@ -637,9 +639,9 @@ def reindex_embeddings(
             repo.upsert_embedding(s.schedule_id, emb)
             success += 1
         except Exception as e:
-            print(f"[reindex] {s.schedule_id} failed: {e}")
+            logger.info(f"[reindex] {s.schedule_id} failed: {e}")
             failed += 1
-    print(f"[reindex] user={current_user.user_id} success={success} failed={failed}")
+    logger.info(f"[reindex] user={current_user.user_id} success={success} failed={failed}")
     return {"success": success, "failed": failed, "total": len(schedules)}
 
 
@@ -735,7 +737,7 @@ def chat_schedule(
         from ...services.embedding_service import EmbeddingService as _ES_pre
         _query_emb = _ES_pre.embed(user_message)
     except Exception as _pre_emb_err:
-        print(f"[embedding] pre-compute skipped (non-critical): {_pre_emb_err}")
+        logger.info(f"[embedding] pre-compute skipped (non-critical): {_pre_emb_err}")
 
     # ── Hybrid Search + Reranking ─────────────────────────────────────────────
     # 語意搜尋 + 關鍵字結果合併，依 cosine 分數重排，過濾低相關行程
@@ -788,10 +790,10 @@ def chat_schedule(
             reverse=True,
         )
         annotated_schedule_list = final_list
-        print(f"[hybrid_search] query='{user_message[:20]}' "
+        logger.info(f"[hybrid_search] query='{user_message[:20]}' "
               f"results={len(final_list)} semantic_hits={len(semantic_ids)}")
     except Exception as _sem_err:
-        print(f"[semantic_search] skipped (non-critical): {_sem_err}")
+        logger.info(f"[semantic_search] skipped (non-critical): {_sem_err}")
         # PostgreSQL transaction 可能已進入 aborted 狀態，必須 rollback
         # 否則後續同一 session 的所有操作都會失敗（InFailedSqlTransaction）
         try:
@@ -816,7 +818,7 @@ def chat_schedule(
         _memory_snippets = _repo2.search_user_memory(user_id, _query_emb, top_k=3, min_similarity=0.45)
 
         if _contact_hints:
-            print(f"[contact_search] matches={[c['nick_name'] for c in _contact_hints]}")
+            logger.info(f"[contact_search] matches={[c['nick_name'] for c in _contact_hints]}")
             # 偵測同名聯絡人
             _hint_names = [c["nick_name"] for c in _contact_hints if c["nick_name"]]
             if _hint_names:
@@ -824,11 +826,11 @@ def chat_schedule(
                 if _dup_map:
                     for _n, _entries in _dup_map.items():
                         current_context[f"_dup_{_n}"] = _entries
-                    print(f"[contact_search] duplicates={list(_dup_map.keys())}")
+                    logger.info(f"[contact_search] duplicates={list(_dup_map.keys())}")
         if _memory_snippets:
-            print(f"[memory_search] hits={len(_memory_snippets)}")
+            logger.info(f"[memory_search] hits={len(_memory_snippets)}")
     except Exception as _cs_err:
-        print(f"[contact/memory search] skipped (non-critical): {_cs_err}")
+        logger.info(f"[contact/memory search] skipped (non-critical): {_cs_err}")
         try:
             session.rollback()
         except Exception:
@@ -939,10 +941,10 @@ def chat_schedule(
         pre_intent: str | None = None
         try:
             from ...services.semantic_router_service import semantic_router
-            route_result = semantic_router.route(user_message)
+            route_result = semantic_router.route(user_message, query_embedding=_query_emb)
             if route_result["confidence"] >= 0.55:  # 高信心才預注入
                 pre_intent = route_result["intent"]
-                print(f"[SemanticRouter] pre_intent={pre_intent} conf={route_result['confidence']}")
+                logger.info(f"[SemanticRouter] pre_intent={pre_intent} conf={route_result['confidence']}")
         except Exception:
             pass
 
@@ -957,6 +959,7 @@ def chat_schedule(
                     **({"_contact_hints": _contact_hints} if _contact_hints else {}),
                     **({"_memory_snippets": _memory_snippets} if _memory_snippets else {}),
                     **({"_session": session} if session else {}),
+                    **({"_query_embedding": _query_emb} if _query_emb else {}),
                 },
                 "user_lat": request.latitude,
                 "user_lon": request.longitude,
@@ -989,7 +992,7 @@ def chat_schedule(
                 is_complete=False,
             )
         except Exception as _graph_err:
-            print(f"[chat] graph error: {_graph_err}")
+            logger.info(f"[chat] graph error: {_graph_err}")
             import traceback; traceback.print_exc()
             err_str = str(_graph_err)
             if "429" in err_str or "queue_exceeded" in err_str or "rate" in err_str.lower():
@@ -1024,6 +1027,16 @@ def chat_schedule(
             updated_data["_pending_past_edit_id"] = _pending_past_id
             if not updated_data.get("_pending_edit_schedule_id"):
                 updated_data["_pending_edit_schedule_id"] = _pending_past_id
+
+        # ── Query intent: 純回答，直接回覆，絕不進入建立/修改流程 ─────────────
+        # 防禦：部分 fallback 模型會對 query 回 is_complete=true（意思是「回答完了」），
+        # 若不攔截會掉進下方 create 流程，把正確回答丟棄換成「請問行程時間？」
+        if intent == "query":
+            return ChatResponse(
+                ai_reply=ai_reply,
+                updated_data=updated_data,
+                is_complete=False,
+            )
 
         # ── Delete intent: return confirm prompt to frontend ──────────────────
         if intent == "delete":
@@ -1105,7 +1118,7 @@ def chat_schedule(
     # ── is_complete=True — proceed to DB creation ────────────────────────────
     if is_complete:
         try:
-            print(f"DEBUG [chat]: is_complete=True, updated_data={updated_data}")
+            logger.info(f"DEBUG [chat]: is_complete=True, updated_data={updated_data}")
 
             # ── Output Validation：AI 輸出合理性驗證 ─────────────────────────
             _val_err = _validate_output(updated_data, intent, session, user_id, current_context)
@@ -1117,7 +1130,7 @@ def chat_schedule(
                 )
 
             start_time_str = updated_data.get("start_time")
-            print(f"DEBUG [chat]: intent={intent}, start_time_str={start_time_str}")
+            logger.info(f"DEBUG [chat]: intent={intent}, start_time_str={start_time_str}")
 
             # For create: start_time is mandatory. For edit: it may be absent (only other fields changed).
             if not start_time_str and intent != "edit":
@@ -1167,7 +1180,7 @@ def chat_schedule(
                     if _early_existing is not None and effective_schedule_id not in _owned_schedule_ids:
                         # Schedule exists but user is only an attendee — no fuzzy needed,
                         # but we still check owned schedules for a better match
-                        print(f"[chat edit] attendee-only schedule rejected: {effective_schedule_id}, "
+                        logger.info(f"[chat edit] attendee-only schedule rejected: {effective_schedule_id}, "
                               f"owner={_early_existing.user_id}, current={current_user.user_id}")
                         try:
                             from ...services.constraint_store import record_error as _rc
@@ -1188,7 +1201,7 @@ def chat_schedule(
                             if _sim > _fe_sim:
                                 _fe_sim, _fe_best = _sim, _fe_sid
                     if _fe_best and _fe_sim >= 0.92:
-                        print(f"[chat edit] early fuzzy-recovery: {effective_schedule_id} → {_fe_best} (sim={_fe_sim:.2f})")
+                        logger.info(f"[chat edit] early fuzzy-recovery: {effective_schedule_id} → {_fe_best} (sim={_fe_sim:.2f})")
                         effective_schedule_id = _fe_best
                         target_schedule_id = _fe_best
                     elif _early_existing is not None and effective_schedule_id not in _owned_schedule_ids:
@@ -1232,9 +1245,9 @@ def chat_schedule(
                             )
                             _loc_result = _fut.result(timeout=15)
                     except _cf.TimeoutError:
-                        print(f"[location] validate_location timeout for '{location_name}'")
+                        logger.info(f"[location] validate_location timeout for '{location_name}'")
                     except Exception as _loc_err:
-                        print(f"[location] validate_location error: {_loc_err}")
+                        logger.info(f"[location] validate_location error: {_loc_err}")
 
                     if _loc_result is None:
                         # HERE timeout 或失敗：edit 直接儲存地點名稱，create 則提示
@@ -1364,7 +1377,7 @@ def chat_schedule(
                             if _sim > _fr_sim:
                                 _fr_sim, _fr_best = _sim, _fr_sid
                     if _fr_best and _fr_sim >= 0.92:
-                        print(f"[chat edit] fuzzy-recovery (existing=None): "
+                        logger.info(f"[chat edit] fuzzy-recovery (existing=None): "
                               f"{effective_schedule_id} → {_fr_best} (sim={_fr_sim:.2f})")
                         effective_schedule_id = _fr_best
                         target_schedule_id = _fr_best
@@ -1400,12 +1413,12 @@ def chat_schedule(
                                 if _sim > _best_sim:
                                     _best_sim, _best_fuzzy = _sim, _sid
                         if _best_fuzzy and _best_sim >= 0.92:
-                            print(f"[chat edit] fuzzy-recovered schedule_id: "
+                            logger.info(f"[chat edit] fuzzy-recovered schedule_id: "
                                   f"{effective_schedule_id} → {_best_fuzzy} (sim={_best_sim:.2f})")
                             effective_schedule_id = _best_fuzzy
                             target_schedule_id = _best_fuzzy
                         else:
-                            print(f"[chat edit] WARNING: schedule_id={effective_schedule_id} "
+                            logger.info(f"[chat edit] WARNING: schedule_id={effective_schedule_id} "
                                   f"not in annotated_schedule_list, possible mismatch")
                             try:
                                 from ...services.constraint_store import record_error as _rc
@@ -1543,7 +1556,7 @@ def chat_schedule(
                     if _change_lines:
                         _summary += "\n" + "\n".join(_change_lines)
                     ai_reply = f"✅ 已為您更新行程！\n{_summary}"
-                    print(f"DEBUG [chat]: Schedule updated ID={effective_schedule_id}")
+                    logger.info(f"DEBUG [chat]: Schedule updated ID={effective_schedule_id}")
                     # ── 自動存訓練資料 ────────────────────────────────────────
                     try:
                         import json as _json
@@ -1585,7 +1598,7 @@ def chat_schedule(
                         )
                         repo.upsert_embedding(existing.schedule_id, emb)
                     except Exception as _emb_err:
-                        print(f"[embedding] update failed (non-critical): {_emb_err}")
+                        logger.info(f"[embedding] update failed (non-critical): {_emb_err}")
                         try:
                             session.rollback()
                         except Exception:
@@ -1599,7 +1612,7 @@ def chat_schedule(
                     except Exception:
                         pass
                 else:
-                    print(f"[chat edit] ownership check failed: "
+                    logger.info(f"[chat edit] ownership check failed: "
                           f"effective_schedule_id={effective_schedule_id}, "
                           f"existing={'None' if existing is None else f'owner={existing.user_id}'}, "
                           f"current_user={current_user.user_id}")
@@ -1632,7 +1645,7 @@ def chat_schedule(
                 )
                 saved_schedule_obj = repo.create(new_schedule)
                 saved_schedule = saved_schedule_obj.dict()
-                print(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
+                logger.info(f"DEBUG [chat]: Schedule created successfully! ID={saved_schedule_obj.schedule_id}")
                 ai_reply = f"✅ 已為您建立行程！\n{_fmt_schedule_summary(saved_schedule_obj)}"
                 # ── 自動存訓練資料 ────────────────────────────────────────────
                 try:
@@ -1675,7 +1688,7 @@ def chat_schedule(
                     )
                     repo.upsert_embedding(saved_schedule_obj.schedule_id, emb)
                 except Exception as _emb_err:
-                    print(f"[embedding] create failed (non-critical): {_emb_err}")
+                    logger.info(f"[embedding] create failed (non-critical): {_emb_err}")
                     try:
                         session.rollback()
                     except Exception:
@@ -1715,7 +1728,7 @@ def chat_schedule(
                     contact_id = None
                     if existing_contact:
                         contact_id = existing_contact.id
-                        print(f"DEBUG [chat]: Found existing contact for '{clean_name}': {contact_id}")
+                        logger.info(f"DEBUG [chat]: Found existing contact for '{clean_name}': {contact_id}")
                     else:
                         # 2. 自動建立聯絡人
                         new_contact = Contact(
@@ -1726,7 +1739,7 @@ def chat_schedule(
                         session.commit()
                         session.refresh(new_contact)
                         contact_id = new_contact.id
-                        print(f"DEBUG [chat]: Auto-created contact for '{clean_name}': {contact_id}")
+                        logger.info(f"DEBUG [chat]: Auto-created contact for '{clean_name}': {contact_id}")
                     
                     # 3. 綁定 attend
                     new_attend = attend(
@@ -1738,7 +1751,7 @@ def chat_schedule(
                 session.commit()
             
         except Exception as e:
-            print(f"Error {'updating' if intent == 'edit' else 'creating'} schedule: {e}")
+            logger.info(f"Error {'updating' if intent == 'edit' else 'creating'} schedule: {e}")
             import traceback
             traceback.print_exc()
             action_word = "更新" if intent == "edit" else "建立"

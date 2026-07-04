@@ -15,6 +15,8 @@ Semantic Router — 從 DB 載入 intent 錨點，替代硬編碼 INTENT_EXAMPLE
 from __future__ import annotations
 from typing import Optional
 import numpy as np
+import logging
+logger = logging.getLogger(__name__)
 
 # ── Fallback 例句（DB 為空或載入失敗時使用，避免服務中斷）────────────────────
 _FALLBACK_INTENT_EXAMPLES: dict[str, list[str]] = {
@@ -62,12 +64,12 @@ class SemanticRouter:
             if data and any(data.values()):
                 self._intent_data = data
                 total = sum(len(v) for v in data.values())
-                print(f"[SemanticRouter] Loaded {total} anchors from DB")
+                logger.info(f"[SemanticRouter] Loaded {total} anchors from DB")
                 return
             else:
-                print("[SemanticRouter] DB has no anchors, using fallback")
+                logger.info("[SemanticRouter] DB has no anchors, using fallback")
         except Exception as e:
-            print(f"[SemanticRouter] DB load failed: {e}, using fallback")
+            logger.info(f"[SemanticRouter] DB load failed: {e}, using fallback")
 
         # Fallback 到硬編碼例句
         self._used_fallback = True
@@ -80,15 +82,19 @@ class SemanticRouter:
                 for ex, emb in zip(examples, embeddings)
             ]
 
-    def route(self, message: str) -> dict:
+    def route(self, message: str, query_embedding: list | None = None) -> dict:
         """
         回傳 {"intent": str|None, "confidence": float}
         intent=None 表示信心不足，應讓 AI 自行判斷。
+        query_embedding: 呼叫端已算好的 embedding，傳入可省一次 API 呼叫。
         """
         try:
             self._ensure_loaded()
-            from .embedding_service import EmbeddingService
-            msg_vec = np.array(EmbeddingService.embed(message))
+            if query_embedding is not None:
+                msg_vec = np.array(query_embedding)
+            else:
+                from .embedding_service import EmbeddingService
+                msg_vec = np.array(EmbeddingService.embed(message))
 
             best_intent: Optional[str] = None
             best_score = 0.0
@@ -107,7 +113,7 @@ class SemanticRouter:
             return {"intent": best_intent, "confidence": round(best_score, 3)}
 
         except Exception as e:
-            print(f"[SemanticRouter] route failed (non-critical): {e}")
+            logger.info(f"[SemanticRouter] route failed (non-critical): {e}")
             return {"intent": None, "confidence": 0.0}
 
 
@@ -117,4 +123,4 @@ semantic_router = SemanticRouter()
 try:
     semantic_router._ensure_loaded()
 except Exception as _err:
-    print(f"[SemanticRouter] Eager load skipped (non-critical): {_err}")
+    logger.info(f"[SemanticRouter] Eager load skipped (non-critical): {_err}")

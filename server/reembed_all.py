@@ -5,20 +5,30 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
+logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(name)s: %(message)s")
+
 import sys
 from sqlmodel import Session, select
 from app.db.database import engine
 from app.models.rag_example import RAGExample
 from app.models.intent_anchor import IntentAnchor
+from app.models.prompt_rule import PromptRule
 from app.services.embedding_service import EmbeddingService
+
+# 每個 model 的 embedding 來源文字欄位
+_TEXT_FIELDS = {
+    RAGExample: "user_message",
+    IntentAnchor: "example",
+    PromptRule: "trigger_phrase",
+}
 
 
 def reembed_table(session, model_class, label):
     rows = session.exec(select(model_class)).all()
     print(f"\n📦 {label}: {len(rows)} rows")
 
-    # Get text field
-    text_field = "user_message" if model_class == RAGExample else "example"
+    text_field = _TEXT_FIELDS[model_class]
 
     # Batch in chunks of 50
     for i in range(0, len(rows), 50):
@@ -38,9 +48,11 @@ def main():
 
     reembed_table(session, RAGExample, "rag_example")
     reembed_table(session, IntentAnchor, "intent_anchor")
+    reembed_table(session, PromptRule, "prompt_rule")
 
     session.close()
     print("\n✅ 完成！所有向量現在在同一個 embedding 空間。")
+    print("⚠️ 別忘了行程/聯絡人向量：python reindex_all_embeddings.py")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ RAG 訓練資料：修改過期行程
 3. 用戶指定明確未來時間 → 直接 update
 4. 模糊未來時段（暑假/下次）→ 追問具體日期
 """
+import logging
+logger = logging.getLogger(__name__)
 
 RAG_PAST_SCHEDULE_ZH = [
     # ========================================================================
@@ -498,7 +500,7 @@ RAG_PAST_SCHEDULE_EN = [
 
 
 def stats():
-    print(f"Past schedule examples: zh={len(RAG_PAST_SCHEDULE_ZH)}, en={len(RAG_PAST_SCHEDULE_EN)}")
+    logger.info(f"Past schedule examples: zh={len(RAG_PAST_SCHEDULE_ZH)}, en={len(RAG_PAST_SCHEDULE_EN)}")
 
 
 if __name__ == "__main__":

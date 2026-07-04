@@ -3,6 +3,8 @@
 from typing import Set, List
 from sqlmodel import Session, select
 from ..models.lexicon import Lexicon
+import logging
+logger = logging.getLogger(__name__)
 
 
 # 程序內快取（避免每次查詢都打 DB）
@@ -65,7 +67,7 @@ def get_lexicon(kind: str, language: str = "zh-TW") -> Set[str]:
         session.close()
         return result
     except Exception as e:
-        print(f"[Lexicon] Load failed for {kind}: {e}")
+        logger.info(f"[Lexicon] Load failed for {kind}: {e}")
         return set()
 
 

@@ -3,6 +3,8 @@
 from typing import List, Optional
 from sqlmodel import Session, select
 from ..models.inference_default import InferenceDefault
+import logging
+logger = logging.getLogger(__name__)
 
 
 # 程序內快取（同個 kind 不會變太頻繁）
@@ -85,7 +87,7 @@ def get_defaults_dict(kind: str, language: str = "zh-TW") -> dict[str, str]:
         session.close()
         return out
     except Exception as e:
-        print(f"[InferenceDefault] Load failed for {kind}: {e}")
+        logger.info(f"[InferenceDefault] Load failed for {kind}: {e}")
         return {}
 
 

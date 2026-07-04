@@ -3,6 +3,8 @@ import cloudinary.uploader
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+import logging
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -60,5 +62,5 @@ def delete_user_photo(public_id: str) -> bool:
         result = cloudinary.uploader.destroy(public_id, resource_type="image")
         return result.get('result') == 'ok'
     except Exception as e:
-        print(f"Error deleting photo: {e}")
+        logger.info(f"Error deleting photo: {e}")
         return False

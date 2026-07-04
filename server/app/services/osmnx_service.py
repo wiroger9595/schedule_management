@@ -1,4 +1,6 @@
 import math
+import logging
+logger = logging.getLogger(__name__)
 
 class OSMnxService:
     @staticmethod
@@ -35,7 +37,7 @@ class OSMnxService:
             # Guard clause: If distance > 2km (2000 meters), return simple estimate
             # This prevents trying to download huge graphs which crashes the server
             if distance > 2000:
-                print(f"Distance {distance}m is too large for graph routing. Returning linear estimate.")
+                logger.info(f"Distance {distance}m is too large for graph routing. Returning linear estimate.")
                 # Estimation: distance / speed * 60 (minutes)
                 # Apply a tortuosity factor of 1.5 since roads aren't straight
                 duration = (distance / 1000) * 1.5 / config["speed"] * 60
@@ -74,7 +76,7 @@ class OSMnxService:
                 "mode": mode
             }
         except Exception as e:
-            print(f"OSMnx calculation error: {e}")
+            logger.info(f"OSMnx calculation error: {e}")
             # Fallback to linear estimate on error
             try:
                 distance = OSMnxService._haversine_distance(lat1, lon1, lat2, lon2)
@@ -128,7 +130,7 @@ class OSMnxService:
                         network_type="drive"
                     )
                 except Exception as e:
-                    print(f"Failed to download drive graph: {e}")
+                    logger.info(f"Failed to download drive graph: {e}")
                 
                 # Download Walk Graph
                 try:
@@ -138,7 +140,7 @@ class OSMnxService:
                         network_type="walk"
                     )
                 except Exception as e:
-                    print(f"Failed to download walk graph: {e}")
+                    logger.info(f"Failed to download walk graph: {e}")
 
             # 3. Calculate for each mode
             for mode in modes:
@@ -163,7 +165,7 @@ class OSMnxService:
                         }
                         continue
                     except Exception as e:
-                        print(f"Routing failed for {mode}: {e}")
+                        logger.info(f"Routing failed for {mode}: {e}")
                 
                 # Fallback
                 duration = (distance / 1000) * 1.5 / speed * 60
@@ -176,7 +178,7 @@ class OSMnxService:
                 }
                 
         except Exception as e:
-            print(f"Critical error in estimate_all: {e}")
+            logger.info(f"Critical error in estimate_all: {e}")
             # Global fallback
             for mode in modes:
                 speed = configs[mode]["speed"]
@@ -233,7 +235,7 @@ class OSMnxService:
             return None
 
         except Exception as e:
-            print(f"Geocoding failed for '{location_name}': {e}")
+            logger.info(f"Geocoding failed for '{location_name}': {e}")
             return None
 
     @staticmethod
@@ -295,10 +297,10 @@ class OSMnxService:
                  # Last resort: full display_name
                  return data.get('display_name')
                  
-             print(f"Nominatim API returned status {response.status_code}: {response.text}")
+             logger.info(f"Nominatim API returned status {response.status_code}: {response.text}")
              return None
         except Exception as e:
-            print(f"Reverse geocode failed: {e}")
+            logger.info(f"Reverse geocode failed: {e}")
             return None
 
 
@@ -365,7 +367,7 @@ class OSMnxService:
             return pois[:20]
             
         except Exception as e:
-            print(f"Error fetching POIs: {e}")
+            logger.info(f"Error fetching POIs: {e}")
             return []
 
     @staticmethod
@@ -392,7 +394,7 @@ class OSMnxService:
             try:
                 places = OSMnxService._search_overpass(query, lat, lon, zoom, headers)
             except Exception as e:
-                print(f"Overpass search failed: {e}")
+                logger.info(f"Overpass search failed: {e}")
         
         # Step 2: If Overpass returned few results, supplement with Nominatim
         if len(places) < 3:
@@ -409,7 +411,7 @@ class OSMnxService:
                          variations.append(f"{query}站")
                     
                     for v in variations:
-                        print(f"Retrying search with variation: {v}")
+                        logger.info(f"Retrying search with variation: {v}")
                         more_places = OSMnxService._search_nominatim(v, lat, lon, zoom, headers)
                         for mp in more_places:
                              # dedup
@@ -431,7 +433,7 @@ class OSMnxService:
                     if not is_duplicate:
                         places.append(np)
             except Exception as e:
-                print(f"Nominatim search failed: {e}")
+                logger.info(f"Nominatim search failed: {e}")
         
         # Sort by distance from map center
         if lat and lon and places:
@@ -512,7 +514,7 @@ class OSMnxService:
                         "type": tags.get('amenity', tags.get('shop', 'place'))
                     })
         except Exception as e:
-            print(f"Overpass search failed: {e}")
+            logger.info(f"Overpass search failed: {e}")
             
         return places
     
@@ -571,26 +573,26 @@ class OSMnxService:
                         # viewbox is still sent as bias, but bounded=0 allows outside results
                         
                         try:
-                            print(f"[OSMnx] Local search empty, retrying global search for: {query}")
+                            logger.info(f"[OSMnx] Local search empty, retrying global search for: {query}")
                             response = requests.get(url, params=retry_params, headers=headers, timeout=20)
                             if response.status_code == 200:
                                 results = response.json()
                                 places = OSMnxService._parse_nominatim_results(results, query)
                         except Exception as e:
-                            print(f"[OSMnx] Global fallback failed: {e}")
+                            logger.info(f"[OSMnx] Global fallback failed: {e}")
 
                     return places
                 
                 # If non-200, maybe retry
                 if response.status_code in [429, 502, 503, 504]:
-                     print(f"Nominatim returned {response.status_code}, retrying ({attempt+1}/{max_retries})...")
+                     logger.info(f"Nominatim returned {response.status_code}, retrying ({attempt+1}/{max_retries})...")
                      time.sleep(1) # wait briefly
                      continue
                 
                 break # Don't retry other errors
                 
             except Exception as e:
-                print(f"Nominatim search error (attempt {attempt}): {e}")
+                logger.info(f"Nominatim search error (attempt {attempt}): {e}")
                 if attempt < max_retries:
                     time.sleep(1)
                 else:

@@ -15,6 +15,8 @@ import json
 import os
 import threading
 from datetime import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 _STORE_PATH = os.path.join(os.path.dirname(__file__), "../../ai_constraints.json")
 _lock = threading.Lock()
@@ -83,7 +85,7 @@ def record_error(error_type: str, example: str = "", custom_constraint: str = ""
                 "active": True,
             })
         _save(data)
-    print(f"[constraint_store] recorded: {error_type} (example={example[:80]!r})")
+    logger.info(f"[constraint_store] recorded: {error_type} (example={example[:80]!r})")
 
 
 def get_active_constraints() -> list[str]:

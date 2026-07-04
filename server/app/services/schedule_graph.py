@@ -42,6 +42,7 @@ def collect_info_node(state: ScheduleState) -> ScheduleState:
     from .ai_service import ai_service
     current_data = state.get("current_data", {})
     session = current_data.pop("_session", None) if isinstance(current_data, dict) else None
+    query_embedding = current_data.pop("_query_embedding", None) if isinstance(current_data, dict) else None
 
     ai_result = ai_service.process_conversation(
         state["user_message"],
@@ -49,6 +50,7 @@ def collect_info_node(state: ScheduleState) -> ScheduleState:
         conversation_history=state["conversation_history"],
         schedule_list=state.get("schedule_list"),
         session=session,
+        query_embedding=query_embedding,
     )
     return {
         **state,

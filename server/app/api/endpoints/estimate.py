@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from ...services.here_service import HereService
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -60,7 +62,7 @@ def get_nearby_pois(lat: float, lon: float, radius: int = 300):
         pois = HereService.get_nearby_pois(lat, lon, radius)
         return pois
     except Exception as e:
-        print(f"Error in nearby endpoint: {e}")
+        logger.info(f"Error in nearby endpoint: {e}")
         return []
 
 @router.get("/search")
@@ -70,5 +72,5 @@ def search_places(q: str, lat: Optional[float] = None, lon: Optional[float] = No
         places = HereService.search_places_enhanced(q, lat, lon)
         return places
     except Exception as e:
-        print(f"Error in search endpoint: {e}")
+        logger.info(f"Error in search endpoint: {e}")
         return []

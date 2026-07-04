@@ -5,6 +5,8 @@ MemoryService — 從成功的行程操作中提取用戶偏好記憶並儲存�
 from __future__ import annotations
 from datetime import datetime
 from typing import Optional
+import logging
+logger = logging.getLogger(__name__)
 
 
 class MemoryService:
@@ -89,7 +91,7 @@ class MemoryService:
                             session.rollback()
                         except Exception:
                             pass
-                        print(f"[memory] save failed for '{content[:30]}': {_e}")
+                        logger.info(f"[memory] save failed for '{content[:30]}': {_e}")
 
         except Exception as e:
-            print(f"[MemoryService] extract_and_save error (non-critical): {e}")
+            logger.info(f"[MemoryService] extract_and_save error (non-critical): {e}")
