@@ -100,11 +100,16 @@ class SemanticRouter:
             best_score = 0.0
 
             for intent, items in self._intent_data.items():
-                # 取該 intent 所有例句的平均相似度（更穩定）
-                scores = [float(np.dot(msg_vec, np.array(it["embedding"]))) for it in items]
-                avg_score = float(np.mean(scores))
-                if avg_score > best_score:
-                    best_score = avg_score
+                # 取該 intent 最相似的前 3 條例句平均：全例句平均會被多樣化
+                # 錨點稀釋（原句比對也只剩 0.35~0.6，永遠過不了門檻），
+                # 純 max 又容易被單一離群錨點帶偏。
+                scores = sorted(
+                    (float(np.dot(msg_vec, np.array(it["embedding"]))) for it in items),
+                    reverse=True,
+                )
+                top_score = float(np.mean(scores[:3]))
+                if top_score > best_score:
+                    best_score = top_score
                     best_intent = intent
 
             if best_score < _get_threshold():
