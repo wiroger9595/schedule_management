@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 import arrow
 
-from app.models.enums import Status
+from ...models.enums import Status
 from ...db.database import get_session
 from ...models.schedule import Schedule
 from ...models.attend import attend
@@ -47,7 +47,7 @@ def get_schedules(current_user: User = Depends(get_current_user), session: Sessi
 
     # Annotate each schedule with is_owner + creator_name
     creator_ids = {r["user_id"] for r in results if r.get("user_id") and r["user_id"] != current_user.user_id}
-    creator_names: dict[str, str] = {}
+    creator_names: Dict[str, str] = {}
     if creator_ids:
         from sqlmodel import select as _sel
         _users = session.exec(_sel(User).where(User.user_id.in_(list(creator_ids)))).all()
@@ -732,7 +732,7 @@ def chat_schedule(
     _is_list_query = any(kw in user_message for kw in _LIST_KEYWORDS)
 
     # ── Pre-compute query embedding once (shared by hybrid + contact search) ──
-    _query_emb: list | None = None
+    _query_emb: Optional[List] = None
     try:
         from ...services.embedding_service import EmbeddingService as _ES_pre
         _query_emb = _ES_pre.embed(user_message)
@@ -938,7 +938,7 @@ def chat_schedule(
             target_schedule_id = current_context.get("target_schedule_id")
     else:
         # ── Semantic Router: 本地預分類 intent（減少 AI 呼叫）────────────────
-        pre_intent: str | None = None
+        pre_intent: Optional[str] = None
         try:
             from ...services.semantic_router_service import semantic_router
             route_result = semantic_router.route(user_message, query_embedding=_query_emb)

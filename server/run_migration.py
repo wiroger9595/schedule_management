@@ -7,6 +7,23 @@ migrations = [
     f"ALTER TABLE {s}.schedule ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT FALSE;",
     f"ALTER TABLE {s}.users ADD COLUMN IF NOT EXISTS fcm_token VARCHAR(512);",
 
+    # ── 多設備 FCM token 管理 ──────────────────────────────────────────────────
+    f"""
+    CREATE TABLE IF NOT EXISTS {s}.user_devices (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        device_id VARCHAR(255) NOT NULL UNIQUE,
+        platform VARCHAR(50) NOT NULL,
+        fcm_token VARCHAR(512) NOT NULL,
+        last_registered_at TIMESTAMPTZ DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES {s}.users(user_id) ON DELETE CASCADE
+    );
+    """,
+    f"CREATE INDEX IF NOT EXISTS idx_user_devices_user_id ON {s}.user_devices(user_id);",
+
+    # ── 提醒時間（根據交通工具計算的出發時間） ──────────────────────────────────
+    f"ALTER TABLE {s}.schedule ADD COLUMN IF NOT EXISTS reminder_leave_by_time TIMESTAMPTZ;",
+
     # ── pgvector: 語意搜尋行程 ────────────────────────────────────────────────
     "CREATE EXTENSION IF NOT EXISTS vector;",
 

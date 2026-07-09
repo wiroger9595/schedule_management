@@ -25,6 +25,8 @@
   "map": "Map",
   "aiChat": "AI Chat",
   "aiChatHint": "Try: \"Meeting at Taipei 101 tomorrow 3pm\"",
+  "voiceInput": "Voice input",
+  "voiceNotAvailable": "Voice input is unavailable on this device or microphone permission was denied",
   "clearChat": "Clear Chat",
   "aiAssistantSubtitle": "Quickly create a schedule via chat",
   "manualEntrySubtitle": "Manually fill in the schedule form",

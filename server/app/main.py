@@ -52,13 +52,29 @@ def on_startup():
     from .models.lexicon import Lexicon
     from .models.prompt_rule import PromptRule
     from .models.rag_example import RAGExample
+    from .models.user_device import UserDevice  # Multi-device FCM support
     from .db.database import postgres_schema
-    
+
     # Ensure the schema exists before creating tables
     with engine.begin() as conn:
         conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{postgres_schema}";'))
-        
+
     SQLModel.metadata.create_all(engine)
+
+    # Initialize reminder scheduler (departure reminders for all schedules)
+    from .services.background_reminder_scheduler import init_reminder_scheduler
+    init_reminder_scheduler()
+    print("[Startup] Reminder scheduler initialized")
+
+@app.on_event("shutdown")
+def on_shutdown():
+    """Shutdown background services (reminder scheduler, etc.)"""
+    from .services.background_reminder_scheduler import get_reminder_scheduler
+    scheduler = get_reminder_scheduler()
+    if scheduler:
+        scheduler.shutdown()
+        print("[Shutdown] Reminder scheduler shut down")
+
 
 app.include_router(api_router, prefix="/api")
 

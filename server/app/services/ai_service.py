@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime
-from typing import Dict, Optional, Literal
+from typing import Dict, Optional, Literal, List
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -50,7 +50,7 @@ class AIService:
         cerebras_key   = os.getenv("CEREBRAS_API_KEY")
         gemini_key     = os.getenv("GEMINI_API_KEY")
 
-        self._providers: list[tuple] = []  # (client, model_name, label)
+        self._providers: List[tuple] = []  # (client, model_name, label)
 
         # ── Provider cascade（按中文品質排序，避免「成中天」幻覺）─────────────
         # 1. Cerebras GLM-4.7：中文原生模型，主力
@@ -362,12 +362,12 @@ class AIService:
 
     # ── Output Validation ────────────────────────────────────────────────────
     @staticmethod
-    def _validate_tool_call(fn_name: str, args: dict, schedule_list: list | None) -> list[str]:
+    def _validate_tool_call(fn_name: str, args: dict, schedule_list: Optional[List]) -> List[str]:
         """
         Return a list of error strings for the AI to self-correct.
         Empty list = valid output.
         """
-        errors: list[str] = []
+        errors: List[str] = []
         valid_ids = {s.get("schedule_id") or s.get("id", "") for s in (schedule_list or [])}
         valid_ids.discard("")
 

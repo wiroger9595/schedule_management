@@ -79,7 +79,7 @@ class _ConciergeAppBar extends StatelessWidget implements PreferredSizeWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'AI Concierge',
+                    'aiChat'.tr(),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,

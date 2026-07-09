@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
+import '../services/device_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
@@ -131,11 +132,22 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> _registerFcmToken() async {
     try {
+      // Initialize device service (generates stable device ID for multi-device support)
+      final deviceService = DeviceService();
+      await deviceService.init();
+
       final messaging = FirebaseMessaging.instance;
       await messaging.requestPermission();
       final token = await messaging.getToken();
+
       if (token != null) {
-        await ApiService().updateFcmToken(token);
+        // Register device token with device ID and platform for multi-device push support
+        await ApiService().registerDeviceToken(
+          deviceId: deviceService.deviceId,
+          platform: deviceService.platformName,
+          fcmToken: token,
+        );
+        debugPrint('FCM token registered for device: ${deviceService.deviceId}');
       }
     } catch (e) {
       debugPrint('FCM token registration failed: $e');
@@ -213,6 +225,16 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // Unregister device before logout (so it stops receiving push notifications)
+    try {
+      final deviceService = DeviceService();
+      // Device ID is stable per device, so we can fetch it without re-initializing
+      // (it was already initialized during login)
+      await ApiService().unregisterDevice(deviceService.deviceId);
+    } catch (e) {
+      debugPrint('Device unregistration failed during logout: $e');
+    }
+
     await _authService.logout();
     _isLoggedIn = false;
     _user = null;

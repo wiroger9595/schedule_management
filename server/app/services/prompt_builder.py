@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _to_taipei(dt) -> "arrow.Arrow | None":
+def _to_taipei(dt) -> Optional["arrow.Arrow"]:
     if dt is None:
         return None
     if isinstance(dt, str):

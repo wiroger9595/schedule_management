@@ -33,6 +33,13 @@ class HereService:
         # but doesn't strictly boundary them if no results are found.
         if lat is not None and lon is not None:
             params["at"] = f"{lat},{lon}"
+        else:
+            # No GPS available (e.g. web client, permission denied) — without any
+            # bias HERE's Discover API ranks globally and can surface US/other
+            # country results for ambiguous queries. Restrict to Taiwan-wide
+            # circle so the AI chat's location confirmation always defaults to
+            # Taiwan instead of the US.
+            params["in"] = "circle:23.9,120.9;r=250000"
 
         try:
             response = requests.get(url, params=params, timeout=10)

@@ -25,6 +25,8 @@
   "map": "地圖",
   "aiChat": "AI 助手",
   "aiChatHint": "試試看：「明天下午3點去台北101開會」",
+  "voiceInput": "語音輸入",
+  "voiceNotAvailable": "此裝置不支援語音輸入或未授權麥克風權限",
   "clearChat": "清空對話",
   "aiAssistantSubtitle": "透過對話快速建立行程",
   "manualEntrySubtitle": "手動填寫行程表單",

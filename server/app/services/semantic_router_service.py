@@ -13,7 +13,7 @@ Semantic Router — 從 DB 載入 intent 錨點，替代硬編碼 INTENT_EXAMPLE
 如果 DB 沒資料，會 fallback 到舊的硬編碼 INTENT_EXAMPLES 確保服務不中斷。
 """
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List, Dict
 import numpy as np
 import logging
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def _get_threshold():
 
 
 class SemanticRouter:
-    _intent_data: dict[str, list] | None = None  # {intent: [{"example", "embedding"}, ...]}
+    _intent_data: Optional[Dict[str, List]] = None  # {intent: [{"example", "embedding"}, ...]}
     _used_fallback: bool = False
 
     def reload(self) -> None:
@@ -82,7 +82,7 @@ class SemanticRouter:
                 for ex, emb in zip(examples, embeddings)
             ]
 
-    def route(self, message: str, query_embedding: list | None = None) -> dict:
+    def route(self, message: str, query_embedding: Optional[List] = None) -> Dict:
         """
         回傳 {"intent": str|None, "confidence": float}
         intent=None 表示信心不足，應讓 AI 自行判斷。

@@ -1,9 +1,10 @@
 # 版本鎖定於 2026-07-04（依當時 venv 實測可運作的版本）
 # 升級流程：改版本 → 全套測試 → commit。不要裸寫套件名，避免部署時裝到 breaking 版本。
+# Python 3.9.6 相容版本
 
-fastapi==0.136.3
-uvicorn==0.49.0
-sqlmodel==0.0.38
+fastapi==0.104.0
+uvicorn==0.24.0
+sqlmodel==0.0.34
 requests==2.34.2
 python-dotenv==1.2.2
 asyncpg==0.31.0
@@ -21,6 +22,7 @@ line-bot-sdk==3.23.0
 shortuuid==1.0.13
 firebase-admin>=6.0.0
 pgvector==0.4.2         # SQLModel Vector 欄位（models/rag_example.py 等），先前漏列
+apscheduler==3.10.4     # Background scheduler for departure reminders (multiple devices)
 
 # ── AI 強化套件 ───────────────────────────────────────────────────────────────
 numpy==2.5.0            # embedding / semantic router（實測 2.x 可用，原 <2 約束已過時）

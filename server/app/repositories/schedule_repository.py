@@ -1,13 +1,33 @@
 from typing import Generic, TypeVar, Type, List, Optional
 from datetime import datetime
+import logging
 from sqlmodel import Session, select, or_
 from ..models.schedule import Schedule
 from ..models.attend import attend
 from ..models.contact import Contact
+from ..services.reminder_service import ReminderService
+
+logger = logging.getLogger(__name__)
 
 class ScheduleRepository:
     def __init__(self, session: Session):
         self.session = session
+
+    def _refresh_reminder(self, schedule: Schedule) -> None:
+        """Recompute the departure-reminder time and (re)schedule the background push job."""
+        try:
+            ReminderService.compute_and_update_leave_by_time(schedule, self.session)
+            if schedule.reminder_leave_by_time:
+                from ..services.background_reminder_scheduler import get_reminder_scheduler
+                scheduler = get_reminder_scheduler()
+                if scheduler:
+                    scheduler.schedule_reminder(
+                        schedule.schedule_id,
+                        schedule.reminder_leave_by_time,
+                        schedule.user_id,
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to refresh reminder for schedule {schedule.schedule_id}: {e}")
 
     def get_by_id(self, id: int) -> Optional[Schedule]:
         return self.session.get(Schedule, id)
@@ -43,12 +63,16 @@ class ScheduleRepository:
         self.session.add(schedule)
         self.session.commit()
         self.session.refresh(schedule)
+        # Compute and schedule departure reminder
+        self._refresh_reminder(schedule)
         return schedule
 
     def update(self, schedule: Schedule) -> Schedule:
         self.session.add(schedule)
         self.session.commit()
         self.session.refresh(schedule)
+        # Recompute and reschedule departure reminder
+        self._refresh_reminder(schedule)
         return schedule
 
     def delete(self, schedule: Schedule) -> None:

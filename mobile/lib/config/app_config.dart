@@ -31,8 +31,11 @@ class AppConfig {
       // Android emulator uses 10.0.2.2 to reach host machine
       return 'http://10.0.2.2:$apiPort$apiPath';
     } else {
-      // iOS simulator and others use localhost
-      return 'http://localhost:$apiPort$apiPath';
+      // iOS physical devices can't reach the Mac via localhost.
+      // Use the Mac's LAN IP instead (works for simulator too, since
+      // the backend binds 0.0.0.0). Update this if your Mac's IP changes
+      // (check with `ipconfig getifaddr en0`).
+      return 'http://192.168.0.112:$apiPort$apiPath';
     }
   }
 

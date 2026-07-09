@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../providers/auth_provider.dart';
 import '../screens/location_picker_screen.dart';
 import '../utils/constants.dart';
@@ -55,11 +56,75 @@ class ChatWidgetState extends State<ChatWidget> {
   String _mentionQuery = '';
   int _mentionStartIndex = -1;
 
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _speechAvailable = false;
+  bool _isListening = false;
+
   @override
   void initState() {
     super.initState();
     _loadContacts();
     _loadScheduleList();
+    // Speech init is deferred until the mic button is tapped — calling it
+    // here would pop the mic/speech permission dialog as soon as the chat
+    // screen opens, before the user has expressed any intent to use it.
+  }
+
+  @override
+  void dispose() {
+    _speech.stop();
+    super.dispose();
+  }
+
+  Future<void> _initSpeech() async {
+    _speechAvailable = await _speech.initialize(
+      onStatus: (status) {
+        if ((status == 'done' || status == 'notListening') && mounted) {
+          setState(() => _isListening = false);
+        }
+      },
+      onError: (error) {
+        if (mounted) setState(() => _isListening = false);
+      },
+    );
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _speech.stop();
+      setState(() => _isListening = false);
+      return;
+    }
+    if (!_speechAvailable) {
+      await _initSpeech();
+      if (!_speechAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('voiceNotAvailable'.tr())),
+          );
+        }
+        return;
+      }
+    }
+    setState(() => _isListening = true);
+    final localeId = context.locale.languageCode == 'zh' ? 'zh-TW' : 'en-US';
+    await _speech.listen(
+      listenOptions: stt.SpeechListenOptions(
+        localeId: localeId,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 8),
+      ),
+      onResult: (result) {
+        _controller.text = result.recognizedWords;
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: _controller.text.length),
+        );
+        _onTextChanged(_controller.text);
+        if (result.finalResult && mounted) {
+          setState(() => _isListening = false);
+        }
+      },
+    );
   }
 
   Future<void> _loadScheduleList() async {
@@ -1005,6 +1070,13 @@ class ChatWidgetState extends State<ChatWidget> {
                     onSubmitted: (_) => _sendMessage(),
                     enabled: !_isLoading,
                   ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                  color: _isListening ? Colors.red : null,
+                  tooltip: 'voiceInput'.tr(),
+                  onPressed: _isLoading ? null : _toggleListening,
                 ),
                 SizedBox(width: 8),
                 IconButton(

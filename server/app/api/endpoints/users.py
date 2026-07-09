@@ -7,6 +7,7 @@ from ...models.user import User
 from ...models.attend import attend
 from ...models.schedule import Schedule
 from ...repositories.user_repository import UserRepository
+from ...repositories.user_device_repository import UserDeviceRepository
 from ...schemas.user import UserUpdate, ProfilePictureUpdate, UserRead
 from .auth import get_current_user
 from datetime import datetime
@@ -20,16 +21,77 @@ class FCMTokenUpdate(BaseModel):
     fcm_token: str
 
 
+class DeviceTokenUpdate(BaseModel):
+    device_id: str
+    platform: str
+    fcm_token: str
+
+
 @router.post("/me/fcm-token")
 def update_fcm_token(
     data: FCMTokenUpdate,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Register or refresh the device FCM token for push notifications."""
-    repo = UserRepository(session)
-    current_user.fcm_token = data.fcm_token
-    repo.update(current_user)
+    """Legacy endpoint. Registers as a single fallback device per user.
+    Kept for backward compatibility with older clients; new clients should
+    use POST /me/devices/fcm-token which supports multiple devices per account.
+    """
+    repo = UserDeviceRepository(session)
+    repo.register_or_update(
+        user_id=current_user.user_id,
+        device_id=f"legacy-{current_user.user_id}",
+        platform="unknown",
+        fcm_token=data.fcm_token,
+    )
+    return {"ok": True}
+
+
+@router.post("/me/devices/fcm-token")
+def register_device_token(
+    data: DeviceTokenUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Register or update a device's FCM token. Supports multiple devices per account
+    (e.g. iPhone + MacBook logged into the same account both receive push reminders)."""
+    repo = UserDeviceRepository(session)
+    repo.register_or_update(
+        user_id=current_user.user_id,
+        device_id=data.device_id,
+        platform=data.platform,
+        fcm_token=data.fcm_token,
+    )
+    return {"ok": True}
+
+
+@router.get("/me/devices")
+def list_my_devices(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """List all devices registered for the current user."""
+    repo = UserDeviceRepository(session)
+    devices = repo.get_user_devices(current_user.user_id)
+    return [
+        {
+            "device_id": d.device_id,
+            "platform": d.platform,
+            "last_registered_at": d.last_registered_at,
+        }
+        for d in devices
+    ]
+
+
+@router.delete("/me/devices/{device_id}")
+def unregister_device(
+    device_id: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Unregister a device (called on logout) so it stops receiving push notifications."""
+    repo = UserDeviceRepository(session)
+    repo.delete_device(current_user.user_id, device_id)
     return {"ok": True}
 
 

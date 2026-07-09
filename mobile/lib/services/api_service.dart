@@ -434,6 +434,41 @@ class ApiService {
     }
   }
 
+  /// Register a device token for multi-device push notifications
+  /// [deviceId]: Stable device identifier (e.g., "iPhone-12-XXXXX" or "MacBook-Pro-XXXXX")
+  /// [platform]: Platform name ("ios", "macos", "android", etc.)
+  /// [fcmToken]: Firebase Cloud Messaging token for this device
+  Future<void> registerDeviceToken({
+    required String deviceId,
+    required String platform,
+    required String fcmToken,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/me/devices/fcm-token'),
+      headers: await getHeaders(),
+      body: jsonEncode({
+        'device_id': deviceId,
+        'platform': platform,
+        'fcm_token': fcmToken,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to register device token');
+    }
+  }
+
+  /// Unregister a device (called on logout)
+  /// [deviceId]: Stable device identifier to unregister
+  Future<void> unregisterDevice(String deviceId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/users/me/devices/$deviceId'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to unregister device');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getMyInvitations() async {
     final response = await http.get(
       Uri.parse('$baseUrl/users/me/invitations'),
