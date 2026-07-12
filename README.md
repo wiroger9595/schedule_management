@@ -17,6 +17,25 @@
 - 🔔 **本地通知** - 行程提醒通知功能
 - 🌐 **國際化** - 多語言支援（Flutter localization）
 
+## 🌐 產品官方介紹網頁
+
+`web/landing.html`（中文）與 `web/landing-en.html`（English）是產品的官方介紹頁（單一 HTML 檔，無外部依賴，字型已內嵌）。兩個頁面互有導覽列語言切換連結。
+
+開啟方式：
+
+```bash
+# 方法一：直接用瀏覽器開啟檔案
+open web/landing.html          # macOS，中文版
+open web/landing-en.html       # macOS，English version
+# 或在 Finder 裡雙擊檔案
+
+# 方法二：本機起一個靜態伺服器（適合要測試手機瀏覽器的情況）
+cd web
+python3 -m http.server 9512
+# 瀏覽器開 http://localhost:9512/landing.html    （中文）
+# 瀏覽器開 http://localhost:9512/landing-en.html （English）
+```
+
 ## 🏗️ 系統架構
 
 ```
@@ -405,7 +424,7 @@ redis-cli ping  # 應回傳 PONG
 - [ ] 多語言完整支援
 - [ ] Dark Mode 深色模式
 - [ ] 行程分析與統計
-- [ ] Google Calendar 整合
+- [ ] Google Calendar 整合s
 - [ ] Line Bot 整合
 
 ## 🤝 參與開發

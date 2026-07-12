@@ -14,18 +14,13 @@ class ScheduleRepository:
         self.session = session
 
     def _refresh_reminder(self, schedule: Schedule) -> None:
-        """Recompute the departure-reminder time and (re)schedule the background push job."""
+        """Recompute the departure-reminder time and (re)schedule all background push jobs."""
         try:
             ReminderService.compute_and_update_leave_by_time(schedule, self.session)
-            if schedule.reminder_leave_by_time:
-                from ..services.background_reminder_scheduler import get_reminder_scheduler
-                scheduler = get_reminder_scheduler()
-                if scheduler:
-                    scheduler.schedule_reminder(
-                        schedule.schedule_id,
-                        schedule.reminder_leave_by_time,
-                        schedule.user_id,
-                    )
+            from ..services.background_reminder_scheduler import get_reminder_scheduler
+            scheduler = get_reminder_scheduler()
+            if scheduler:
+                scheduler.schedule_all_reminders(schedule, schedule.user_id)
         except Exception as e:
             logger.warning(f"Failed to refresh reminder for schedule {schedule.schedule_id}: {e}")
 
@@ -76,8 +71,16 @@ class ScheduleRepository:
         return schedule
 
     def delete(self, schedule: Schedule) -> None:
+        schedule_id = schedule.schedule_id
         self.session.delete(schedule)
         self.session.commit()
+        try:
+            from ..services.background_reminder_scheduler import get_reminder_scheduler
+            scheduler = get_reminder_scheduler()
+            if scheduler:
+                scheduler.remove_all_reminders(schedule_id)
+        except Exception as e:
+            logger.warning(f"Failed to remove reminders for deleted schedule {schedule_id}: {e}")
 
     def get_schedules_with_contact(self, user_id: str, contact_id: int) -> List[Schedule]:
         """

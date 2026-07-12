@@ -35,7 +35,7 @@ class AppConfig {
       // Use the Mac's LAN IP instead (works for simulator too, since
       // the backend binds 0.0.0.0). Update this if your Mac's IP changes
       // (check with `ipconfig getifaddr en0`).
-      return 'http://192.168.0.112:$apiPort$apiPath';
+      return 'http://192.168.1.208:$apiPort$apiPath';
     }
   }
 

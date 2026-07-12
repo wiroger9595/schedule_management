@@ -74,7 +74,22 @@ class Schedule(SQLModel, table=True):
     type: Optional[str] = None # meeting/personal
     attends_display: Optional[str] = Field(default=None, alias="attends") # For text display
     is_reminder: bool = Field(default=False)
-    
+
+    # Departure-reminder support (see ReminderService / background_reminder_scheduler)
+    # Computed "time to leave" based on travel duration to meeting_location.
+    reminder_leave_by_time: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    # User-adjustable offsets (minutes). Two independent reminders:
+    #  - reminder_before_start_minutes: fires N minutes before meeting_start_time
+    #  - reminder_before_leave_minutes: fires N minutes before reminder_leave_by_time
+    reminder_before_start_minutes: int = Field(
+        default=60, sa_column=Column(Integer, nullable=True, server_default="60")
+    )
+    reminder_before_leave_minutes: int = Field(
+        default=60, sa_column=Column(Integer, nullable=True, server_default="60")
+    )
+
     # Coordinates for Map
     latitude: Optional[float] = Field(default=None)
     longitude: Optional[float] = Field(default=None)

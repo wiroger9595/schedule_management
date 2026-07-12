@@ -22,6 +22,23 @@ class ReminderService:
     DEFAULT_USER_LON = 121.5654
 
     @staticmethod
+    def _as_datetime(value) -> Optional[datetime]:
+        """meeting_start_time/meeting_end_time are stored as VARCHAR in the DB
+        (schema drift from the DateTime column declared on the model), so a fresh
+        fetch returns a str, not a datetime. Normalize defensively, matching the
+        isinstance(..., datetime) pattern already used elsewhere in this codebase
+        (see app/api/endpoints/schedules.py, admin.py, users.py)."""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(str(value))
+        except ValueError:
+            logger.warning(f"Could not parse datetime string: {value!r}")
+            return None
+
+    @staticmethod
     def compute_leave_by_time(schedule: Schedule) -> Optional[datetime]:
         """
         Compute the time the user should leave to arrive by meeting_start_time.
@@ -30,14 +47,15 @@ class ReminderService:
 
         Formula: leave_by_time = meeting_start_time - travel_duration - buffer
         """
-        if not schedule.meeting_start_time:
+        start_time = ReminderService._as_datetime(schedule.meeting_start_time)
+        if not start_time:
             logger.warning(f"Schedule {schedule.schedule_id} has no meeting_start_time")
             return None
 
         # If no location, can't compute travel time; use default buffer
         if not schedule.latitude or not schedule.longitude:
             logger.info(f"Schedule {schedule.schedule_id} has no coordinates, using default buffer")
-            return schedule.meeting_start_time - timedelta(
+            return start_time - timedelta(
                 minutes=ReminderService.DEFAULT_TRAVEL_MINUTES + ReminderService.BUFFER_MINUTES
             )
 
@@ -64,7 +82,7 @@ class ReminderService:
 
         logger.info(f"Schedule {schedule.schedule_id}: {mode} → {travel_minutes:.0f} min from default location")
 
-        leave_by_time = schedule.meeting_start_time - timedelta(
+        leave_by_time = start_time - timedelta(
             minutes=travel_minutes + ReminderService.BUFFER_MINUTES
         )
         return leave_by_time
@@ -80,16 +98,35 @@ class ReminderService:
         return leave_by_time
 
     @staticmethod
+    def compute_before_start_time(schedule: Schedule) -> Optional[datetime]:
+        """Fixed reminder: N minutes before meeting_start_time (user-adjustable, default 60)."""
+        start_time = ReminderService._as_datetime(schedule.meeting_start_time)
+        if not start_time:
+            return None
+        minutes = schedule.reminder_before_start_minutes or 60
+        return start_time - timedelta(minutes=minutes)
+
+    @staticmethod
+    def compute_before_leave_time(schedule: Schedule) -> Optional[datetime]:
+        """Heads-up reminder: N minutes before the computed leave-by time (user-adjustable, default 60).
+        Requires reminder_leave_by_time to already be computed."""
+        if not schedule.reminder_leave_by_time:
+            return None
+        minutes = schedule.reminder_before_leave_minutes or 60
+        return schedule.reminder_leave_by_time - timedelta(minutes=minutes)
+
+    @staticmethod
     def get_reminder_message(schedule: Schedule) -> tuple[str, str]:
         """
-        Generate reminder notification title and body.
+        Generate reminder notification title and body for the "time to leave" moment.
         Returns (title, body)
         """
-        if not schedule.reminder_leave_by_time or not schedule.meeting_start_time:
+        start_time = ReminderService._as_datetime(schedule.meeting_start_time)
+        if not schedule.reminder_leave_by_time or not start_time:
             return "時間提醒", f"《{schedule.title}》"
 
         travel_minutes = int(
-            (schedule.meeting_start_time - schedule.reminder_leave_by_time).total_seconds() / 60
+            (start_time - schedule.reminder_leave_by_time).total_seconds() / 60
         ) - ReminderService.BUFFER_MINUTES
 
         mode_icon = {
@@ -100,8 +137,26 @@ class ReminderService:
             "walk": "🚶",
         }.get(schedule.transport_mode or "car", "📍")
 
-        start_time_str = schedule.meeting_start_time.strftime("%H:%M")
+        start_time_str = start_time.strftime("%H:%M")
         title = f"是時候出發了 {mode_icon}"
         body = f"{schedule.title} 於 {start_time_str} 開始 (預計 {travel_minutes} 分鐘)"
 
+        return title, body
+
+    @staticmethod
+    def get_before_start_message(schedule: Schedule) -> tuple[str, str]:
+        """Notification for the fixed "N minutes before start" reminder."""
+        minutes = schedule.reminder_before_start_minutes or 60
+        start_time = ReminderService._as_datetime(schedule.meeting_start_time)
+        start_time_str = start_time.strftime("%H:%M") if start_time else ""
+        title = "行程提醒"
+        body = f"《{schedule.title}》還有 {minutes} 分鐘於 {start_time_str} 開始"
+        return title, body
+
+    @staticmethod
+    def get_before_leave_message(schedule: Schedule) -> tuple[str, str]:
+        """Notification for the "N minutes before you need to leave" heads-up reminder."""
+        minutes = schedule.reminder_before_leave_minutes or 60
+        title = "準備出發提醒"
+        body = f"還有 {minutes} 分鐘該準備出發前往《{schedule.title}》了"
         return title, body

@@ -115,6 +115,11 @@ class ChatWidgetState extends State<ChatWidget> {
         pauseFor: const Duration(seconds: 8),
       ),
       onResult: (result) {
+        // Ignore stale callbacks that arrive after listening has already
+        // been stopped (e.g. user tapped send mid-utterance) — otherwise a
+        // trailing partial/final result re-fills the field right after
+        // _sendMessage() cleared it.
+        if (!_isListening) return;
         _controller.text = result.recognizedWords;
         _controller.selection = TextSelection.fromPosition(
           TextPosition(offset: _controller.text.length),
@@ -458,6 +463,13 @@ class ChatWidgetState extends State<ChatWidget> {
   Future<void> _sendMessage({String? text, bool forceCreate = false, bool confirmDelete = false, bool confirmPastEdit = false, bool confirmTimeInput = false, String? newStartTime, double? overrideLat, double? overrideLon}) async {
     final messageText = text ?? _controller.text.trim();
     if (messageText.isEmpty && !forceCreate && !confirmPastEdit && !confirmDelete && !confirmTimeInput) return;
+
+    if (_isListening) {
+      // Stop the recognizer before clearing so no late onResult callback
+      // can re-fill the field with the just-sent utterance.
+      await _speech.stop();
+      _isListening = false;
+    }
 
     if (!forceCreate && !confirmPastEdit && !confirmDelete && !confirmTimeInput) {
       // Record user turn in conversation history before sending

@@ -288,6 +288,10 @@ migrations = [
     CREATE INDEX IF NOT EXISTS idx_attend_user_id
     ON {s}.attend (user_id);
     """,
+
+    # ── 可調式提醒偏移量（開始前 / 出發前幾分鐘提醒，預設 60）──────────────────
+    f"ALTER TABLE {s}.schedule ADD COLUMN IF NOT EXISTS reminder_before_start_minutes INTEGER DEFAULT 60;",
+    f"ALTER TABLE {s}.schedule ADD COLUMN IF NOT EXISTS reminder_before_leave_minutes INTEGER DEFAULT 60;",
 ]
 
 with engine.connect() as conn:
