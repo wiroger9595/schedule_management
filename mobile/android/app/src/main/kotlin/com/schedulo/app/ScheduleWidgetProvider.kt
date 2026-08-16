@@ -1,4 +1,4 @@
-package com.example.schedule_management
+package com.schedulo.app
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager

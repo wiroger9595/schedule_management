@@ -51,7 +51,7 @@ User message
 ## Conventions
 - Backend migrations: add column in model → add to `run_migration.py` → run script
 - API base: `ApiService.baseUrl` in `mobile/lib/services/api_service.dart`
-- Localization keys: `mobile/assets/translations/zh-TW.json` and `en.json`
+- Localization keys: `mobile/assets/i18n/zh-TW.json` and `en.json`
 - Status badge colors: defined in `mobile/lib/widgets/schedule_list_tile.dart`
 - No mock DB in tests — real DB only
 

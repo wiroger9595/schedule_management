@@ -8,6 +8,7 @@ import 'routes/app_routes.dart';
 import 'providers/auth_provider.dart';
 import 'providers/schedule_provider.dart';
 import 'providers/settings_provider.dart';
+import 'providers/subscription_provider.dart';
 import 'screens/main_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_completion_screen.dart';
@@ -24,7 +25,7 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Initialize Notifications
-  await NotificationService().init();
+  await NotificationService().init(navigatorKey: navigatorKey);
 
   await EasyLocalization.ensureInitialized();
 
@@ -39,6 +40,7 @@ void main() async {
           ChangeNotifierProvider(create: (_) => AuthProvider()),
           ChangeNotifierProvider(create: (_) => ScheduleProvider()),
           ChangeNotifierProvider(create: (_) => SettingsProvider()),
+          ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
         ],
         child: ScheduleApp(),
       ),

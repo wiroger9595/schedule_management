@@ -12,7 +12,7 @@ import WidgetKit
 struct ScheduleWidgetControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(
-            kind: "com.example.scheduleManagement.ScheduleWidget",
+            kind: "com.schedulo.app.ScheduleWidget",
             provider: Provider()
         ) { value in
             ControlWidgetToggle(

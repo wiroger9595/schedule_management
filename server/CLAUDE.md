@@ -41,9 +41,22 @@
 - `push_service.send(token, title, body, data)` → never raises, returns bool
 - Firebase initialized from `FIREBASE_SERVICE_ACCOUNT_JSON` env var (JSON string) or `GOOGLE_APPLICATION_CREDENTIALS` (file path)
 
+## Subscription / AI Quota (`billing.py`)
+- free：每月 `FREE_MONTHLY_AI_QUOTA` 次（預設 5），Redis key `ai:quota:{user_id}:{YYYY-MM}`
+- pro：用戶自帶 OpenAI 相容端點（BYOK），不計次
+- `ai_quota_service.resolve_for_chat(user)` → chat endpoint 唯一守門員，AI 回應後才 `consume`
+- `byok_service.normalize_base_url()` 擋內網位址（SSRF），存檔前 `verify_credentials()` 實打一次
+- plan 由 RevenueCat 維護：`POST /billing/webhook`（即時）+ `POST /billing/sync`（對帳）
+- `CANCELLATION` 不收回權益，等 `EXPIRATION`
+
 ## Environment Variables
 ```
 DATABASE_URL, SECRET_KEY, CEREBRAS_API_KEY
 HERE_API_KEY, GOOGLE_PLACES_API_KEY
 FIREBASE_SERVICE_ACCOUNT_JSON (or GOOGLE_APPLICATION_CREDENTIALS)
+AI_KEY_ENC_SECRET            # 加密用戶 API key，未設則退回 JWT_SECRET_KEY
+FREE_MONTHLY_AI_QUOTA        # 預設 5
+REVENUECAT_WEBHOOK_AUTH      # RevenueCat 後台設的 Authorization header 值
+REVENUECAT_SECRET_KEY        # REST API 對帳用（sk_...）
+REVENUECAT_ENTITLEMENT_ID    # 預設 pro
 ```

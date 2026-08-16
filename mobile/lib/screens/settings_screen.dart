@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/constants.dart';
 import '../widgets/user_avatar.dart';
+import 'ai_key_screen.dart';
+import 'paywall_screen.dart';
 import 'profile_screen.dart';
 import 'invitations_screen.dart';
 import 'main_shell.dart';
@@ -48,6 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       final sending = context.read<AuthProvider>().user?['default_sending'];
       if (sending != null && sending is String) setState(() => _defaultSending = sending);
+      context.read<SubscriptionProvider>().refresh();
     });
   }
 
@@ -63,8 +67,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// pro 用自己的 key → 不限次數；free → 顯示本月還剩幾次
+  String _planValue(SubscriptionProvider subscription) {
+    if (subscription.usingOwnKey) return 'subscriptionProUnlimited'.tr();
+    if (subscription.isPro) return 'subscriptionProNoKey'.tr();
+    final remaining = subscription.remaining;
+    if (remaining == null) return 'subscriptionFree'.tr();
+    return 'subscriptionFreeRemaining'.tr(namedArgs: {'count': '$remaining'});
+  }
+
   void _logout() async {
     final auth = context.read<AuthProvider>();
+    // 先清方案狀態，否則下一個登入的人會先看到上一個人的額度
+    context.read<SubscriptionProvider>().reset();
     await auth.logout();
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
@@ -74,6 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final currentLocale = context.locale;
     final settings = context.watch<SettingsProvider>();
+    final subscription = context.watch<SubscriptionProvider>();
 
     final selectedLangLabel = _languages.firstWhere(
       (l) => (l['locale'] as Locale) == currentLocale,
@@ -127,6 +143,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: 'invitations'.tr(),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InvitationsScreen())),
               ),
+            ]),
+          ),
+
+          // ── Subscription section ──────────────────────────
+          SliverToBoxAdapter(child: _SectionLabel('SUBSCRIPTION')),
+          SliverToBoxAdapter(
+            child: _SettingsCard(children: [
+              _SettingsTile(
+                icon: Icons.auto_awesome_rounded,
+                label: 'subscriptionPlan'.tr(),
+                value: _planValue(subscription),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen())),
+              ),
+              if (subscription.isPro) ...[
+                const Divider(height: 1, indent: 56),
+                _SettingsTile(
+                  icon: Icons.key_rounded,
+                  label: 'aiKeySettings'.tr(),
+                  value: subscription.hasAiKey
+                      ? subscription.aiKey['model'] as String?
+                      : 'aiKeyNotSet'.tr(),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiKeyScreen())),
+                ),
+              ],
             ]),
           ),
 

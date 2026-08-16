@@ -74,7 +74,9 @@ def login(user_data: LoginRequest, session: Session = Depends(get_session)):
 
 @router.post("/google")
 def google_auth(data: OAuthRequest, session: Session = Depends(get_session)):
-    # In a real app, verify the google id_token here.
+    from ...core.oauth_verify import verify_google_id_token
+    verify_google_id_token(data.id_token, data.sub, data.email)
+
     google_id = data.sub
     email = data.email
     
@@ -105,6 +107,9 @@ def google_auth(data: OAuthRequest, session: Session = Depends(get_session)):
 
 @router.post("/apple")
 def apple_auth(data: OAuthRequest, session: Session = Depends(get_session)):
+    from ...core.oauth_verify import verify_apple_identity_token
+    verify_apple_identity_token(data.identityToken, data.sub, data.email)
+
     apple_id = data.sub
     email = data.email
     

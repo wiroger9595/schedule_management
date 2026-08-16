@@ -13,6 +13,7 @@ python-jose[cryptography]==3.5.0
 passlib==1.7.4
 bcrypt==5.0.0
 python-multipart==0.0.32
+cryptography==49.0.0      # Fernet：加密用戶自帶的 AI API key（core/crypto.py）
 email-validator==2.3.0
 openai==2.41.0
 cloudinary==1.44.2

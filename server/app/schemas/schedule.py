@@ -115,4 +115,6 @@ class ChatResponse(BaseModel):
     confirm_past_edit: Optional[dict] = None  # {id, title, start_time} — prompts past-schedule edit confirmation UI
     needs_time_input: bool = False  # true when backend needs user to pick a new future time (past-schedule reschedule)
     needs_location_input: bool = False  # true when AI is asking for a location — show location picker instead of text
+    quota_exceeded: bool = False  # true when free monthly AI quota is used up — client shows paywall
+    quota_remaining: Optional[int] = None  # 本月剩餘次數；BYOK 用戶為 null（不計次）
 

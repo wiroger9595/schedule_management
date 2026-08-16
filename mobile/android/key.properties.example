@@ -1,0 +1,9 @@
+# 複製成 android/key.properties 後填入實際值（key.properties 不進 git）。
+# 產 keystore：
+#   keytool -genkey -v -keystore ~/schedulo-release.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias schedulo
+# storeFile 用絕對路徑，或相對於 android/app/ 的路徑。
+storePassword=
+keyPassword=
+keyAlias=schedulo
+storeFile=/Users/你的帳號/schedulo-release.jks

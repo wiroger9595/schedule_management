@@ -36,8 +36,8 @@ CONFIGS = [
      "行程時間最大年份"),
 
     # ── RAG Retrieval ──────────────────────────────────────────────────
-    ("rag.retrieve_top_k", "5", "int",
-     "RAG 檢索的相似範例數量"),
+    ("rag.retrieve_top_k", "3", "int",
+     "RAG 檢索的相似範例數量（5→3：repo 端已有 max_distance 擋低相關，多送純燒 token）"),
     ("rag.prompt_rule_top_k", "3", "int",
      "prompt_rule 檢索的條件規則數量"),
     ("rag.always_on_priority_threshold", "100", "int",
@@ -46,8 +46,11 @@ CONFIGS = [
     # ── AI Service ─────────────────────────────────────────────────────
     ("ai_service.rate_limit_retry_sleep_sec", "15", "int",
      "Cerebras 等主力模型 rate limit 後重試前等待秒數"),
-    ("ai_service.conversation_history_limit", "20", "int",
-     "送給 AI 的歷史訊息最大筆數"),
+    ("ai_service.conversation_history_limit", "8", "int",
+     "送給 AI 的歷史訊息最大筆數（20→8：行程對話幾乎不超過 4 輪就結束）"),
+    ("ai_service.tool_trim_threshold", "0.65", "float",
+     "語意路由信心 >= 此值才只送該 intent 的 tool schema；低於此值送全部。"
+     "比 semantic_router.confidence_threshold 高一階，因為判錯會直接沒工具可用"),
 ]
 
 

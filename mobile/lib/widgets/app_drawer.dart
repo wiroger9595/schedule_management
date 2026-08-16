@@ -1,9 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../screens/call_log_screen.dart';
 import '../screens/contact_list_screen.dart';
 import '../screens/invitations_screen.dart';
 import '../screens/main_shell.dart';
@@ -169,13 +167,6 @@ class _AppDrawerState extends State<AppDrawer> {
                   color: const Color(0xFF64748B),
                   onTap: () => _switchTab(4),
                 ),
-                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-                  _NavItem(
-                    icon: Icons.phone_outlined,
-                    label: 'callLog'.tr(),
-                    color: const Color(0xFF22C55E),
-                    onTap: () => _go(CallLogScreen()),
-                  ),
                 _NavItem(
                   icon: Icons.settings_outlined,
                   label: 'settings'.tr(),

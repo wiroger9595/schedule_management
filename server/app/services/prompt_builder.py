@@ -30,12 +30,31 @@ def _to_taipei(dt) -> Optional["arrow.Arrow"]:
     return arrow.get(dt).to("Asia/Taipei")
 
 
-def build_schedule_section(schedule_list: Optional[list]) -> str:
+# 每種 intent 真正需要看到幾筆行程：
+# create 只是拿來擋撞期/重複建立，edit/delete 要能對到目標，query 要完整清單。
+# 一筆約 25~40 tokens，從固定 20 筆縮下來對 create 是實打實的省。
+_LIST_CAP_BY_INTENT = {"create": 8, "edit": 12, "delete": 12, "query": 20}
+
+
+def build_schedule_section(schedule_list: Optional[list],
+                           intent: Optional[str] = None) -> str:
     if not schedule_list:
         return "【行程清單】（未提供）"
+
+    cap = _LIST_CAP_BY_INTENT.get(intent or "", 20)
+    visible = schedule_list[:20]
+    if len(visible) > cap:
+        # 關鍵字命中的一定要留（AI 靠它認 edit/delete 目標），其餘按原順序補滿。
+        keep = {i for i, s in enumerate(visible) if s.get("_match")}
+        for i in range(len(visible)):
+            if len(keep) >= cap:
+                break
+            keep.add(i)
+        visible = [s for i, s in enumerate(visible) if i in keep]
+
     lines = []
     pre_matched = []
-    for s in schedule_list[:20]:
+    for s in visible:
         sid = s.get("schedule_id") or s.get("id", "")
         title = s.get("title", "")
         st = s.get("meeting_start_time") or s.get("start_time", "")
@@ -95,15 +114,15 @@ def build_context_sections(contacts: list, memory: list, context: dict) -> tuple
 
 
 def _load_rules_from_db(user_message: str = "", language: str = "zh-TW",
-                        session=None, query_embedding=None) -> str:
+                        session=None, query_embedding=None) -> tuple[str, str]:
     """
-    從 DB 載入適用的 prompt rules：
-    - 永遠載入 priority >= 100 的規則
-    - 按 user_message 相似度檢索 top-3 條件規則
-    - 若提供 query_embedding 則重用（避免重複 embed）
+    從 DB 載入適用的 prompt rules，回傳 (always_on, conditional)。
+
+    刻意拆成兩份而不是接成一串：always_on 每次都一樣、conditional 每則訊息
+    都不同，接在一起會讓固定的那半也跟著失去 prefix cache。
     """
     if not session:
-        return ""
+        return "", ""
 
     try:
         from ..repositories.prompt_rule_repository import PromptRuleRepository
@@ -120,15 +139,12 @@ def _load_rules_from_db(user_message: str = "", language: str = "zh-TW",
                 query_embedding=query_embedding,
             )
 
-        all_rules = list(always_on) + list(conditional)
-        if not all_rules:
-            return ""
-
-        return "\n\n".join(r.rule_text for r in all_rules)
+        return ("\n\n".join(r.rule_text for r in always_on),
+                "\n\n".join(r.rule_text for r in conditional))
 
     except Exception as e:
         logger.info(f"[PromptBuilder] Rule loading failed (non-critical): {e}")
-        return ""
+        return "", ""
 
 
 def _load_inference_defaults(language: str = "zh-TW") -> str:
@@ -224,7 +240,7 @@ def build_system_prompt(today: datetime, schedule_section: str,
     rag_note = f"\n\n{rag_section}" if rag_section else ""
 
     # ── Load rules from DB（動態 prompt 規則）─────────────────────────────
-    db_rules = _load_rules_from_db(
+    always_rules, conditional_rules = _load_rules_from_db(
         user_message=user_message,
         language="zh-TW",
         session=session,
@@ -235,18 +251,26 @@ def build_system_prompt(today: datetime, schedule_section: str,
     inference_defaults = _load_inference_defaults(language="zh-TW")
 
     # 若 DB 沒規則（首次啟動或 DB 未種子）→ 使用 fallback 最小規則
-    if not db_rules:
-        db_rules = _FALLBACK_RULES
+    if not always_rules and not conditional_rules:
+        always_rules = _FALLBACK_RULES
 
     inference_section = f"\n\n{inference_defaults}" if inference_defaults else ""
+    conditional_section = f"\n\n{conditional_rules}" if conditional_rules else ""
 
+    # ── 排列順序＝prefix cache 命中率 ────────────────────────────────────────
+    # Cerebras 會回報 cached_tokens，代表 prefix cache 是真的有在算。
+    # 前綴一旦分岔，後面全部重算，所以由「越少變的放越前面」排：
+    #   靜態（角色/常駐規則/推論預設）
+    #   → 半靜態（錯誤約束、用戶記憶）
+    #   → 每則都變（現在時間、行程清單、語意匹配到的聯絡人、條件規則、RAG）
+    # 時間特別要注意：精確到分鐘，放前面等於每分鐘把整個 prompt 前綴打掉一次。
     return f"""你是行程規劃助理，專門幫用戶建立、修改、刪除、查詢行程。請用與用戶相同的語言回覆。
+
+{always_rules}{inference_section}{_error_section}{memory_section}
 
 現在時間（台灣）：{today.strftime("%Y-%m-%d %H:%M")}（{today_str}）
 
-{schedule_section}{memory_section}{contact_section}{rag_note}{_error_section}
-
-{db_rules}{inference_section}"""
+{schedule_section}{contact_section}{conditional_section}{rag_note}"""
 
 
 # ============================================================

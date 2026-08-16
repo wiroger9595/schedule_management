@@ -153,4 +153,33 @@ class RedisClient:
         count, _ = pipe.execute()
         return int(count) <= max_requests
 
+    # ─── Monthly AI quota ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _monthly_quota_key(user_id: str) -> str:
+        from datetime import datetime
+        return f"ai:quota:{user_id}:{datetime.now().strftime('%Y-%m')}"
+
+    def get_monthly_ai_usage(self, user_id: str) -> int:
+        """本月已用次數；Redis 不可用時回 0（不擋人）。"""
+        try:
+            return int(self.client.get(self._monthly_quota_key(user_id)) or 0)
+        except Exception:
+            return 0
+
+    def incr_monthly_ai_usage(self, user_id: str) -> int:
+        """
+        本月用量 +1 並回傳新值。TTL 設 40 天，跨月自然換 key，不需要排程重置。
+        Redis 不可用時回 0，讓呼叫端 fail-open。
+        """
+        try:
+            key = self._monthly_quota_key(user_id)
+            pipe = self.client.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, 60 * 60 * 24 * 40)
+            count, _ = pipe.execute()
+            return int(count)
+        except Exception:
+            return 0
+
 redis_client = RedisClient()

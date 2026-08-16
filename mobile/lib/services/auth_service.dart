@@ -19,19 +19,24 @@ class AuthService {
     ),
   );
 
-  // Injected via --dart-define during build or flutter run --dart-define-from-file=.env-local
-  static const String _webClientId = String.fromEnvironment('WEB_CLIENT_ID', 
-      defaultValue: '200440251043-ia6vtcvdp3ls1cp4ba681q3phs3onuds.apps.googleusercontent.com');
-  static const String _androidServiceId = String.fromEnvironment('ANDROID_SERVICE_ID', 
+  // Injected via --dart-define during build or flutter run --dart-define-from-file=.env
+  static const String _webClientId = String.fromEnvironment('WEB_CLIENT_ID',
+      defaultValue: '200440251043-ro7dokuob1oc08jbl04fnage0k3iegd7.apps.googleusercontent.com');
+  static const String _iosClientId = String.fromEnvironment('IOS_CLIENT_ID',
+      defaultValue: '200440251043-b4g319nurnqt9483nh963qo1gqarqpi7.apps.googleusercontent.com');
+  // Apple Services ID used for Sign in with Apple on Android (web redirect flow).
+  static const String _androidServiceId = String.fromEnvironment('ANDROID_SERVICE_ID',
       defaultValue: '');
-  static const String _iosClientId = String.fromEnvironment('IOS_CLIENT_ID', 
-      defaultValue: '200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf.apps.googleusercontent.com');
 
   late final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
-    clientId: kIsWeb 
+    // Android matches its OAuth client by package name + SHA-1, so clientId must
+    // stay null there — the plugin would otherwise treat it as serverClientId.
+    clientId: kIsWeb
         ? (_webClientId.isNotEmpty ? _webClientId : null)
-        : (Platform.isIOS ? (_iosClientId.isNotEmpty ? _iosClientId : null) : (Platform.isAndroid ? (_androidServiceId.isNotEmpty ? _androidServiceId : null) : null)),
+        : (Platform.isIOS || Platform.isMacOS
+            ? (_iosClientId.isNotEmpty ? _iosClientId : null)
+            : null),
     // serverClientId is NOT supported on Web (the plugin asserts it must be null)
     // Only set it for native platforms
     serverClientId: kIsWeb ? null : (_webClientId.isNotEmpty ? _webClientId : null),

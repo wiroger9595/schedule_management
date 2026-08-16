@@ -8,7 +8,9 @@
 PRODUCT_NAME = schedule_management
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.scheduleManagement
+// macOS 刻意跟 iOS 用不同的 bundle id（見 MACOS_PUSH_SETUP.md），兩者在
+// Apple Developer 是各自獨立的 App ID，共用會衝突
+PRODUCT_BUNDLE_IDENTIFIER = com.schedulo.app.macos
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Schedulo. All rights reserved.

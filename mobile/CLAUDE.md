@@ -3,7 +3,7 @@
 ## Flutter Patterns
 - State management: `Provider` (`ChangeNotifier`) — auth state in `AuthProvider`
 - HTTP calls: all go through `ApiService` singleton (`lib/services/api_service.dart`)
-- Localization: `easy_localization`, keys in `assets/translations/zh-TW.json` + `en.json`
+- Localization: `easy_localization`, keys in `assets/i18n/zh-TW.json` + `en.json`
 - Theme: `lib/theme/` — use theme colors, not hardcoded
 
 ## Key Screens

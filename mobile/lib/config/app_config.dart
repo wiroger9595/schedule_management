@@ -32,13 +32,31 @@ class AppConfig {
       return 'http://10.0.2.2:$apiPort$apiPath';
     } else {
       // iOS physical devices can't reach the Mac via localhost.
-      // Use the Mac's LAN IP instead (works for simulator too, since
-      // the backend binds 0.0.0.0). Update this if your Mac's IP changes
-      // (check with `ipconfig getifaddr en0`).
-      return 'http://192.168.1.208:$apiPort$apiPath';
+      // Use the Mac's mDNS/Bonjour hostname instead of a LAN IP — it
+      // resolves on any network the Mac and device share, so it keeps
+      // working after Wi-Fi changes/moves. Check with `scutil --get LocalHostName`.
+      return 'http://userdeMacBook-Pro.local:$apiPort$apiPath';
     }
   }
 
   /// App name used in MaterialApp title and elsewhere
   static const String appName = 'Schedule Management';
+
+  // ── RevenueCat（訂閱）─────────────────────────────────────────────────────
+  // 用 --dart-define 傳入，不要寫死在 repo 裡：
+  //   flutter run --dart-define=REVENUECAT_ANDROID_KEY=goog_xxx --dart-define=REVENUECAT_IOS_KEY=appl_xxx
+  static const String _revenueCatIosKey =
+      String.fromEnvironment('REVENUECAT_IOS_KEY');
+  static const String _revenueCatAndroidKey =
+      String.fromEnvironment('REVENUECAT_ANDROID_KEY');
+
+  /// 空字串代表未設定 → 訂閱功能靜默停用（本機開發時不會擋住其他功能）
+  static String get revenueCatApiKey {
+    if (kIsWeb) return '';
+    return Platform.isIOS ? _revenueCatIosKey : _revenueCatAndroidKey;
+  }
+
+  /// RevenueCat 後台的 entitlement identifier，要和後端 REVENUECAT_ENTITLEMENT_ID 一致
+  static const String proEntitlementId =
+      String.fromEnvironment('REVENUECAT_ENTITLEMENT', defaultValue: 'pro');
 }

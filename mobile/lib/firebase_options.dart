@@ -67,7 +67,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '390340839802',
     projectId: 'schedule-management-98cdf',
     storageBucket: 'schedule-management-98cdf.firebasestorage.app',
-    iosBundleId: 'com.example.scheduleManagement',
+    iosBundleId: 'com.schedulo.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -76,6 +76,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '390340839802',
     projectId: 'schedule-management-98cdf',
     storageBucket: 'schedule-management-98cdf.firebasestorage.app',
-    iosBundleId: 'com.example.scheduleManagement',
+    iosBundleId: 'com.schedulo.app.macos',
   );
 }

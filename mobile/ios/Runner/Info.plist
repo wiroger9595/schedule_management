@@ -17,7 +17,7 @@
             <string>Editor</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>com.googleusercontent.apps.200440251043-cijriph76nsh4jrhkkdcrvlhulk5d7nf</string>
+                <string>com.googleusercontent.apps.200440251043-b4g319nurnqt9483nh963qo1gqarqpi7</string>
             </array>
         </dict>
 	</array>
@@ -36,7 +36,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Schedule Management</string>
+	<string>Schedulo</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -44,7 +44,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>schedule_management</string>
+	<string>Schedulo</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

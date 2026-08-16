@@ -43,6 +43,7 @@ def collect_info_node(state: ScheduleState) -> ScheduleState:
     current_data = state.get("current_data", {})
     session = current_data.pop("_session", None) if isinstance(current_data, dict) else None
     query_embedding = current_data.pop("_query_embedding", None) if isinstance(current_data, dict) else None
+    byok_providers = current_data.pop("_byok_providers", None) if isinstance(current_data, dict) else None
 
     ai_result = ai_service.process_conversation(
         state["user_message"],
@@ -51,6 +52,7 @@ def collect_info_node(state: ScheduleState) -> ScheduleState:
         schedule_list=state.get("schedule_list"),
         session=session,
         query_embedding=query_embedding,
+        providers=byok_providers,
     )
     return {
         **state,

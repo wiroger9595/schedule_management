@@ -56,6 +56,21 @@ class User(SQLModel, table=True):
     # fcm_token — Firebase Cloud Messaging device token for push notifications
     fcm_token: Optional[str] = Field(default=None, sa_column=Column(String(512), nullable=True))
 
+    # ── 訂閱方案（RevenueCat webhook 維護）───────────────────────────────────
+    # plan: 'free' = 每月限額走我們的 key；'pro' = 用戶自帶 key，不計次
+    plan: str = Field(default="free", sa_column=Column(String(20), nullable=True, server_default="free"))
+
+    # 訂閱到期時間；過期後 chat 端點會當成 free 處理（不主動改 plan，等 webhook）
+    plan_expires_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+
+    # ── 用戶自帶 AI（BYOK，任意 OpenAI 相容端點）─────────────────────────────
+    ai_base_url: Optional[str] = Field(default=None, sa_column=Column(String(500), nullable=True))
+    ai_model: Optional[str] = Field(default=None, sa_column=Column(String(200), nullable=True))
+    # Fernet 密文，永遠不回明文給前端（見 core/crypto.py）
+    ai_api_key_enc: Optional[str] = Field(default=None, sa_column=Column(String(1000), nullable=True))
+
     # created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     created_at: datetime = Field(
         default_factory=datetime.now,

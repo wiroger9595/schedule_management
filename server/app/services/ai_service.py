@@ -10,6 +10,38 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+
+def _log_usage(response, label: str, pre_intent: Optional[str],
+               n_tools: int, phase: str = "main") -> None:
+    """
+    記錄每次 AI 呼叫的 token 用量。
+
+    prompt 瘦身要有基準才知道有沒有效，所以先量再改：
+        grep '\\[TokenUsage\\]' server.log
+    reasoning_chars 是為了確認 GLM/Qwen 有沒有偷吐 thinking —— 那段不在
+    content 裡但一樣算 output token，是純浪費。
+    """
+    try:
+        u = getattr(response, "usage", None)
+        if u is None:
+            return
+        _msg = response.choices[0].message
+        _reasoning = getattr(_msg, "reasoning_content", None) or ""
+        _details = getattr(u, "prompt_tokens_details", None)
+        logger.info("[TokenUsage] " + json.dumps({
+            "phase": phase,
+            "provider": label,
+            "pre_intent": pre_intent,
+            "tools": n_tools,
+            "prompt": getattr(u, "prompt_tokens", None),
+            "completion": getattr(u, "completion_tokens", None),
+            "total": getattr(u, "total_tokens", None),
+            "cached": getattr(_details, "cached_tokens", None),
+            "reasoning_chars": len(_reasoning),
+        }, ensure_ascii=False))
+    except Exception:
+        pass  # 記錄失敗絕不能影響對話
+
 # HuggingFace Inference
 try:
     from huggingface_hub import InferenceClient
@@ -360,6 +392,25 @@ class AIService:
         }
     ]
 
+    # ── Tool subsetting by routed intent ─────────────────────────────────────
+    # 全部 5 個 tool schema 約 1,500 tokens，每則訊息都重送。語意路由已經判出
+    # intent 時就只送用得到的那幾個。
+    # ask_user / reply_to_user 一律保留（追問和純回覆是所有流程的逃生口）；
+    # edit 與 delete 互相保留，因為「取消」這類詞兩邊都講得通，路由常互換。
+    _TOOLS_BY_INTENT: Dict[str, tuple] = {
+        "query":  ("reply_to_user", "ask_user"),
+        "create": ("create_schedule", "ask_user", "reply_to_user"),
+        "edit":   ("update_schedule", "delete_schedule", "ask_user", "reply_to_user"),
+        "delete": ("delete_schedule", "update_schedule", "ask_user", "reply_to_user"),
+    }
+
+    @classmethod
+    def _tools_for_intent(cls, intent: Optional[str]) -> List[dict]:
+        names = cls._TOOLS_BY_INTENT.get(intent or "")
+        if not names:
+            return cls.TOOLS
+        return [t for t in cls.TOOLS if t["function"]["name"] in names]
+
     # ── Output Validation ────────────────────────────────────────────────────
     @staticmethod
     def _validate_tool_call(fn_name: str, args: dict, schedule_list: Optional[List]) -> List[str]:
@@ -411,10 +462,15 @@ class AIService:
                              contact_hints: list = None,
                              session = None,
                              language: str = "zh-TW",
-                             query_embedding: list = None) -> dict:
+                             query_embedding: list = None,
+                             providers: list = None) -> dict:
         """
         使用 Tool Use（Function Calling）處理對話，支援建立、修改、刪除行程。
         回傳格式與舊版相同，LangGraph / chat endpoint 無需改動。
+
+        providers: [(client, model, label)]，給 BYOK 用戶指定自己的端點。
+                   刻意用參數傳而非改 self.client —— ai_service 是 singleton，
+                   改 self 會讓同時進來的其他用戶打到別人的 key。
         """
         if current_context is None:
             current_context = {}
@@ -431,7 +487,24 @@ class AIService:
         _mem = memory_snippets or (current_context or {}).get("_memory_snippets") or []
         _contacts = contact_hints or (current_context or {}).get("_contact_hints") or []
 
-        schedule_section = build_schedule_section(schedule_list)
+        # ── 語意路由預判：決定要送哪些 tool、行程清單要送幾筆 ──────────────────
+        pre_intent = current_context.pop("_pre_intent", None) if current_context else None
+        pre_conf = current_context.pop("_pre_intent_conf", 0.0) if current_context else 0.0
+        pending_edit_id = current_context.get("_pending_edit_schedule_id") if current_context else None
+
+        # 裁 tool 比注入 hint 不可逆得多（路由判錯就沒有那個工具可用），
+        # 所以另外設一個比路由本身更高的門檻，判不準時退回送全部。
+        _trim_intent = "edit" if pending_edit_id else pre_intent
+        if _trim_intent and not pending_edit_id:
+            try:
+                from .config_service import config_get as _cfg_get
+                if pre_conf < float(_cfg_get("ai_service.tool_trim_threshold", default=0.65)):
+                    _trim_intent = None
+            except Exception:
+                _trim_intent = None
+        _tools = self._tools_for_intent(_trim_intent)
+
+        schedule_section = build_schedule_section(schedule_list, intent=_trim_intent)
         contact_section, memory_section = build_context_sections(_contacts, _mem, current_context or {})
 
         # ── 預先 embed user_message（給 RAG 和 prompt_rule 共用，省一次 API）──
@@ -451,10 +524,19 @@ class AIService:
                 from .rag_service import get_rag_service
                 rag_service = get_rag_service(session)
                 if rag_service.should_use_rag(language):
+                    # repo 端已有 max_distance 門檻擋低相關案例，這裡再壓 k：
+                    # 5 條約 600~900 tokens，實測上前 2~3 條就決定了模型判斷。
+                    try:
+                        from .config_service import config_get as _cfg_get3
+                        _rag_k = int(_cfg_get3("rag.retrieve_top_k", default=3))
+                    except Exception:
+                        _rag_k = 3
                     examples = rag_service.get_relevant_examples(
                         user_message=user_message,
                         language=language,
-                        top_k=5,
+                        # 刻意不用 intent 過濾：RAG 的用途就是幫模型判 intent，
+                        # 先按路由結果篩掉其他 intent 的案例會變成自我印證。
+                        top_k=_rag_k,
                         query_embedding=cached_query_embedding,  # 重用 embedding
                     )
                     if examples:
@@ -475,8 +557,6 @@ class AIService:
         )
 
         # 過濾內部 key（_pre_intent 等）再注入，但保留 hint
-        pre_intent = current_context.pop("_pre_intent", None) if current_context else None
-        pending_edit_id = current_context.get("_pending_edit_schedule_id") if current_context else None
         clean_context = {k: v for k, v in current_context.items() if not k.startswith("_")}
 
         hint_note = f"\n⚡ 語意路由預判 intent={pre_intent}（請優先採用，除非明顯不符）" if pre_intent else ""
@@ -487,7 +567,13 @@ class AIService:
             f"【目前已知資訊】：{json.dumps(clean_context, ensure_ascii=False)}{hint_note}{pending_note}"
             if clean_context or pre_intent or pending_edit_id else ""
         )
-        trimmed_history = conversation_history[-20:]
+        # 行程對話幾乎不超過 4 輪就結束，20 則是純浪費（一則就 30~100 tokens）
+        try:
+            from .config_service import config_get as _cfg_get2
+            _hist_n = int(_cfg_get2("ai_service.conversation_history_limit", default=8))
+        except Exception:
+            _hist_n = 8
+        trimmed_history = conversation_history[-_hist_n:]
 
         messages = (
             [{"role": "system", "content": system_prompt}]
@@ -548,7 +634,10 @@ class AIService:
         last_exception = None
         response = None
 
-        for _cli, _model, _label in self._providers:
+        # BYOK 時只用用戶自己的端點，不 fallback 到我們的 key（否則等於免費幫他付錢）
+        _providers = providers or self._providers
+
+        for _cli, _model, _label in _providers:
             use_tool_calling = True
             for _attempt in range(2):  # max 2 attempts per provider
                 try:
@@ -611,7 +700,7 @@ class AIService:
                         response = _cli.chat.completions.create(
                             model=_model,
                             messages=_msgs,
-                            tools=self.TOOLS,
+                            tools=_tools,
                             tool_choice="required",
                             temperature=0.1,
                             timeout=8.0,
@@ -642,6 +731,7 @@ class AIService:
                             **_extra,
                         )
                     logger.info(f"[AIService] Using {_label}")
+                    _log_usage(response, _label, _trim_intent or pre_intent, len(_tools))
                     break  # success
                 except Exception as _e:
                     last_exception = _e
@@ -651,7 +741,7 @@ class AIService:
                             logger.info(f"[AIService] {_label} model not supported, skipping: {str(_e)[:80]}")
                             break  # move to next provider
                         # 主力 model rate limited → 直接 fallback 到下一個 provider
-                        if _label == self._providers[0][2] and len(self._providers) <= 1:
+                        if _label == _providers[0][2] and len(_providers) <= 1:
                             # 沒有備援 provider → 才報忙碌
                             logger.info(f"[AIService] Primary {_label} rate limited, no fallback → returning busy")
                             raise RuntimeError("AI_RATE_LIMITED") from _e
@@ -681,10 +771,21 @@ class AIService:
             # ── JSON fallback mode (tool calling not supported) ──────────────
             if not use_tool_calling or not tool_calls:
                 # 優先用 instructor（自動重試 + Pydantic 驗證）
-                if self.instructor_client:
+                _instructor_client = self.instructor_client
+                _instructor_model = self.model_name
+                if providers is not None:
+                    # BYOK：instructor 也要走用戶自己的端點，否則 fallback 會偷打我們的 key
                     try:
-                        action: ScheduleAction = self.instructor_client.chat.completions.create(
-                            model=self.model_name,
+                        import instructor
+                        _instructor_client = instructor.from_openai(_cli, mode=instructor.Mode.JSON)
+                        _instructor_model = _model
+                    except Exception:
+                        _instructor_client = None
+
+                if _instructor_client:
+                    try:
+                        action: ScheduleAction = _instructor_client.chat.completions.create(
+                            model=_instructor_model,
                             response_model=ScheduleAction,
                             messages=messages,
                             max_retries=2,
@@ -778,10 +879,12 @@ class AIService:
                     _retry_extra = ({"extra_body": {"thinking": {"type": "disabled", "budget_tokens": 0}}}
                                     if _is_qwen3_retry else {})
                     _retry_resp = _cli.chat.completions.create(
-                        model=_model, messages=_retry_msgs_final, tools=self.TOOLS,
+                        model=_model, messages=_retry_msgs_final, tools=_tools,
                         tool_choice="required", temperature=0.1, timeout=8.0,
                         **_retry_extra,
                     )
+                    _log_usage(_retry_resp, _label, _trim_intent or pre_intent,
+                               len(_tools), phase="validation_retry")
                     _retry_tc = (_retry_resp.choices[0].message.tool_calls or [None])[0]
                     if _retry_tc:
                         _retry_args = json.loads(_retry_tc.function.arguments)
@@ -1058,19 +1161,14 @@ class AIService:
         if provider_index >= len(self._providers):
             return {"error": f"Provider index {provider_index} out of range"}
 
-        # Use the specified provider only, no cascade
+        _cli, _model, _label = self._providers[provider_index]
+        logger.info(f"[compare] Using {_label} (index {provider_index})")
+
+        # 只用指定的 provider，不 cascade。用 providers 參數傳而不是暫時改
+        # self._providers / self.client —— ai_service 是 singleton，改 self
+        # 會讓同時進來的其他請求打到這個 provider
         try:
-            _cli, _model, _label = self._providers[provider_index]
-            logger.info(f"[compare] Using {_label} (index {provider_index})")
-
-            # Reuse the same process_conversation logic but with single provider
-            # by temporarily replacing _providers
-            original_providers = self._providers
-            self._providers = [(_cli, _model, _label)]
-            self.client = _cli
-            self.model_name = _model
-
-            result = self.process_conversation(
+            return self.process_conversation(
                 user_message=user_message,
                 current_context=current_context,
                 conversation_history=conversation_history,
@@ -1079,18 +1177,9 @@ class AIService:
                 contact_hints=contact_hints,
                 session=session,
                 language=language,
+                providers=[(_cli, _model, _label)],
             )
-
-            # Restore original providers
-            self._providers = original_providers
-            self.client = original_providers[0][0]
-            self.model_name = original_providers[0][1]
-
-            return result
         except Exception as e:
-            self._providers = original_providers
-            self.client = original_providers[0][0]
-            self.model_name = original_providers[0][1]
             err_msg = str(e)[:200]
             return {
                 "error": err_msg,

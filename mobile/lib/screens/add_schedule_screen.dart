@@ -215,7 +215,7 @@ class _AddScheduleScreenState extends State<AddScheduleScreen> {
 
   void _updateWidget(String title, String time) async {
     try {
-      await HomeWidget.setAppGroupId('group.com.example.scheduleManagement');
+      await HomeWidget.setAppGroupId('group.com.schedulo.app');
       await HomeWidget.saveWidgetData<String>('title', title);
       await HomeWidget.saveWidgetData<String>('content', '時間: $time');
       await HomeWidget.updateWidget(

@@ -59,7 +59,7 @@ Edit `mobile/macos/Runner/Info.plist` and add:
 2. Select your project
 3. Go to **Project Settings** → **Apps**
 4. Click **Add App** → **macOS**
-5. Use a distinct bundle ID for macOS (e.g., `com.example.scheduleManagement.macos` instead of the iOS bundle ID)
+5. Use a distinct bundle ID for macOS (`com.schedulo.app.macos`, not the iOS `com.schedulo.app`)
 6. Download the `GoogleService-Info.plist` for the macOS app
 7. Replace `mobile/macos/Runner/GoogleService-Info.plist` with this new file
 

@@ -17,6 +17,10 @@ DATABASE_URL = f"postgresql+psycopg2://{postgres_user}:{postgres_password}@{post
 
 engine = create_engine(
     DATABASE_URL,
+    # Remote Postgres closes idle connections; without pre_ping the first
+    # request after an idle period gets a dead connection and 500s.
+    pool_pre_ping=True,
+    pool_recycle=1800,
     execution_options={"schema_translate_map": {None: postgres_schema}}
 )
 

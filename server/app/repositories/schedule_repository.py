@@ -5,6 +5,7 @@ from sqlmodel import Session, select, or_
 from ..models.schedule import Schedule
 from ..models.attend import attend
 from ..models.contact import Contact
+from ..models.enums import Status
 from ..services.reminder_service import ReminderService
 
 logger = logging.getLogger(__name__)
@@ -14,13 +15,25 @@ class ScheduleRepository:
         self.session = session
 
     def _refresh_reminder(self, schedule: Schedule) -> None:
-        """Recompute the departure-reminder time and (re)schedule all background push jobs."""
+        """Recompute the departure-reminder time and (re)schedule all background push jobs.
+        Cancelled schedules get their pending jobs removed instead.
+
+        The leave-by computation can hit the OSMnx/Overpass network, so when the
+        scheduler is available the whole refresh runs as an immediate background
+        job instead of blocking the HTTP request."""
         try:
-            ReminderService.compute_and_update_leave_by_time(schedule, self.session)
             from ..services.background_reminder_scheduler import get_reminder_scheduler
             scheduler = get_reminder_scheduler()
+            if schedule.status == Status.CANCEL.value:
+                if scheduler:
+                    scheduler.remove_all_reminders(schedule.schedule_id)
+                return
             if scheduler:
-                scheduler.schedule_all_reminders(schedule, schedule.user_id)
+                scheduler.refresh_reminders_async(schedule.schedule_id, schedule.user_id)
+            else:
+                # No scheduler (tests / scripts): compute synchronously so
+                # reminder_leave_by_time is still populated.
+                ReminderService.compute_and_update_leave_by_time(schedule, self.session)
         except Exception as e:
             logger.warning(f"Failed to refresh reminder for schedule {schedule.schedule_id}: {e}")
 
@@ -39,6 +52,7 @@ class ScheduleRepository:
         #   1. attend.user_id == user_id  (directly linked)
         #   2. attend.contact_id -> Contact.contact_user_id == user_id  (linked via contact email match)
         from sqlalchemy import and_
+        from sqlalchemy.orm import selectinload
         statement = (
             select(Schedule)
             .outerjoin(attend, Schedule.schedule_id == attend.schedule_id)
@@ -51,6 +65,12 @@ class ScheduleRepository:
                 )
             )
             .distinct()
+            # Schedule.dict() serializes attend_records + contact; preload them
+            # here or listing N schedules costs 1+2N lazy-load queries.
+            .options(
+                selectinload(Schedule.attend_records),
+                selectinload(Schedule.contact),
+            )
         )
         return self.session.exec(statement).all()
 
@@ -169,12 +189,14 @@ class ScheduleRepository:
             {"user_id": user_id, "top_k": top_k}
         ).fetchall()
 
-        results = []
-        for row in rows:
-            s = self.get_by_schedule_id(row.schedule_id)
-            if s:
-                results.append((s, float(row.similarity)))
-        return results
+        id_scores = [(row.schedule_id, float(row.similarity)) for row in rows]
+        if not id_scores:
+            return []
+        schedules = self.session.exec(
+            select(Schedule).where(Schedule.schedule_id.in_([sid for sid, _ in id_scores]))
+        ).all()
+        by_id = {s.schedule_id: s for s in schedules}
+        return [(by_id[sid], score) for sid, score in id_scores if sid in by_id]
 
     # ── Contact Embedding ────────────────────────────────────────────────────
 
@@ -294,7 +316,7 @@ class ScheduleRepository:
         statement = (
             select(Schedule)
             .where(Schedule.user_id == user_id)
-            .where(Schedule.status != "cancelled") # Ignore cancelled
+            .where(Schedule.status != Status.CANCEL.value)  # Ignore cancelled ("CL")
             .where(func.cast(Schedule.meeting_start_time, TIMESTAMP) < end_time)
             .where(func.cast(Schedule.meeting_end_time, TIMESTAMP) > start_time)
         )

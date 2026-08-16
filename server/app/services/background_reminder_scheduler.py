@@ -6,6 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlmodel import Session, select
 
 from ..db.database import engine
+from ..models.enums import Status
 from ..models.schedule import Schedule
 from ..models.user_device import UserDevice
 from .push_service import push_service
@@ -116,7 +117,7 @@ class ReminderScheduler:
                 if not schedule:
                     logger.warning(f"Schedule {schedule_id} not found during reminder callback")
                     return
-                if schedule.status == "cancelled":
+                if schedule.status == Status.CANCEL.value:
                     logger.info(f"Schedule {schedule_id} is cancelled, skipping {reminder_type} reminder")
                     return
 
@@ -155,6 +156,51 @@ class ReminderScheduler:
         except Exception as e:
             logger.error(f"Error in reminder callback for schedule {schedule_id}: {e}")
 
+    def refresh_reminders_async(self, schedule_id: str, user_id: str):
+        """Run compute + (re)schedule in the scheduler's worker pool.
+
+        compute_and_update_leave_by_time may hit the OSMnx/Overpass network
+        (seconds to tens of seconds), so it must not run on the HTTP request
+        path — this fires the job immediately in the background instead.
+        """
+        try:
+            self.scheduler.add_job(
+                _refresh_reminders_job,
+                args=[schedule_id, user_id],
+                id=f"refresh-{schedule_id}",
+                replace_existing=True,
+                misfire_grace_time=None,
+            )
+        except Exception as e:
+            logger.error(f"Failed to enqueue reminder refresh for {schedule_id}: {e}")
+
+    def rehydrate_from_db(self):
+        """Re-register reminder jobs for all upcoming schedules.
+
+        APScheduler uses an in-memory jobstore, so every restart/deploy wipes
+        all pending jobs — without this, no reminder scheduled before the
+        restart would ever fire. Called once at startup.
+        """
+        from sqlalchemy import func, TIMESTAMP
+
+        count = 0
+        try:
+            with Session(engine) as session:
+                # meeting_start_time may be VARCHAR in some environments
+                # (schema drift) — cast to compare, same as find_overlapping.
+                stmt = (
+                    select(Schedule)
+                    .where(Schedule.status != Status.CANCEL.value)
+                    .where(func.cast(Schedule.meeting_start_time, TIMESTAMP) > datetime.now())
+                )
+                for schedule in session.exec(stmt).all():
+                    self.schedule_all_reminders(schedule, schedule.user_id)
+                    count += 1
+        except Exception as e:
+            logger.error(f"Reminder rehydration failed: {e}")
+            return
+        logger.info(f"Rehydrated reminders for {count} upcoming schedules")
+
     def shutdown(self):
         """Shutdown the scheduler."""
         if self.scheduler.running:
@@ -162,15 +208,38 @@ class ReminderScheduler:
             logger.info("ReminderScheduler shut down")
 
 
+def _refresh_reminders_job(schedule_id: str, user_id: str):
+    """Job body for refresh_reminders_async — needs its own DB session because
+    the originating request's session is closed by the time this runs."""
+    try:
+        with Session(engine) as session:
+            schedule = session.exec(
+                select(Schedule).where(Schedule.schedule_id == schedule_id)
+            ).first()
+            if not schedule:
+                return
+            scheduler = get_reminder_scheduler()
+            if schedule.status == Status.CANCEL.value:
+                if scheduler:
+                    scheduler.remove_all_reminders(schedule_id)
+                return
+            ReminderService.compute_and_update_leave_by_time(schedule, session)
+            if scheduler:
+                scheduler.schedule_all_reminders(schedule, user_id)
+    except Exception as e:
+        logger.warning(f"Background reminder refresh failed for {schedule_id}: {e}")
+
+
 # Global instance
 reminder_scheduler: Optional[ReminderScheduler] = None
 
 
 def init_reminder_scheduler():
-    """Initialize the global reminder scheduler."""
+    """Initialize the global reminder scheduler and restore jobs from the DB."""
     global reminder_scheduler
     if reminder_scheduler is None:
         reminder_scheduler = ReminderScheduler()
+        reminder_scheduler.rehydrate_from_db()
     return reminder_scheduler
 
 

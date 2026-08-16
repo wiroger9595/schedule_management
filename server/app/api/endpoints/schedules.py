@@ -661,19 +661,133 @@ def chat_schedule(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
+    """
+    限流 / 額度的守門層。實際對話邏輯在 _chat_schedule_impl —— 它有二十幾個
+    return，把額度判斷放在外層才不用每個 return 都補一次。
+    """
     from ...core.redis_client import redis_client
+    from ...services import ai_quota_service
 
-    user_message = request.message.strip()
-    user_id = str(current_user.user_id)
+    # confirm_* 路徑不會呼叫 AI（直接用既有資料），所以不限流也不計額度
+    will_call_ai = not (request.confirm_delete or request.confirm_location
+                        or request.confirm_past_edit or request.confirm_time_input)
 
-    # ── Rate limit: 每10秒最多3次 AI 請求 ────────────────────────────────────
-    if not request.confirm_delete and not request.confirm_location and not request.confirm_past_edit and not request.confirm_time_input:
-        if not redis_client.check_ai_rate_limit(user_id):
+    quota = {"allowed": True, "using_own_key": False, "providers": None, "remaining": None}
+
+    if will_call_ai:
+        if not redis_client.check_ai_rate_limit(str(current_user.user_id)):
             return ChatResponse(
                 ai_reply="請求太頻繁，請稍等一下再繼續。",
                 updated_data=request.current_data or {},
                 is_complete=False,
             )
+
+        quota = ai_quota_service.resolve_for_chat(current_user)
+        if not quota["allowed"]:
+            return ChatResponse(
+                ai_reply=(
+                    f"這個月的免費 AI 次數（{quota['limit']} 次）已經用完了。"
+                    "升級後可以設定自己的 AI 服務，不限次數使用 🙌"
+                ),
+                updated_data=request.current_data or {},
+                is_complete=False,
+                quota_exceeded=True,
+                quota_remaining=0,
+            )
+
+    response = _chat_schedule_impl(request, session, current_user, quota)
+
+    # 扣點在 impl 內（AI 真的回應才扣），這裡只是把最新剩餘次數帶回前端
+    if will_call_ai and not quota["using_own_key"]:
+        response.quota_remaining = ai_quota_service.remaining(current_user)
+    return response
+
+
+def _ai_error_reply(quota: dict, busy: bool = False) -> str:
+    """
+    BYOK 用戶失敗時要指向他自己的設定 —— 講「系統很忙」會讓他一直重試，
+    但問題其實出在他填的端點（key 過期、模型下架、額度用盡）。
+    """
+    if quota.get("using_own_key"):
+        return "你設定的 AI 服務目前無法使用，請到「設定 → 我的 AI 服務」確認 API key 和模型名稱。"
+    return "系統目前很忙，請稍後幾秒再試 🙏" if busy else "AI 處理失敗，請重新發送訊息。"
+
+
+# 整份清單查詢的說法。只收「要全部」的問法，帶時間範圍的（「這週」「明天」）
+# 一律交給 AI —— 自己寫日期範圍 parser 反而更容易錯。
+_WHOLE_LIST_QUERIES = (
+    "有什麼行程", "有哪些行程", "我的行程", "列出行程", "列出我的行程",
+    "查詢行程", "查我的行程", "全部行程", "所有行程", "行程清單", "列一下行程",
+)
+
+# 出現任何一個就不短路 —— 「我這週有什麼行程」同樣命中上面的說法，
+# 但直接列全部等於把「這週」吃掉了，這種要交給 AI 過濾。
+_TIME_SCOPE_WORDS = (
+    "今天", "明天", "後天", "昨天", "這週", "本週", "下週", "上週", "這禮拜",
+    "下禮拜", "這星期", "下星期", "這個月", "下個月", "本月", "月", "號", "日",
+    "早上", "上午", "中午", "下午", "晚上", "最近", "接下來", "週", "星期", "禮拜",
+)
+
+
+def _try_answer_without_ai(
+    user_message: str,
+    pre_intent: Optional[str],
+    pre_conf: float,
+    schedule_list: list,
+    has_pending_flow: bool,
+) -> Optional[ChatResponse]:
+    """
+    不必叫 AI 就能正確回答的情況直接回，省掉整趟 LLM 呼叫（也不扣額度）。
+
+    回傳 None = 沒有短路條件成立，照常走 graph。
+    """
+    if has_pending_flow:
+        return None
+
+    from ...services.ai_policy import (
+        is_off_topic, OFF_TOPIC_REDIRECT, build_schedule_list_reply, LIST_MAX_ITEMS,
+    )
+
+    msg = user_message.strip()
+
+    # 1. 整份清單查詢 —— 用真實資料組回覆，比讓模型複述清單更不會幻覺。
+    #    超過 LIST_MAX_ITEMS 筆就交給 AI，否則會靜悄悄漏掉後面的行程。
+    if (pre_intent == "query" and pre_conf >= 0.65
+            and schedule_list and len(schedule_list) <= LIST_MAX_ITEMS
+            and any(k in msg for k in _WHOLE_LIST_QUERIES)
+            and not any(w in msg for w in _TIME_SCOPE_WORDS)):
+        logger.info(f"[NoAI] whole-list query short-circuit (conf={pre_conf})")
+        return ChatResponse(
+            ai_reply=build_schedule_list_reply(
+                "以下是您目前的行程：", schedule_list, suffix="").rstrip(),
+            updated_data={},
+            is_complete=False,
+        )
+
+    # 2. 明顯離題 —— is_off_topic 原本是 post-generation guard，token 都付完
+    #    才發現離題。搬到呼叫前，這類訊息變成 0 token。
+    #    長度門檻擋掉「好」「可以」「沒錯」這種其實是上下文回覆的短句。
+    if pre_intent is None and len(msg) >= 4 and is_off_topic(msg):
+        logger.info("[NoAI] off-topic short-circuit")
+        return ChatResponse(
+            ai_reply=OFF_TOPIC_REDIRECT,
+            updated_data={},
+            is_complete=False,
+        )
+
+    return None
+
+
+def _chat_schedule_impl(
+    request: ChatRequest,
+    session: Session,
+    current_user: User,
+    quota: dict,
+) -> ChatResponse:
+    from ...core.redis_client import redis_client
+
+    user_message = request.message.strip()
+    user_id = str(current_user.user_id)
 
     # ── 從 Redis 讀取 server-side history，Flutter 帶的 history 為備用 ────────
     server_history = redis_client.get_chat_history(user_id)
@@ -939,14 +1053,27 @@ def chat_schedule(
     else:
         # ── Semantic Router: 本地預分類 intent（減少 AI 呼叫）────────────────
         pre_intent: Optional[str] = None
+        pre_conf: float = 0.0
         try:
             from ...services.semantic_router_service import semantic_router
             route_result = semantic_router.route(user_message, query_embedding=_query_emb)
-            if route_result["confidence"] >= 0.55:  # 高信心才預注入
+            pre_conf = route_result["confidence"]
+            if pre_conf >= 0.55:  # 高信心才預注入
                 pre_intent = route_result["intent"]
-                logger.info(f"[SemanticRouter] pre_intent={pre_intent} conf={route_result['confidence']}")
+                logger.info(f"[SemanticRouter] pre_intent={pre_intent} conf={pre_conf}")
         except Exception:
             pass
+
+        # ── 能用程式回答的就不要叫 AI ────────────────────────────────────────
+        # current_context 非空 = 有進行中的流程（Flutter 會把 updated_data 帶回來），
+        # 這種時候一律不短路：流程中的回覆（純時間、純地點、「第一個」）看起來
+        # 都像離題，誤判會直接把流程打斷。
+        _short = _try_answer_without_ai(
+            user_message, pre_intent, pre_conf,
+            annotated_schedule_list, has_pending_flow=bool(current_context),
+        )
+        if _short is not None:
+            return _short
 
         # ── Run LangGraph: collect_info → validate_location ──────────────────
         try:
@@ -955,11 +1082,13 @@ def chat_schedule(
                 "conversation_history": conversation_history,
                 "current_data": {
                     **current_context,
-                    **({"_pre_intent": pre_intent} if pre_intent else {}),
+                    **({"_pre_intent": pre_intent,
+                        "_pre_intent_conf": pre_conf} if pre_intent else {}),
                     **({"_contact_hints": _contact_hints} if _contact_hints else {}),
                     **({"_memory_snippets": _memory_snippets} if _memory_snippets else {}),
                     **({"_session": session} if session else {}),
                     **({"_query_embedding": _query_emb} if _query_emb else {}),
+                    **({"_byok_providers": quota["providers"]} if quota.get("providers") else {}),
                 },
                 "user_lat": request.latitude,
                 "user_lon": request.longitude,
@@ -981,13 +1110,13 @@ def chat_schedule(
         except RuntimeError as _rt_err:
             if "AI_RATE_LIMITED" in str(_rt_err):
                 return ChatResponse(
-                    ai_reply="系統目前很忙，請稍後幾秒再試 🙏",
+                    ai_reply=_ai_error_reply(quota, busy=True),
                     updated_data=current_context,
                     is_complete=False,
                 )
             import traceback; traceback.print_exc()
             return ChatResponse(
-                ai_reply="AI 處理失敗，請重新發送訊息。",
+                ai_reply=_ai_error_reply(quota),
                 updated_data=current_context,
                 is_complete=False,
             )
@@ -995,17 +1124,16 @@ def chat_schedule(
             logger.info(f"[chat] graph error: {_graph_err}")
             import traceback; traceback.print_exc()
             err_str = str(_graph_err)
-            if "429" in err_str or "queue_exceeded" in err_str or "rate" in err_str.lower():
-                return ChatResponse(
-                    ai_reply="系統目前很忙，請稍後幾秒再試 🙏",
-                    updated_data=current_context,
-                    is_complete=False,
-                )
+            _busy = "429" in err_str or "queue_exceeded" in err_str or "rate" in err_str.lower()
             return ChatResponse(
-                ai_reply="AI 處理失敗，請重新發送訊息。",
+                ai_reply=_ai_error_reply(quota, busy=_busy),
                 updated_data=current_context,
                 is_complete=False,
             )
+
+        # AI 真的回應了才扣額度 —— 上面每個 error return 都不該讓用戶付一次
+        from ...services import ai_quota_service
+        ai_quota_service.consume(current_user, quota["using_own_key"])
 
         updated_data = graph_state["updated_data"]
         is_complete = graph_state["is_complete"]

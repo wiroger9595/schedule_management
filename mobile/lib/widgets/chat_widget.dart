@@ -8,7 +8,9 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../providers/auth_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../screens/location_picker_screen.dart';
+import '../screens/paywall_screen.dart';
 import '../utils/constants.dart';
 import 'attendee_selector.dart';
 
@@ -541,6 +543,24 @@ class ChatWidgetState extends State<ChatWidget> {
 
       if (mounted) {
         final aiReply = data['ai_reply'] as String? ?? '';
+
+        // 免費額度：後端每次都回最新剩餘次數，用完則改顯示升級卡片
+        context.read<SubscriptionProvider>().applyChatQuota(data['quota_remaining'] as int?);
+        if (data['quota_exceeded'] == true) {
+          setState(() {
+            if (aiReply.isNotEmpty) _messages.add(_buildAiMessage(aiReply));
+            _messages.add(QuotaExceededMessage(
+              onUpgrade: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PaywallScreen()),
+              ),
+            ));
+            _isLoading = false;
+          });
+          _scrollToBottom();
+          return;
+        }
+
         // Record AI turn in conversation history
         if (aiReply.isNotEmpty) {
           _conversationHistory.add({'role': 'assistant', 'content': aiReply});
@@ -2672,6 +2692,54 @@ class _InviteCardState extends State<InviteCard> {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 免費額度用完時的升級卡片
+class QuotaExceededMessage extends StatelessWidget {
+  final VoidCallback onUpgrade;
+
+  const QuotaExceededMessage({super.key, required this.onUpgrade});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Card(
+        color: Colors.amber[50],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, color: Colors.amber, size: 20),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'quotaExceededTitle'.tr(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'quotaExceededHint'.tr(),
+                style: TextStyle(color: Colors.grey[700], fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: onUpgrade,
+                child: Text('upgrade'.tr()),
               ),
             ],
           ),

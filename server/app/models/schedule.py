@@ -42,8 +42,8 @@ class Schedule(SQLModel, table=True):
     # Actually, let's keep meeting_location column but expose 'location' as alias or just use meeting_location
     meeting_location: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     
-    # status VARCHAR(2) DEFAULT 'P'
-    status: str = Field(default="P", sa_column=Column(String(2), nullable=True, server_default="P"))
+    # status VARCHAR(2) DEFAULT 'PD' (= Status.PENDING; mobile only recognizes 'PD')
+    status: str = Field(default="PD", sa_column=Column(String(2), nullable=True, server_default="PD"))
     
     # cancel_reason VARCHAR(255) NULL
     cancel_reason: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))

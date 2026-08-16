@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>行程管家 / Schedule Butler</title>
+<!-- 沒有 JS 時的退路，同時也讓爬蟲抓得到 -->
+<meta http-equiv="refresh" content="0; url=landing.html">
+<script>
+  // 中文瀏覽器看中文版，其餘看英文版
+  var lang = (navigator.language || 'en').toLowerCase();
+  location.replace(lang.indexOf('zh') === 0 ? 'landing.html' : 'landing-en.html');
+</script>
+</head>
+<body>
+<p><a href="landing.html">行程管家</a> / <a href="landing-en.html">Schedule Butler</a></p>
+</body>
+</html>

@@ -292,6 +292,24 @@ migrations = [
     # ── 可調式提醒偏移量（開始前 / 出發前幾分鐘提醒，預設 60）──────────────────
     f"ALTER TABLE {s}.schedule ADD COLUMN IF NOT EXISTS reminder_before_start_minutes INTEGER DEFAULT 60;",
     f"ALTER TABLE {s}.schedule ADD COLUMN IF NOT EXISTS reminder_before_leave_minutes INTEGER DEFAULT 60;",
+
+    # ── contact.user_id 索引（get_by_user_id 三表 join 熱路徑）──────────────────
+    f"""
+    CREATE INDEX IF NOT EXISTS idx_contact_user_id
+    ON {s}.contact (user_id);
+    """,
+
+    # ── Schedule.status 統一為 mobile 認得的 'PD'（舊資料是 'P'，mobile 只認 'PD'）─
+    f"ALTER TABLE {s}.schedule ALTER COLUMN status SET DEFAULT 'PD';",
+    f"UPDATE {s}.schedule SET status = 'PD' WHERE status = 'P';",
+
+    # ── 訂閱方案 + 用戶自帶 AI key（BYOK）──────────────────────────────────────
+    f"ALTER TABLE {s}.users ADD COLUMN IF NOT EXISTS plan VARCHAR(20) DEFAULT 'free';",
+    f"UPDATE {s}.users SET plan = 'free' WHERE plan IS NULL;",
+    f"ALTER TABLE {s}.users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMPTZ;",
+    f"ALTER TABLE {s}.users ADD COLUMN IF NOT EXISTS ai_base_url VARCHAR(500);",
+    f"ALTER TABLE {s}.users ADD COLUMN IF NOT EXISTS ai_model VARCHAR(200);",
+    f"ALTER TABLE {s}.users ADD COLUMN IF NOT EXISTS ai_api_key_enc VARCHAR(1000);",
 ]
 
 with engine.connect() as conn:

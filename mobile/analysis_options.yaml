@@ -9,6 +9,12 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # build/ 會有 CocoaPods/SPM 抓下來的第三方原始碼（flutterfire 等），
+  # 分析它們只會淹沒自家程式碼的問題
+  exclude:
+    - build/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

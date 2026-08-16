@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../services/device_service.dart';
+import '../services/purchase_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
@@ -87,6 +88,10 @@ class AuthProvider with ChangeNotifier {
       if (response.statusCode == 200) {
         _user = jsonDecode(utf8.decode(response
             .bodyBytes)); // Properly parse UTF-8 characters like Chinese
+        // 綁 RevenueCat 身分。放這裡是因為四種登入方式（密碼 / Google / Apple /
+        // 啟動時沿用 session）最後都會經過這裡拿 profile
+        final userId = _user?['user_id'];
+        if (userId is String) PurchaseService.instance.logIn(userId);
         notifyListeners();
       } else if (response.statusCode == 401) {
         // Token is invalid or expired
@@ -234,6 +239,8 @@ class AuthProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('Device unregistration failed during logout: $e');
     }
+
+    await PurchaseService.instance.logOut();
 
     await _authService.logout();
     _isLoggedIn = false;

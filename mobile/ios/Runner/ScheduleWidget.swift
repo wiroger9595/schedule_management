@@ -18,7 +18,7 @@ struct Provider: TimelineProvider {
     }
     
     private func readEntry() -> SimpleEntry {
-        let userDefaults = UserDefaults(suiteName: "group.com.example.schedule_management")
+        let userDefaults = UserDefaults(suiteName: "group.com.schedulo.app")
         let title = userDefaults?.string(forKey: "title") ?? "無行程"
         let content = userDefaults?.string(forKey: "content") ?? "點擊打開 App"
         return SimpleEntry(date: Date(), title: title, content: content)

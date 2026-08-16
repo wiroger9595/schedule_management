@@ -2,8 +2,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:convert';
+import '../screens/invitations_screen.dart';
+import '../screens/main_shell.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -13,7 +16,11 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  Future<void> init() async {
+  /// 由 main() 注入，避免 service 反向 import main.dart
+  GlobalKey<NavigatorState>? navigatorKey;
+
+  Future<void> init({GlobalKey<NavigatorState>? navigatorKey}) async {
+    this.navigatorKey = navigatorKey;
     if (kIsWeb) return; // Web does not support these native initializations
     tz.initializeTimeZones();
 
@@ -33,7 +40,14 @@ class NotificationService {
       macOS: initializationSettingsDarwin,
     );
 
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    await flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload == null || payload.isEmpty) return;
+        _routeFromData(Map<String, dynamic>.from(jsonDecode(payload) as Map));
+      },
+    );
 
     // Request permissions for Android 13+
     await flutterLocalNotificationsPlugin
@@ -46,16 +60,24 @@ class NotificationService {
   }
 
   void _setupFirebaseMessaging() {
-    final messaging = FirebaseMessaging.instance;
-
     // Handle foreground messages (app is in focus)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       _handleForegroundMessage(message);
     });
 
-    // Handle messages opened from terminated state
+    // App was in background and the user tapped the notification
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       _handleMessageOpenedApp(message);
+    });
+
+    // App was terminated and launched by a notification tap — onMessageOpenedApp
+    // never fires for this case, the message is only available here once.
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message == null) return;
+      // 延到第一個 frame 之後，此時 navigator 才掛好
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleMessageOpenedApp(message);
+      });
     });
   }
 
@@ -71,12 +93,27 @@ class NotificationService {
   }
 
   void _handleMessageOpenedApp(RemoteMessage message) {
-    // Handle tap on notification when app is in background or terminated
-    // TODO: Navigate to relevant screen based on message.data['type']
-    if (message.data['type'] == 'departure_reminder' &&
-        message.data['schedule_id'] != null) {
-      // Navigate to schedule detail screen
-      // Example: navigatorKey.currentState?.pushNamed('/schedule-detail', arguments: message.data['schedule_id']);
+    _routeFromData(message.data);
+  }
+
+  /// 依推播的 type 導到對應畫面。type 由後端決定：
+  /// `invitation`（notification_service.py）、`departure_reminder`
+  /// （background_reminder_scheduler.py）。
+  void _routeFromData(Map<String, dynamic> data) {
+    final navigator = navigatorKey?.currentState;
+    if (navigator == null) return;
+
+    switch (data['type']) {
+      case 'invitation':
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const InvitationsScreen()),
+        );
+        break;
+      case 'departure_reminder':
+        // 沒有單一行程的詳細頁，退回行程列表那一個 tab
+        navigator.popUntil((route) => route.isFirst);
+        MainShellState.current?.switchTo(0);
+        break;
     }
   }
 

@@ -675,4 +675,80 @@ class ApiService {
     }
     return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
   }
+
+  // ── 訂閱方案 / AI 額度 ─────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getBillingStatus() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/billing/status'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    }
+    if (response.statusCode != 200) {
+      throw Exception('無法讀取方案狀態：${response.statusCode}');
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 跟 RevenueCat 對帳。購買完成、restore、開 app 時呼叫，不必等 webhook。
+  Future<Map<String, dynamic>> syncSubscription() async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/billing/sync'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    }
+    if (response.statusCode != 200) {
+      throw Exception('無法同步訂閱狀態：${response.statusCode}');
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> setAiKey({
+    required String aiBaseUrl,
+    required String apiKey,
+    required String model,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/billing/ai-key'),
+      headers: await getHeaders(),
+      body: jsonEncode({'base_url': aiBaseUrl, 'api_key': apiKey, 'model': model}),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    }
+    if (response.statusCode != 200) {
+      // 後端把「key 無效」「找不到模型」這類訊息放在 detail，直接顯示給用戶
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      throw Exception(body is Map && body['detail'] != null
+          ? body['detail'].toString()
+          : '設定失敗：${response.statusCode}');
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> deleteAiKey() async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/billing/ai-key'),
+      headers: await getHeaders(),
+    );
+    if (response.statusCode == 401) {
+      await _authService.logout();
+      onUnauthorized.add(null);
+      throw Exception('Unauthorized');
+    }
+    if (response.statusCode != 200) {
+      throw Exception('移除失敗：${response.statusCode}');
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
 }

@@ -54,24 +54,25 @@ class RAGService:
             lines.append("## 🎯 Similar examples (carefully match intent and is_complete):")
             lines.append("⚠️ Note is_complete: personal events don't need participants; meetings need title+time+location+participants")
 
-        for i, ex in enumerate(examples, 1):
-            # 強調 intent 與 is_complete
-            complete_marker = "✅ True (可直接執行)" if ex.is_complete else "❌ False (需追問)"
-            lines.append(f"\n### 案例 {i}: 「{ex.user_message}」")
-            lines.append(f"  → intent = **{ex.intent}**")
-            lines.append(f"  → is_complete = **{complete_marker}**")
+        # 一例一行。原本一例攤成 4~6 行（標題、intent、is_complete、提取各一行），
+        # 五例就吃掉快 900 tokens，但模型需要的訊息量其實一行就裝得下。
+        for ex in examples:
+            parts = [f"「{ex.user_message}」→ {ex.intent}",
+                     f"complete={'T' if ex.is_complete else 'F'}"]
 
             if ex.parsed_data:
-                # 過濾掉內部欄位
                 meaningful = {k: v for k, v in ex.parsed_data.items()
                               if not k.startswith("_") and v}
                 if meaningful:
-                    parts = [f"{k}={v}" for k, v in meaningful.items()]
-                    lines.append(f"  → 提取: {', '.join(parts[:4])}")
+                    kv = [f"{k}={v}" for k, v in list(meaningful.items())[:4]]
+                    parts.append(" ".join(kv))
 
-                # 修正提示（從失敗案例生成的特別重要）
-                if "_correction_note" in ex.parsed_data:
-                    lines.append(f"  ⚠️ {ex.parsed_data['_correction_note']}")
+                # 修正提示（從失敗案例生成的特別重要），不省
+                note = ex.parsed_data.get("_correction_note")
+                if note:
+                    parts.append(f"⚠️ {note}")
+
+            lines.append("- " + " | ".join(parts))
 
         return "\n".join(lines)
 
