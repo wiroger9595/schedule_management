@@ -151,6 +151,9 @@ def _load_inference_defaults(language: str = "zh-TW") -> str:
     """
     從 inference_default 表載入活動/時段/title 預設映射，組成 markdown 注入 prompt。
     取代之前寫死在 prompt_rule rule_text 裡的「吃飯→19:00, 開會→09:00...」文字。
+
+    這裡不另外加快取：InferenceDefaultRepository 已經有一層永久快取，靠
+    reload_inference_cache() 明確失效。在上面疊 TTL 快取會讓那個失效路徑失靈。
     """
     try:
         from ..repositories.inference_default_repository import InferenceDefaultRepository

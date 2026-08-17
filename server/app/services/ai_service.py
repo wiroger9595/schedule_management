@@ -463,7 +463,8 @@ class AIService:
                              session = None,
                              language: str = "zh-TW",
                              query_embedding: list = None,
-                             providers: list = None) -> dict:
+                             providers: list = None,
+                             force_json: bool = False) -> dict:
         """
         使用 Tool Use（Function Calling）處理對話，支援建立、修改、刪除行程。
         回傳格式與舊版相同，LangGraph / chat endpoint 無需改動。
@@ -638,7 +639,9 @@ class AIService:
         _providers = providers or self._providers
 
         for _cli, _model, _label in _providers:
-            use_tool_calling = True
+            # force_json 只給 conformance harness 用：支援 tool calling 的 provider
+            # 平常永遠不會走到 JSON path，那條路等於沒被測過。
+            use_tool_calling = not force_json
             for _attempt in range(2):  # max 2 attempts per provider
                 try:
                     if _attempt > 0:
@@ -1153,10 +1156,12 @@ class AIService:
         contact_hints: list = None,
         session = None,
         language: str = "zh-TW",
+        force_json: bool = False,
     ) -> dict:
         """
         Process conversation using a specific provider (for model comparison).
         provider_index: 0=first provider, 1=second, etc.
+        force_json: 跳過 tool calling，強制走 JSON path（比對兩條路徑的差異用）
         """
         if provider_index >= len(self._providers):
             return {"error": f"Provider index {provider_index} out of range"}
@@ -1178,9 +1183,14 @@ class AIService:
                 session=session,
                 language=language,
                 providers=[(_cli, _model, _label)],
+                force_json=force_json,
             )
         except Exception as e:
-            err_msg = str(e)[:200]
+            # process_conversation 把各種可跳過的錯誤（401、model 下架、連線失敗）
+            # 統一包成 RuntimeError("AI_RATE_LIMITED")，直接 str() 會看不到真正原因。
+            _cause = e.__cause__
+            err_msg = f"{e}" + (f" ← {type(_cause).__name__}: {_cause}" if _cause else "")
+            err_msg = err_msg[:400]
             return {
                 "error": err_msg,
                 "intent": "ERROR",

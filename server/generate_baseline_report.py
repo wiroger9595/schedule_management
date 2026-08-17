@@ -17,6 +17,7 @@ import os
 import sys
 from collections import defaultdict
 from datetime import datetime
+from typing import Optional
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -36,9 +37,17 @@ def parse_model_label(model_name: str) -> tuple[str, bool]:
     return model_name, False
 
 
-def fetch_grouped(session: Session, n: int):
-    """Return {(base_model, with_rag): [results...]}, newest n per group."""
+def fetch_grouped(session: Session, n: int, since: Optional[datetime] = None):
+    """
+    Return {(base_model, with_rag): [results...]}, newest n per group.
+
+    since: 只看這個時間點之後的結果。判定標準改過（2026-08-17 移除條件式斷言）
+    之後，舊資料的 passed 欄位跟新資料不同義，混在一起比會得到錯的結論 ——
+    尤其舊標準對弱模型特別寬鬆，會讓小模型的分數虛高。
+    """
     stmt = select(AITestResult).order_by(AITestResult.created_at.desc())
+    if since is not None:
+        stmt = stmt.where(AITestResult.created_at >= since)
     rows = session.exec(stmt).all()
     groups: dict[tuple[str, bool], list] = defaultdict(list)
     for r in rows:
@@ -194,14 +203,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=90)
     parser.add_argument("--out", type=str, default=None)
+    parser.add_argument("--since", type=str, default=None,
+                        help="只看這個日期之後的結果（YYYY-MM-DD）。"
+                             "判定標準在 2026-08-17 改過，之前的資料不可比")
     args = parser.parse_args()
 
+    since = datetime.fromisoformat(args.since) if args.since else None
+
     session = Session(engine)
-    groups = fetch_grouped(session, args.n)
+    groups = fetch_grouped(session, args.n, since=since)
     session.close()
 
     if not groups:
-        print("⚠️  No test results found. Run: python run_test_v2.py first.")
+        print("⚠️  No test results found. Run: python run_conformance.py first.")
         return
 
     report = render(groups, args.n)
